@@ -10,6 +10,7 @@ import numpy as np
 from netCDF4 import Dataset
 import julian as jd
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import cartopy.feature as cfeature
 import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
@@ -22,22 +23,25 @@ import pickle
 
 def main():
     in_fname_fmt = "data/sami_ampere_weimer/sami3_utheta_uphi_300_%m%d.nc"
-    time = dt.datetime(2014, 5, 22, 21, 56)
     radar_fname_fmt = '%Y%m%d.inv.nc'
+    
+    time = dt.datetime(2014, 5, 22, 10, 18)
 
     modData = load_data(time.strftime(in_fname_fmt), ["lat0", "lon0", "utheta", "uphi", "time"])
     radarData = load_data(time.strftime(radar_fname_fmt), ["vel", "km", "bm", "geolon", "geolat",
                                                            "mjd", "gs", "vel_e", "vel_n", "geoazm"])
     
-    #interference = flag_interference(radarData)
-    #scatter = scatter_filter(interference)
-    #boxcar = median_filter(scatter)
+    interference = flag_interference(radarData)
+    scatter = scatter_filter(interference)
+    boxcar = median_filter(scatter)
     
-    pickle_in = open("20140522_pyk.pickle", "rb")
+    pickle_in = open("20140522_inv.pickle", "rb")
     boxcar = pickle.load(pickle_in)
     
     modNvel, modEvel, index, hrind = interp_model_to_obs(modData, boxcar, time)
-    radVel= plot_data(modData, boxcar, time, index, hrind)
+    radVel, radLon, radLat, degs = plot_data(modData, boxcar, time, index, hrind)
+    
+    data_analysis(modNvel, modEvel, radVel, radLon, radLat, degs)
 
 #load data out of netCDF file and into python dictionary
 
@@ -165,8 +169,8 @@ def median_filter(data):
   
                     gatedLons = fsData["geolon"][timeIndex & beamFlag & gateFlag1 & gateFlag2]                                     
                     gatedLats = fsData["geolat"][timeIndex & beamFlag & gateFlag1 & gateFlag2] 
-                    gatedVels = fsData["vel"][timeIndex & beamFlag & gateFlag1 & gateFlag2]
-                    
+
+                    gatedVels = fsData["vel"][timeIndex & beamFlag & gateFlag1 & gateFlag2]                    
                     gatedEVels = fsData["vel_e"][timeIndex & beamFlag & gateFlag1 & gateFlag2]
                     gatedNVels = fsData["vel_n"][timeIndex & beamFlag & gateFlag1 & gateFlag2]
                     gatedDegs = fsData["geoazm"][timeIndex & beamFlag & gateFlag1 & gateFlag2]
@@ -180,8 +184,8 @@ def median_filter(data):
                         avgFsData["vel"].append(np.average(gatedVels))
                         avgFsData["vel_e"].append(np.average(gatedEVels))
                         avgFsData["vel_n"].append(np.average(gatedNVels))
-                        
                         avgFsData["geoazm"].append(np.average(gatedDegs))
+                        
                         avgFsData["mjd"].append(currentTime)
                     
     print(len(avgFsData["geolon"]))
@@ -193,7 +197,7 @@ def median_filter(data):
     print("Longitudes: " + str(min(avgFsData["geolon"])) + ", " + str(max(avgFsData["geolon"])))
     print("Latitudes: " + str(min(avgFsData["geolat"])) + ", " + str(max(avgFsData["geolat"])))
     
-    pickle_out = open("20140522_pyk.pickle", "wb")
+    pickle_out = open("20140522_inv.pickle", "wb")
     pickle.dump(avgFsData, pickle_out)
     pickle_out.close()
     
@@ -211,14 +215,11 @@ def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
     fsLatTimed = radarData["geolat"][timeIndex]
     fsLonTimed = radarData["geolon"][timeIndex]
     fsVelTimed = radarData["vel"][timeIndex]
-    
-    fsVelETimed = radarData["vel_e"][timeIndex]
-    fsVelNTimed = radarData["vel_n"][timeIndex]
-    fsDegTimed = radarData["geoazm"][timeIndex]
-    
-    vertical = np.cos(np.deg2rad(fsDegTimed)) * fsVelTimed
-    horizontal = np.sin(np.deg2rad(fsDegTimed)) * fsVelTimed
 
+    fsVelNTimed = radarData["vel_n"][timeIndex] 
+    fsVelETimed = radarData["vel_e"][timeIndex]                  
+    fsDegTimed = radarData["geoazm"][timeIndex]                                                 
+    
     # set up the plot 
     ax = plt.axes(projection=ccrs.EquidistantConic(standard_parallels = (90,90)))
     ax.coastlines()
@@ -234,22 +235,22 @@ def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
     )
     
     # make the plot
-    plt.quiver(fsLonTimed, fsLatTimed, fsVelETimed, fsVelNTimed, fsVelTimed, cmap="Spectral_r", 
+    plt.quiver(fsLonTimed, fsLatTimed, fsVelETimed, fsVelNTimed, color = "magenta", 
                 transform=ccrs.PlateCarree(),
                 )
     plt.plot(-133.772, 68.414, color = "red", marker = "x", transform = ccrs.PlateCarree())
     
-    clb = plt.colorbar()
-    clb.ax.set_title("Velocity")
-    clb.set_label("m/s", rotation=270)
+    magenta = mpatches.Patch(color='magenta', label='Radar Velocities')
+    gray = mpatches.Patch(color='gray', label='Model Velocities')
     
+    plt.legend(handles = [magenta, gray], bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
     
     plt.suptitle(time.strftime("SAMI/AMPERE ExB drift vels at %H:%M UT on %d %b %Y"))
-    plt.savefig("Inuvik_NE.png", dpi = 300)
+    plt.savefig("Inuvik_NE_4.png", dpi = 300)
     plt.show()
     plt.close()
-    
-    return fsVelTimed
+        
+    return fsVelTimed, fsLonTimed, fsLatTimed, fsDegTimed
     
     
 def interp_model_to_obs(modData, radarData, time):
@@ -275,10 +276,11 @@ def interp_model_to_obs(modData, radarData, time):
     index = timeInts.index([time.hour, time.minute])
     timeIndex = radarData["mjd"] == uniqueTimes[index]
     
-    #print(timeInts)
+    print(timeInts)
     
     lats = modData["lat0"]["vals"].flatten()
     lons = modData["lon0"]["vals"].flatten()
+    
     lons[lons > 180] = lons[lons > 180] - 360
     
     nvals = modData["utheta"]["vals"][hrind,:,:].flatten()
@@ -289,28 +291,55 @@ def interp_model_to_obs(modData, radarData, time):
     
     nvel = griddata(np.array([lons, lats]).T, nvals, (radarLons, radarLats))
     evel = griddata(np.array([lons, lats]).T, evals, (radarLons, radarLats))
-
+    
     
     #print(nvel)
     #print(evel)
     
     return nvel, evel, index, hrind
 
+def data_analysis(modN, modE, radVel, radLon, radLat, degs): 
+
+    ax = plt.axes(projection=ccrs.EquidistantConic(standard_parallels = (90, 90)))
+    ax.add_feature(cfeature.LAND)
+    ax.add_feature(cfeature.OCEAN)
+
+    ax.set_extent([-140, 6, 68, 88], ccrs.PlateCarree())
+    gl = ax.gridlines(
+        crs=ccrs.PlateCarree(), draw_labels=True,
+        linewidth=2, color='gray', alpha=0.5, linestyle='-',
+        )
+    
+
+    modVels = [modN * np.cos(np.deg2rad(degs)), modE * np.sin(np.deg2rad(degs))] 
+    radar_los = np.array([np.cos(degs), np.sin(degs)])
+    model_los_projections = np.dot(np.array(modVels), radar_los)
+    
+    print(model_los_projections)
+    difs = radVel - model_los_projections
+
+    plt.scatter(radLon, radLat, c = difs, cmap = "PuRd",  
+                transform=ccrs.PlateCarree())
+    
+    gl.xformatter = LONGITUDE_FORMATTER
+    gl.yformatter = LATITUDE_FORMATTER
+
+    gl.xlabel_style = {'size': 15, 'color': 'gray'}
+    gl.ylabel_style = {'size': 15, 'color': 'gray'}
+    gl.xlabels_top = False
+    gl.ylabels_left = False
+    
+    clb = plt.colorbar()
+    clb.ax.set_title("Velocity")
+    clb.set_label("m/s", rotation=270)
+    
+    plt.suptitle("Velocity Differences")
+    
+    plt.show()
+
 if __name__ == '__main__':
 
     main()
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

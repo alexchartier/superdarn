@@ -209,17 +209,12 @@ def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
         radarData[key] = np.array(value)
 
     uniqueTimes = np.unique(radarData["mjd"])
-    
     timeIndex = radarData["mjd"] == uniqueTimes[index]
-
-    fsLatTimed = radarData["geolat"][timeIndex]
-    fsLonTimed = radarData["geolon"][timeIndex]
-    fsVelTimed = radarData["vel"][timeIndex]
-
-    fsVelNTimed = radarData["vel_n"][timeIndex] 
-    fsVelETimed = radarData["vel_e"][timeIndex]                  
-    fsDegTimed = radarData["geoazm"][timeIndex]                                                 
     
+    timedData = {}
+    for key, value, in radarData.items():
+        timedData[key] = radarData["value"][timeIndex]
+
     # set up the plot 
     ax = plt.axes(projection=ccrs.EquidistantConic(standard_parallels = (90,90)))
     ax.coastlines()
@@ -235,7 +230,7 @@ def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
     )
     
     # make the plot
-    plt.quiver(fsLonTimed, fsLatTimed, fsVelETimed, fsVelNTimed, color = "magenta", 
+    plt.quiver(timedData["geolon"], timedData["geolat"], timedData["vel_e"], timedData["vel_n"], color = "magenta", 
                 transform=ccrs.PlateCarree(),
                 )
     plt.plot(-133.772, 68.414, color = "red", marker = "x", transform = ccrs.PlateCarree())
@@ -250,7 +245,7 @@ def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
     plt.show()
     plt.close()
         
-    return fsVelTimed, fsLonTimed, fsLatTimed, fsDegTimed
+    return timedData["vel"], timedData["geolon"], timedData["geolat"], timedData["geoazm"]
     
     
 def interp_model_to_obs(modData, radarData, time):

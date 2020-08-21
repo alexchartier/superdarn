@@ -31,9 +31,9 @@ def main():
     radarData = load_data(time.strftime(radar_fname_fmt), ["vel", "km", "bm", "geolon", "geolat",
                                                            "mjd", "gs", "vel_e", "vel_n", "geoazm"])
     
-    interference = flag_interference(radarData)
-    scatter = scatter_filter(interference)
-    boxcar = median_filter(scatter)
+    #interference = flag_interference(radarData)
+    #scatter = scatter_filter(interference)
+    #boxcar = median_filter(scatter)
     
     pickle_in = open("20140522_inv.pickle", "rb")
     boxcar = pickle.load(pickle_in)
@@ -209,12 +209,17 @@ def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
         radarData[key] = np.array(value)
 
     uniqueTimes = np.unique(radarData["mjd"])
-    timeIndex = radarData["mjd"] == uniqueTimes[index]
     
-    timedData = {}
-    for key, value, in radarData.items():
-        timedData[key] = radarData["value"][timeIndex]
+    timeIndex = radarData["mjd"] == uniqueTimes[index]
 
+    fsLatTimed = radarData["geolat"][timeIndex]
+    fsLonTimed = radarData["geolon"][timeIndex]
+    fsVelTimed = radarData["vel"][timeIndex]
+
+    fsVelNTimed = radarData["vel_n"][timeIndex] 
+    fsVelETimed = radarData["vel_e"][timeIndex]                  
+    fsDegTimed = radarData["geoazm"][timeIndex]                                                 
+    
     # set up the plot 
     ax = plt.axes(projection=ccrs.EquidistantConic(standard_parallels = (90,90)))
     ax.coastlines()
@@ -230,7 +235,7 @@ def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
     )
     
     # make the plot
-    plt.quiver(timedData["geolon"], timedData["geolat"], timedData["vel_e"], timedData["vel_n"], color = "magenta", 
+    plt.quiver(fsLonTimed, fsLatTimed, fsVelETimed, fsVelNTimed, color = "magenta", 
                 transform=ccrs.PlateCarree(),
                 )
     plt.plot(-133.772, 68.414, color = "red", marker = "x", transform = ccrs.PlateCarree())
@@ -245,7 +250,7 @@ def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
     plt.show()
     plt.close()
         
-    return timedData["vel"], timedData["geolon"], timedData["geolat"], timedData["geoazm"]
+    return fsVelTimed, fsLonTimed, fsLatTimed, fsDegTimed
     
     
 def interp_model_to_obs(modData, radarData, time):
@@ -335,6 +340,18 @@ def data_analysis(modN, modE, radVel, radLon, radLat, degs):
 if __name__ == '__main__':
 
     main()
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

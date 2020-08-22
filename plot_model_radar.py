@@ -22,24 +22,30 @@ import pickle
 
 
 def main():
+    time = dt.datetime(2014, 5, 22, 10, 18)
+    
     in_fname_fmt = "data/sami_ampere_weimer/sami3_utheta_uphi_300_%m%d.nc"
     radar_fname_fmt = '%Y%m%d.inv.nc'
-    
-    time = dt.datetime(2014, 5, 22, 10, 18)
+    radarDict = "%Y%m%d.inv.pickle"
 
     modData = load_data(time.strftime(in_fname_fmt), ["lat0", "lon0", "utheta", "uphi", "time"])
     radarData = load_data(time.strftime(radar_fname_fmt), ["vel", "km", "bm", "geolon", "geolat",
                                                            "mjd", "gs", "vel_e", "vel_n", "geoazm"])
+    """
+    interference = flag_interference(radarData)
+    scatter = scatter_filter(interference)
+    boxcar = median_filter(scatter)
     
-    #interference = flag_interference(radarData)
-    #scatter = scatter_filter(interference)
-    #boxcar = median_filter(scatter)
+    #save dictionary data in a pickle file
+    pickle_out = open(radarDict, "wb")
+    pickle.dump(boxcar, pickle_out)
+    pickle_out.close()
+    """
+    pickle_in = open(radarDict, "rb")
+    radarFiltered = pickle.load(pickle_in)
     
-    pickle_in = open("20140522_inv.pickle", "rb")
-    boxcar = pickle.load(pickle_in)
-    
-    modNvel, modEvel, index, hrind = interp_model_to_obs(modData, boxcar, time)
-    radVel, radLon, radLat, degs = plot_data(modData, boxcar, time, index, hrind)
+    modNvel, modEvel, index, hrind = interp_model_to_obs(modData, radarFiltered, time)
+    radVel, radLon, radLat, degs = plot_data(modData, radarFiltered, time, index, hrind)
     
     data_analysis(modNvel, modEvel, radVel, radLon, radLat, degs)
 
@@ -76,27 +82,33 @@ def flag_interference(data):
     """
     
     uniqueTimes = np.unique(data["mjd"]['vals'])
-    
+
+
+    #parse through time codes    
     for index in range(len(uniqueTimes)):
         fsFlag = data["gs"]["vals"] == 0
         timeIndex = data["mjd"]['vals'] == uniqueTimes[index]
-        fsBeamsTimed = list(data["bm"]['vals'][timeIndex & fsFlag])
-        
+                
+        #parse through individual beams
         for beam in range(16):
             beamFlag = data["bm"]['vals'] == beam
             fsFlag = data["gs"]["vals"] == 0
-                   
-            if len(data["vel"]["vals"][timeIndex & fsFlag & beamFlag]) != 0:
-                beamVelMedian = statistics.median(data["vel"]["vals"][timeIndex & beamFlag & fsFlag])
+            
+            beamTimed = beamFlag & timeIndex
+             
+            #median filter       
+            if len(data["vel"]["vals"][beamTimed & fsFlag]) != 0:
+                beamVelMedian = statistics.median(data["vel"]["vals"][beamTimed & fsFlag])
                 medianFlag1 = data["vel"]["vals"] >= beamVelMedian + 800          
                 medianFlag2 = data["vel"]["vals"] <= beamVelMedian - 800
-                data["gs"]["vals"][(timeIndex & beamFlag & fsFlag) & (medianFlag1 | medianFlag2)] = 3
+                data["gs"]["vals"][(beamTimed & fsFlag) & (medianFlag1 | medianFlag2)] = 3
                 
             fsFlag = data["gs"]["vals"] == 0
-            beamVelStDev = np.std(data["vel"]['vals'][timeIndex & beamFlag])
+            beamVelStDev = np.std(data["vel"]['vals'][beamTimed])
             
+            #standard deviation filter
             if beamVelStDev >= 435:
-                data["gs"]['vals'][timeIndex & beamFlag] = 3
+                data["gs"]['vals'][beamTimed] = 3
 
     return data
 
@@ -109,23 +121,14 @@ def scatter_filter(data):
     
     """
     fsFlag = data["gs"]["vals"] == 0
-    gsList = list(data["gs"]["vals"])
-    
-    print('# of Before 0s: %i' % gsList.count(0))
-    print('# of Before 3s: %i' % gsList.count(3))
-    print()
-    
+
     minVelFlag1 = data["vel"]["vals"] <= 30 
     minVelFlag2 = data["vel"]["vals"] >= -30
     minRangeFlag = data["km"]["vals"] <= 400
     
     data["gs"]["vals"][minVelFlag1 & minVelFlag2 & fsFlag] = 1
     data["gs"]["vals"][fsFlag & minRangeFlag] = 2    
- 
-    gsList = list(data["gs"]["vals"])
     
-    print('# of After 0s: %i' % gsList.count(0))
-    print('# of After 3s: %i' % gsList.count(3))
     return data
 
 #smooths data with boxcar averages
@@ -141,18 +144,17 @@ def median_filter(data):
         fsData[var] = data[var]["vals"][fsFlag]
         
     uniqueTimes = np.unique(fsData["mjd"])   
-    avgFsData = {"geolon":[], "geolat":[], "mjd":[], 
+    avgFsData = {"geolon":[], "geolat":[], 
                  "vel":[], "vel_e":[], "vel_n":[], "geoazm":[]}
     
-    print("# of timecodes:" + str(len(uniqueTimes)))
-    
+    times = []
     
     #parsing through timecodes
     for index in range(len(uniqueTimes)):
         currentTime = uniqueTimes[index]
         timeIndex = fsData["mjd"] == currentTime
         
-        #parsing through beams
+        #parsing through individual beams within timecodes
         for beam in range(16):
             beamFlag = fsData["bm"] == beam
             
@@ -162,99 +164,30 @@ def median_filter(data):
                 maxKm = max(fsData["km"][timeIndex & beamFlag])
                 rangeKm = maxKm- minKm
                 
-                #parsing through the range gates and averaging the data
+                #parsing through the range gates within beam and averaging the data
                 for gate in range(math.ceil(rangeKm/gateSize) + 1):
                     gateFlag1 = fsData["km"] >= minKm + gate *gateSize
                     gateFlag2 = fsData["km"] < minKm + gate*gateSize + gateSize
-  
-                    gatedLons = fsData["geolon"][timeIndex & beamFlag & gateFlag1 & gateFlag2]                                     
-                    gatedLats = fsData["geolat"][timeIndex & beamFlag & gateFlag1 & gateFlag2] 
-
-                    gatedVels = fsData["vel"][timeIndex & beamFlag & gateFlag1 & gateFlag2]                    
-                    gatedEVels = fsData["vel_e"][timeIndex & beamFlag & gateFlag1 & gateFlag2]
-                    gatedNVels = fsData["vel_n"][timeIndex & beamFlag & gateFlag1 & gateFlag2]
-                    gatedDegs = fsData["geoazm"][timeIndex & beamFlag & gateFlag1 & gateFlag2]
                     
-                    
-                    #adding averaged data to the new dictionary
-                    if (len(gatedLons) != 0):
-                        avgFsData["geolon"].append(np.average(gatedLons))
-                        avgFsData["geolat"].append(np.average(gatedLats))
+                    if len (fsData["geolon"][timeIndex & beamFlag & gateFlag1 & gateFlag2]) != 0:                    
+                        for key in avgFsData:
+                            gatedVar = fsData[key][timeIndex & beamFlag & gateFlag1 & gateFlag2]
+                            avgFsData[key].append(np.average(gatedVar))  
+                            
+                        times.append(currentTime)
                         
-                        avgFsData["vel"].append(np.average(gatedVels))
-                        avgFsData["vel_e"].append(np.average(gatedEVels))
-                        avgFsData["vel_n"].append(np.average(gatedNVels))
-                        avgFsData["geoazm"].append(np.average(gatedDegs))
-                        
-                        avgFsData["mjd"].append(currentTime)
-                    
-    print(len(avgFsData["geolon"]))
-    print(len(np.unique(avgFsData["mjd"])))
+    avgFsData["mjd"] = times
     
-    print(min(avgFsData["vel"]))
-    print(max(avgFsData["vel"]))
     
+    #to establish field of view
     print("Longitudes: " + str(min(avgFsData["geolon"])) + ", " + str(max(avgFsData["geolon"])))
     print("Latitudes: " + str(min(avgFsData["geolat"])) + ", " + str(max(avgFsData["geolat"])))
-    
-    pickle_out = open("20140522_inv.pickle", "wb")
-    pickle.dump(avgFsData, pickle_out)
-    pickle_out.close()
-    
+        
     return avgFsData    
 
-def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
-    
-    for key, value in radarData.items():
-        radarData[key] = np.array(value)
-
-    uniqueTimes = np.unique(radarData["mjd"])
-    
-    timeIndex = radarData["mjd"] == uniqueTimes[index]
-
-    fsLatTimed = radarData["geolat"][timeIndex]
-    fsLonTimed = radarData["geolon"][timeIndex]
-    fsVelTimed = radarData["vel"][timeIndex]
-
-    fsVelNTimed = radarData["vel_n"][timeIndex] 
-    fsVelETimed = radarData["vel_e"][timeIndex]                  
-    fsDegTimed = radarData["geoazm"][timeIndex]                                                 
-    
-    # set up the plot 
-    ax = plt.axes(projection=ccrs.EquidistantConic(standard_parallels = (90,90)))
-    ax.coastlines()
-    ax.gridlines()
-    ax.set_extent(axext, ccrs.PlateCarree())
-    
-    
-    plt.quiver(
-    modData["lon0"]["vals"].flatten(), modData["lat0"]["vals"].flatten(), 
-    modData["uphi"]["vals"][hrind,:,:].flatten(), 
-    modData["utheta"]["vals"][hrind,:,:].flatten(), color = "gray",
-    transform=ccrs.PlateCarree(), regrid_shape= 24, width=.005, 
-    )
-    
-    # make the plot
-    plt.quiver(fsLonTimed, fsLatTimed, fsVelETimed, fsVelNTimed, color = "magenta", 
-                transform=ccrs.PlateCarree(),
-                )
-    plt.plot(-133.772, 68.414, color = "red", marker = "x", transform = ccrs.PlateCarree())
-    
-    magenta = mpatches.Patch(color='magenta', label='Radar Velocities')
-    gray = mpatches.Patch(color='gray', label='Model Velocities')
-    
-    plt.legend(handles = [magenta, gray], bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
-    
-    plt.suptitle(time.strftime("SAMI/AMPERE ExB drift vels at %H:%M UT on %d %b %Y"))
-    plt.savefig("Inuvik_NE_4.png", dpi = 300)
-    plt.show()
-    plt.close()
-        
-    return fsVelTimed, fsLonTimed, fsLatTimed, fsDegTimed
-    
-    
 def interp_model_to_obs(modData, radarData, time):
     
+    #determine model time index
     hour = time.hour + time.minute / 60
     tdiffs = np.abs(modData["time"]["vals"] - hour)
     hrind = tdiffs == np.min(tdiffs) 
@@ -262,6 +195,7 @@ def interp_model_to_obs(modData, radarData, time):
     if len(hrind) == 2:
         hrind == hrind[0]
     
+    #determine radar time index
     for key, value in radarData.items():
         radarData[key] = np.array(value)
     
@@ -278,9 +212,9 @@ def interp_model_to_obs(modData, radarData, time):
     
     print(timeInts)
     
+    
     lats = modData["lat0"]["vals"].flatten()
     lons = modData["lon0"]["vals"].flatten()
-    
     lons[lons > 180] = lons[lons > 180] - 360
     
     nvals = modData["utheta"]["vals"][hrind,:,:].flatten()
@@ -289,14 +223,67 @@ def interp_model_to_obs(modData, radarData, time):
     radarLats = radarData["geolat"][timeIndex]
     radarLons = radarData["geolon"][timeIndex]
     
+    #interpolate data based on radar coordinates
     nvel = griddata(np.array([lons, lats]).T, nvals, (radarLons, radarLats))
     evel = griddata(np.array([lons, lats]).T, evals, (radarLons, radarLats))
     
-    
-    #print(nvel)
-    #print(evel)
-    
     return nvel, evel, index, hrind
+
+def plot_data(modData, radarData, time, index, hrind, 
+              axext=[-140, 6, 68, 88], filename = "Inuvik.png"):
+    
+    #convert data into numpy array
+    for key, value in radarData.items():
+        radarData[key] = np.array(value)
+
+    uniqueTimes = np.unique(radarData["mjd"])
+    timeIndex = radarData["mjd"] == uniqueTimes[index]
+    
+    #isolate data for a certain time code
+    fsLatTimed = radarData["geolat"][timeIndex]
+    fsLonTimed = radarData["geolon"][timeIndex]
+    fsVelTimed = radarData["vel"][timeIndex]
+
+    fsVelNTimed = radarData["vel_n"][timeIndex] 
+    fsVelETimed = radarData["vel_e"][timeIndex]                  
+    fsDegTimed = radarData["geoazm"][timeIndex]                                                 
+    
+    # set up the plot 
+    ax = plt.axes(projection=ccrs.EquidistantConic(standard_parallels = (90,90)))
+    ax.coastlines()
+    ax.gridlines()
+    ax.set_extent(axext, ccrs.PlateCarree())
+    
+    #plot model data
+    plt.quiver(
+    modData["lon0"]["vals"].flatten(), modData["lat0"]["vals"].flatten(), 
+    modData["uphi"]["vals"][hrind,:,:].flatten(), 
+    modData["utheta"]["vals"][hrind,:,:].flatten(), color = "gray",
+    transform=ccrs.PlateCarree(), regrid_shape= 24, width=.005, 
+    )
+    
+    #plot radar data
+    plt.quiver(fsLonTimed, fsLatTimed, fsVelETimed, fsVelNTimed, color = "magenta", 
+                transform=ccrs.PlateCarree(),
+    
+            )
+    #add radar location
+    plt.plot(-133.772, 68.414, color = "red", marker = "x", transform = ccrs.PlateCarree())
+    
+    #add plot legend
+    magenta = mpatches.Patch(color = 'magenta', label = 'Radar Velocities')
+    gray = mpatches.Patch(color = 'gray', label = 'Model Velocities')
+    plt.legend(handles = [magenta, gray], bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+    
+    #title and save file
+    plt.suptitle(time.strftime("SAMI/AMPERE ExB drift vels at %H:%M UT on %d %b %Y"))
+    plt.savefig(filename, dpi = 300)
+    plt.show()
+    plt.close()
+        
+    return fsVelTimed, fsLonTimed, fsLatTimed, fsDegTimed
+    
+
 
 def data_analysis(modN, modE, radVel, radLon, radLat, degs): 
 
@@ -340,18 +327,6 @@ def data_analysis(modN, modE, radVel, radLon, radLat, degs):
 if __name__ == '__main__':
 
     main()
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

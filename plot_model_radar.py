@@ -203,6 +203,7 @@ def median_filter(data):
     
     return avgFsData    
 
+
 def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
     
     for key, value in radarData.items():
@@ -221,18 +222,19 @@ def plot_data(modData, radarData, time, index, hrind, axext=[-140, 6, 68, 88]):
     ax.gridlines()
     ax.set_extent(axext, ccrs.PlateCarree())
     
-    
     plt.quiver(
-    modData["lon0"]["vals"].flatten(), modData["lat0"]["vals"].flatten(), 
-    modData["uphi"]["vals"][hrind,:,:].flatten(), 
-    modData["utheta"]["vals"][hrind,:,:].flatten(), color = "gray",
-    transform=ccrs.PlateCarree(), regrid_shape= 24, width=.005, 
+        modData["lon0"]["vals"].flatten(), modData["lat0"]["vals"].flatten(), 
+        modData["uphi"]["vals"][hrind,:,:].flatten(), 
+        modData["utheta"]["vals"][hrind,:,:].flatten(), color = "gray",
+        transform=ccrs.PlateCarree(), regrid_shape= 24, width=.005, 
     )
     
     # make the plot
-    plt.quiver(timedData["geolon"], timedData["geolat"], timedData["vel_e"], timedData["vel_n"], color = "magenta", 
-                transform=ccrs.PlateCarree(),
-                )
+    plt.quiver(
+        timedData["geolon"], timedData["geolat"], timedData["vel_e"], timedData["vel_n"], 
+        color = "magenta", 
+        transform=ccrs.PlateCarree(),
+    )
     plt.plot(-133.772, 68.414, color = "red", marker = "x", transform = ccrs.PlateCarree())
     
     magenta = mpatches.Patch(color='magenta', label='Radar Velocities')
@@ -331,6 +333,7 @@ def data_analysis(modN, modE, radVel, radLon, radLat, degs):
     plt.suptitle("Velocity Differences")
     
     plt.show()
+
 
 if __name__ == '__main__':
 

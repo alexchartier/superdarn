@@ -342,8 +342,7 @@ def data_analysis(modN, modE, radVel, radLon, radLat, degs):
     gl = ax.gridlines(
         crs=ccrs.PlateCarree(), draw_labels=True,
         linewidth=2, color='gray', alpha=0.5, linestyle='-',
-        )
-    
+    )
 
     modVels = [modN * np.cos(np.deg2rad(degs)), modE * np.sin(np.deg2rad(degs))] 
     radar_los = np.array([np.cos(degs), np.sin(degs)])

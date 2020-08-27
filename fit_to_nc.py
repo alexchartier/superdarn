@@ -102,7 +102,7 @@ def main(
                 in_fname=fit_fn, 
                 ascii_fname=ascii_fn, 
                 out_fname=nc_fn, 
-                radar_info=radar_info[radar_code]
+                radar_info=radar_info[radar_code],
             )
             if status > 0:
                 print('Failed to convert %s' % fit_fn)
@@ -140,7 +140,7 @@ def fit_to_nc(
         wdt: Spectral width observed - may indicate degree of plasma turbulence or goodness of fit
         # geovelne: Interpret the observed velocity in terms of North and East components
     """
-    fittotxt_arg = '-bm -km -freq -geolat -geolon -geoazm -aacgmlat -aacgmlon -aacgmazm -gs -pwr -vel -wdt -geovelne -cfit'    
+    fittotxt_arg = '-bm -km -freq -geolat -geolon -geoazm -aacgmlat -aacgmlon -aacgmazm -gs -pwr -vel -wdt -cfit'    
 
     if os.path.isfile(ascii_fname):  # remove existing file if necessary
         os.system('rm %s' % ascii_fname)
@@ -158,14 +158,14 @@ def fit_to_nc(
     # Pull out the ascii values
     headers = [h.strip() for h in fittotxt_arg.split('-')]
     headers = [h for h in headers if h != '']
-    headers = headers[:-2] + ['vel_n', 'vel_e']
+    headers = headers[:-1] 
    
     # Define the netCDF variables and dimensions 
     out_vars = read_fittotxt_ascii(ascii_fname, headers)
     out_vars = flag_data(out_vars)
     var_defs = def_vars()
     dim_defs = {'npts': None} 
-    header_info = def_header_info(in_fname)
+    header_info = def_header_info(in_fname, radar_info)
 
     # Write out the netCDF 
     nc_utils.write_nc(out_fname, var_defs, out_vars, set_header, header_info, dim_defs)

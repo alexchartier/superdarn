@@ -45,7 +45,7 @@ def convert_timestrs(varns, timestr,\
     return varns
 
 
-def write_nc(fname, var_defs, out_vars, set_header, dim_defs, overwrite=True):
+def write_nc(fname, var_defs, out_vars, set_header, header_info, dim_defs, overwrite=True):
 
     if overwrite:
         try:
@@ -65,7 +65,7 @@ def write_nc(fname, var_defs, out_vars, set_header, dim_defs, overwrite=True):
         rootgrp.createDimension(k, v)  
     
     # Write the header stuff
-    rootgrp = set_header(rootgrp, out_vars)
+    rootgrp = set_header(rootgrp, header_info)
 
     # Define variables 
     ncvars = {}  

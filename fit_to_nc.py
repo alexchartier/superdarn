@@ -32,6 +32,7 @@ import jdutil
 import pdb
 import datetime as dt 
 import numpy as np
+from filter_radar_data import flag_data
 
 
 def main(
@@ -53,8 +54,9 @@ def main(
     # Loop over fit files in the monthly directories
     time = starttime
     while time <= endtime:
-        os.system('rm %s/*' % run_dir)  # clean out the run directory
 
+        # Set up directories
+        os.system('rm %s/*' % run_dir)  
         out_dir = time.strftime(out_dir_fmt)
         os.makedirs(out_dir, exist_ok=True)
 
@@ -149,11 +151,13 @@ def fit_to_nc(
    
     # Define the netCDF variables and dimensions 
     out_vars = read_fittotxt_ascii(ascii_fname, headers)
+    out_vars = flag_data(out_vars)
     var_defs = def_vars()
     dim_defs = {'npts': None} 
+    header_info = def_header_info(in_fname)
 
     # Write out the netCDF 
-    nc_utils.write_nc(out_fname, var_defs, out_vars, set_header, dim_defs)
+    nc_utils.write_nc(out_fname, var_defs, out_vars, set_header, header_info, dim_defs)
 
     return 0
 
@@ -198,10 +202,6 @@ def read_fittotxt_ascii(in_fname, headers, nbeams=16):
     # The flags are as follows: 0 - F, 1 - ground, 2 - coll, 3 - other
     data['gs'][data['km'] <= 400] = 2  # (coll <= 400 km, see Hibbins et al. 2018)  
 
-    # Flag the high-velocity "ground" scatter as "other"
-    #gs_highvel_ind = np.logical_and(data['gs'] == 0, np.abs(data['vel']) > 100)
-    # data['gs'][data['km'] <= 400] = 2  # (coll <= 400 km, see Hibbins et al. 2018)  
-
     return data
 
 
@@ -231,11 +231,20 @@ def def_vars():
     return vars
         
 
-def set_header(rootgrp, out_vars):
-    rootgrp.description = '\
-        Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF v2.5'
+def set_header(rootgrp, header_info):
+    rootgrp.description = header_info['description']
+    rootgrp.source = header_info['source']
+    rootgrp.history = header_info['history']
     return rootgrp
 
+
+def def_header_info(in_fname):
+    pdb.set_trace()  #TODO: Add radar location, geophysical indices
+    return {
+        'description': 'Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF v2.5',
+        'source': 'in_fname',
+        'history': 'Created on %s' % dt.datetime.now(),
+    }
 
 if __name__ == '__main__':
     if len(sys.argv) > 2:

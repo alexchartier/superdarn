@@ -42,7 +42,7 @@ def main(
     starttime=dt.datetime(2014, 5, 1),
     endtime=dt.datetime(2014, 5, 30),
     step=1,  # month
-    skip_existing=True,
+    skip_existing=False,
     bzip_output=True,
 ):
     os.makedirs(run_dir, exist_ok=True)
@@ -94,8 +94,10 @@ def main(
                 in_fname=fit_fn, 
                 ascii_fname=ascii_fn, 
                 out_fname=nc_fn, 
+                radar_info=radar_info[radar]
             )
             if status > 0:
+                print('Failed to convert %s' % fit_fn)
                 continue
 
             if bzip_output:
@@ -106,13 +108,14 @@ def main(
                     f.write(bzdat)
                 print('Compressed output to %s' % out_fn)
 
-        time += dt.timedelta(days=1) 
+        time += dt.timedelta(months=1) 
  
 
 def fit_to_nc(
     in_fname='20180126_sas.cfit',
     ascii_fname='test.txt',
     out_fname='radar.nc',
+    radar_info=None,
 ):
 
     """
@@ -238,7 +241,7 @@ def set_header(rootgrp, header_info):
     return rootgrp
 
 
-def def_header_info(in_fname):
+def def_header_info(in_fname, radar_info):
     pdb.set_trace()  #TODO: Add radar location, geophysical indices
     return {
         'description': 'Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF v2.5',

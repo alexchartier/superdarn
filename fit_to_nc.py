@@ -36,15 +36,19 @@ from filter_radar_data import flag_data
 
 
 def main(
+    starttime=dt.datetime(2014, 5, 1),
+    endtime=dt.datetime(2014, 5, 30),
     in_fname_fmt='/project/superdarn/alex/cfit/%Y/%m/*.cfit',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
     run_dir='/project/superdarn/run/',
-    starttime=dt.datetime(2014, 5, 1),
-    endtime=dt.datetime(2014, 5, 30),
+    hdw_dat_dir='../rst/tables/superdarn/hdw/'
     step=1,  # month
     skip_existing=False,
     bzip_output=True,
 ):
+
+
+    radar_info = get_radar_params(hdwDatDir)
     os.makedirs(run_dir, exist_ok=True)
 
     bzipped = False
@@ -64,11 +68,14 @@ def main(
         fit_fn_fmt = time.strftime(in_fname_fmt)
         fit_fnames = glob.glob(fit_fn_fmt)
         for fit_fn in fit_fnames:
+        
+            # Check the file is big enough to be worth bothering with
             fn_info = os.stat(fit_fn)
             if fn_info.st_size < 1E5:
                 print('\n\n%s %1.1f MB\nFile too small - skipping' % (fit_fn, fn_info.st_size / 1E6))
                 continue
             print('\n\nStarting from %s' % fit_fn)
+
 
             # Unzip if necessary
             if bzipped:
@@ -90,11 +97,12 @@ def main(
                     os.remove(out_fn)
 
             # Convert the cfit to a netCDF
+            radar_code = os.path.basename(fit_fn).split('.')[1]
             status = fit_to_nc(
                 in_fname=fit_fn, 
                 ascii_fname=ascii_fn, 
                 out_fname=nc_fn, 
-                radar_info=radar_info[radar]
+                radar_info=radar_info[radar_code]
             )
             if status > 0:
                 print('Failed to convert %s' % fit_fn)

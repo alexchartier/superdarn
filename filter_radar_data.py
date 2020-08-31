@@ -100,58 +100,51 @@ def scatter_filter(data):
     return data
 
 
+#smooths data with boxcar averages
 def median_filter(data):
-    """
-    smooths data with boxcar averages
-    """
     
-    variables = ["geolon", "geolat", "mjd", "vel", "bm", "km"]
-    fsFlag = data["gs"] == 0
+    variables = ["geolon", "geolat", "mjd", "vel", "bm", "km", "vel_e", "vel_n", "geoazm"]
+    fsFlag = data["gs"]["vals"] == 0
     fsData = {}
     gateSize = 150
     
     # isolating the F scatter data
     for var in variables:
-        fsData[var] = data[var][fsFlag]
+        fsData[var] = data[var]["vals"][fsFlag]
         
     uniqueTimes = np.unique(fsData["mjd"])   
-    avgFsData = {"geolon":[], "geolat":[], "mjd":[], "vel":[]}
+    avgFsData = {"geolon":[], "geolat":[], 
+                 "vel":[], "vel_e":[], "vel_n":[], "geoazm":[]}
     
-    print("# of timecodes: %i" % len(uniqueTimes))
+    times = []
     
     #parsing through timecodes
     for index in range(len(uniqueTimes)):
         currentTime = uniqueTimes[index]
         timeIndex = fsData["mjd"] == currentTime
         
-        # parsing through beams
+        #parsing through individual beams within timecodes
         for beam in range(16):
             beamFlag = fsData["bm"] == beam
             
-            if len(fsData["geolon"][timeIndex & beamFlag]) != 0:
+            if (len(fsData["geolon"][timeIndex & beamFlag])) != 0:
             
                 minKm = min(fsData["km"][timeIndex & beamFlag])
                 maxKm = max(fsData["km"][timeIndex & beamFlag])
-                rangeKm = maxKm - minKm
+                rangeKm = maxKm- minKm
                 
-                # parsing through the range gates and averaging the data
-                for gate in range(math.ceil(rangeKm / gateSize) + 1):
-                    gateFlag1 = fsData["km"] >= minKm + gate * gateSize
-                    gateFlag2 = fsData["km"] < minKm + gate * gateSize + gateSize
-
-                    idx = [timeIndex & beamFlag & gateFlag1 & gateFlag2]
+                #parsing through the range gates within beam and averaging the data
+                for gate in range(math.ceil(rangeKm/gateSize) + 1):
+                    gateFlag1 = fsData["km"] >= minKm + gate *gateSize
+                    gateFlag2 = fsData["km"] < minKm + gate*gateSize + gateSize
                     
-                    gatedLons = fsData["geolon"][idx]              
-                    gatedLats = fsData["geolat"][idx] 
-                    gatedVels = fsData["vel"][idx] 
-                    
-                    # adding averaged data to the new dictionary
-                    if len(gatedLons) != 0:
-                        avgFsData["geolon"].append(np.average(gatedLons))
-                        avgFsData["geolat"].append(np.average(gatedLats))
-                        avgFsData["vel"].append(np.average(gatedVels))
-                        avgFsData["mjd"].append(currentTime)
-
-    return avgFsData    
-
-
+                    if len (fsData["geolon"][timeIndex & beamFlag & gateFlag1 & gateFlag2]) != 0:                    
+                        for key in avgFsData:
+                            gatedVar = fsData[key][timeIndex & beamFlag & gateFlag1 & gateFlag2]
+                            avgFsData[key].append(np.average(gatedVar))  
+                            
+                        times.append(currentTime)
+                        
+    avgFsData["mjd"] = times
+      
+    return avgFsData  

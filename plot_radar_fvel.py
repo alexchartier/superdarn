@@ -101,7 +101,7 @@ def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
     fsLonTimed = data["geolon"][timeIndex]
     fsVelTimed = data["vel"][timeIndex]
 
-    ax = plt.axes(projection=ccrs.EquidistantConic(standard_parallels=(90, 90)))
+    ax = plt.axes(projection=ccrs.NorthPolarStereo())
     ax.add_feature(cfeature.LAND)
     ax.add_feature(cfeature.OCEAN)
 

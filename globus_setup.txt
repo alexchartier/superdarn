@@ -1,0 +1,5 @@
+$ globus endpoint create --personal swains
+Message: Endpoint created successfully
+Endpoint ID: 85c8dc96-99ea-11ea-8eca-02c81b96a709
+Setup Key: 52da151d-78f5-4f60-bf77-7f51c9c5cbda
+$ ./globusconnectpersonal -setup 52da151d-78f5-4f60-bf77-7f51c9c5cbda

@@ -1,0 +1,10 @@
+a)
+ssh chartat1@bslsuperdarnb.nerc-bas.ac.uk
+/sddata/raw/
+
+nohup rsync -rav -e ssh --include '*/' --include '*wal*' --exclude '*' chartat1@bslsuperdarnb.nerc-bas.ac.uk:/sddata/raw/ /project/superdarn/alex/rawacf/wallops_bas > rsync.log &
+nohup rsync -rav -e ssh --include '*/' --include '20200323*fhe*' --exclude '*' chartat1@bslsuperdarnb.nerc-bas.ac.uk:/sddata/raw/ /project/superdarn/alex/rawacf/fhe > rsync.log &
+
+b)
+nohup ./globusconnectpersonal -start &
+globus.org - initiate transfer

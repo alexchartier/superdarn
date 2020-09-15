@@ -12,23 +12,28 @@ import numpy as np
 
 
 def main(
-        starttime = dt.datetime(2005, 5, 22),
-        endtime = dt.datetime(2012, 12, 31),
-        run_dir = './run2/',
-        in_dir='/project/superdarn/data/rawacf/%Y/%Y%m%d/',
-        out_dir='/project/superdarn/alex/data/cfit/%Y/%m/',
+    starttime = dt.datetime(2013, 3, 1),
+    endtime = dt.datetime(2016, 3, 1),
+    run_dir = './run4/',
+    in_dir='/project/superdarn/data/rawacf/%Y/%Y%m%d/',
+    out_dir='/project/superdarn/alex/cfit/%Y/%m/',
 ):
 
     run_dir = os.path.abspath(run_dir)
     # Loop over time
     time = starttime
     while time <= endtime:
-        radar_list = get_radar_list(time.strftime(in_dir))
-        # radar_list = ['wal',]
+        radar_list = get_old_radar_list(time.strftime(in_dir))
+        #radar_list = get_radar_list(time.strftime(in_dir))
         for radar in radar_list:
-            in_fname_fmt = time.strftime(in_dir + '%Y%m%d' + '*%s*.rawacf.bz2' % radar)
+            indirn = os.path.join(in_dir, radar)  # for old setup
+            in_fname_fmt = time.strftime(os.path.join(indirn, '%Y%m%d' + '*%s*.rawacf.bz2' % radar))
+            #in_fname_fmt = time.strftime(os.path.join(in_dir, '%Y%m%d' + '*%s*.rawacf.bz2' % radar))
             cfit_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.cfit' % radar)
-            status = proc_radar(radar, in_fname_fmt, cfit_fname, run_dir)
+            if os.path.isfile(cfit_fname):
+                print("File exists - skipping %s" % cfit_fname)
+            else:
+                status = proc_radar(radar, in_fname_fmt, cfit_fname, run_dir)
         time += dt.timedelta(days=1)
 
 
@@ -78,7 +83,11 @@ def get_old_radar_list(in_dir):
 
 def get_radar_list(in_dir):
     print('Calculating list of radars')
+    assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
     flist = glob.glob(os.path.join(in_dir, '*.bz2'))
+
+    if len(flist) == 0:
+        print('No files in %s' % in_dir)
     radar_list = []
 
     for f in flist:

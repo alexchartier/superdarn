@@ -32,18 +32,23 @@ import jdutil
 import pdb
 import datetime as dt 
 import numpy as np
+from filter_radar_data import flag_data
 
 
 def main(
+    starttime=dt.datetime(2014, 5, 1),
+    endtime=dt.datetime(2014, 5, 30),
     in_fname_fmt='/project/superdarn/alex/cfit/%Y/%m/*.cfit',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
     run_dir='/project/superdarn/run/',
-    starttime=dt.datetime(2014, 5, 1),
-    endtime=dt.datetime(2014, 5, 30),
+    hdw_dat_dir='../rst/tables/superdarn/hdw/'
     step=1,  # month
-    skip_existing=True,
+    skip_existing=False,
     bzip_output=True,
 ):
+
+
+    radar_info = get_radar_params(hdwDatDir)
     os.makedirs(run_dir, exist_ok=True)
 
     bzipped = False
@@ -53,8 +58,9 @@ def main(
     # Loop over fit files in the monthly directories
     time = starttime
     while time <= endtime:
-        os.system('rm %s/*' % run_dir)  # clean out the run directory
 
+        # Set up directories
+        os.system('rm %s/*' % run_dir)  
         out_dir = time.strftime(out_dir_fmt)
         os.makedirs(out_dir, exist_ok=True)
 
@@ -62,11 +68,14 @@ def main(
         fit_fn_fmt = time.strftime(in_fname_fmt)
         fit_fnames = glob.glob(fit_fn_fmt)
         for fit_fn in fit_fnames:
+        
+            # Check the file is big enough to be worth bothering with
             fn_info = os.stat(fit_fn)
             if fn_info.st_size < 1E5:
                 print('\n\n%s %1.1f MB\nFile too small - skipping' % (fit_fn, fn_info.st_size / 1E6))
                 continue
             print('\n\nStarting from %s' % fit_fn)
+
 
             # Unzip if necessary
             if bzipped:
@@ -88,12 +97,15 @@ def main(
                     os.remove(out_fn)
 
             # Convert the cfit to a netCDF
+            radar_code = os.path.basename(fit_fn).split('.')[1]
             status = fit_to_nc(
                 in_fname=fit_fn, 
                 ascii_fname=ascii_fn, 
                 out_fname=nc_fn, 
+                radar_info=radar_info[radar_code],
             )
             if status > 0:
+                print('Failed to convert %s' % fit_fn)
                 continue
 
             if bzip_output:
@@ -104,13 +116,14 @@ def main(
                     f.write(bzdat)
                 print('Compressed output to %s' % out_fn)
 
-        time += dt.timedelta(days=1) 
+        time += dt.timedelta(months=1) 
  
 
 def fit_to_nc(
     in_fname='20180126_sas.cfit',
     ascii_fname='test.txt',
     out_fname='radar.nc',
+    radar_info=None,
 ):
 
     """
@@ -127,7 +140,7 @@ def fit_to_nc(
         wdt: Spectral width observed - may indicate degree of plasma turbulence or goodness of fit
         # geovelne: Interpret the observed velocity in terms of North and East components
     """
-    fittotxt_arg = '-bm -km -freq -geolat -geolon -geoazm -aacgmlat -aacgmlon -aacgmazm -gs -pwr -vel -wdt -geovelne -cfit'    
+    fittotxt_arg = '-bm -km -freq -geolat -geolon -geoazm -aacgmlat -aacgmlon -aacgmazm -gs -pwr -vel -wdt -cfit'    
 
     if os.path.isfile(ascii_fname):  # remove existing file if necessary
         os.system('rm %s' % ascii_fname)
@@ -145,15 +158,17 @@ def fit_to_nc(
     # Pull out the ascii values
     headers = [h.strip() for h in fittotxt_arg.split('-')]
     headers = [h for h in headers if h != '']
-    headers = headers[:-2] + ['vel_n', 'vel_e']
+    headers = headers[:-1] 
    
     # Define the netCDF variables and dimensions 
     out_vars = read_fittotxt_ascii(ascii_fname, headers)
+    out_vars = flag_data(out_vars)
     var_defs = def_vars()
     dim_defs = {'npts': None} 
+    header_info = def_header_info(in_fname, radar_info)
 
     # Write out the netCDF 
-    nc_utils.write_nc(out_fname, var_defs, out_vars, set_header, dim_defs)
+    nc_utils.write_nc(out_fname, var_defs, out_vars, set_header, header_info, dim_defs)
 
     return 0
 
@@ -198,10 +213,6 @@ def read_fittotxt_ascii(in_fname, headers, nbeams=16):
     # The flags are as follows: 0 - F, 1 - ground, 2 - coll, 3 - other
     data['gs'][data['km'] <= 400] = 2  # (coll <= 400 km, see Hibbins et al. 2018)  
 
-    # Flag the high-velocity "ground" scatter as "other"
-    #gs_highvel_ind = np.logical_and(data['gs'] == 0, np.abs(data['vel']) > 100)
-    # data['gs'][data['km'] <= 400] = 2  # (coll <= 400 km, see Hibbins et al. 2018)  
-
     return data
 
 
@@ -231,11 +242,20 @@ def def_vars():
     return vars
         
 
-def set_header(rootgrp, out_vars):
-    rootgrp.description = '\
-        Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF v2.5'
+def set_header(rootgrp, header_info):
+    rootgrp.description = header_info['description']
+    rootgrp.source = header_info['source']
+    rootgrp.history = header_info['history']
     return rootgrp
 
+
+def def_header_info(in_fname, radar_info):
+    pdb.set_trace()  #TODO: Add radar location, geophysical indices
+    return {
+        'description': 'Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF v2.5',
+        'source': 'in_fname',
+        'history': 'Created on %s' % dt.datetime.now(),
+    }
 
 if __name__ == '__main__':
     if len(sys.argv) > 2:

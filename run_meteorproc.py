@@ -25,20 +25,20 @@ def meteorproc(
         skip_existing=False,
 ):
     time = starttime
-    radar_list = get_radar_list(hdw_dat_dir)
+    radar_list = get_radar_params(hdw_dat_dir)
     while time < endtime:
-        for radar in radar_list:
-            print(radar)
+        for radar_name, hdw_params in radar_list.items():
+            print(radar_name)
             # specify filenames
-            cfit_fname = time.strftime(cfit_fname_fmt) + '.%s.cfit' % radar 
-            wind_fname = time.strftime(wind_fname_fmt) + '.%s.txt' % radar
-            hdw_dat_fname = glob.glob(os.path.join(hdw_dat_dir, '*%s*' % radar))[0]
+            cfit_fname = time.strftime(cfit_fname_fmt) + '.%s.cfit' % radar_name 
+            wind_fname = time.strftime(wind_fname_fmt) + '.%s.txt' % radar_name
+            hdw_dat_fname = glob.glob(os.path.join(hdw_dat_dir, '*%s*' % radar_name))[0]
             if (os.path.isfile(wind_fname) & skip_existing):
                 print('wind file already exists')
                 continue
 
             # get hardware parameters
-            hdw_params = read_hdw_dat(time, hdw_dat_fname)
+            hdw_params = id_hdw_params_t(time, hdw_params)
             if hdw_params['glat'] < 0:  # skip SH
                 print('SH')
                 continue
@@ -50,7 +50,7 @@ def meteorproc(
                 continue
 
             # Skip nonexistent files
-            if not os.path.isfile(cfit_fname)
+            if not os.path.isfile(cfit_fname):
                 print('Not found: %s' % cfit_fname)
                 continue
 
@@ -69,13 +69,58 @@ def cfit_to_wind(day, cfit_fname, beam_num, wind_fname, meteorproc_exe):
     print('written to %s' % wind_fname)
     
     
-def get_radar_list(hdw_dat_dir):
+def get_radar_params(hdw_dat_dir):
     # Pull out all the time/beam/radar name info from hdw_dat_dir   
-    files = glob.glob(os.path.join(hdw_dat_dir, '*'))
-    radar_list = [f.split('.')[-1] for f in files]
+    filenames = glob.glob(os.path.join(hdw_dat_dir, '*'))
+
+    prm = [
+        'glat', 'glon', 'alt', 'boresight', 'beamsep', 'velsign',
+         'rxstep', 'tdiff', 'phasesign', 'intoffset_x', 'intoffset_y',
+         'intoffset_z', 'risetime', 'atten', 'maxrg', 'maxbeams',
+    ]
+    radar_list = {}
+    for fn in filenames:
+        radar_name = fn.split('.')[-1]
+
+        # Read in text and remove comments
+        with open(fn, 'r') as f:
+            txt = f.readlines()
+        txt2 = []
+        for line in txt:
+            line_el = line.split()
+            if len(line_el) == 0:
+                continue
+            if not line.startswith('#'):
+                txt2.append(line)
+
+        # Read hardware parameters
+        radar_list[radar_name] = {}
+        for line in txt2:
+            vals = [float(ln) for ln in line.split()]
+            yr = int(vals[1])
+            tot_sec = int(vals[2])
+            assert (yr < 5000) & (yr > 1980), 'year looks wrong: %i' % yr
+            assert (tot_sec < 34300000) & (tot_sec >= 0), 'tot_sec looks wrong: %i' % tot_sec
+            enddate = dt.datetime(yr, 1, 1) + dt.timedelta(seconds=tot_sec)
+            flv = [float(v) for v in vals[3:]]
+            hdw_params = dict(zip(prm, flv))
+         
+            assert hdw_params['maxbeams'] < 25, 'maxbeams is > 24 %f' % hdw_params['maxbeams']
+            assert hdw_params['beamsep'] < 5, 'beamsep is > 5 %f' % hdw_params['beamsep']
+            assert hdw_params['boresight'] < 360, 'boresight is >= 360 %f' % hdw_params['boresight']
+
+            radar_list[radar_name][enddate] = hdw_params
+
     return radar_list
 
     
+def id_hdw_params_t(day, hdw_params):
+    # return the first hardware params with an end-date after time t
+    for enddate, hdw_params_t in hdw_params.items():
+        if enddate > day:
+            return hdw_params_t
+
+
 def id_beam_north(hdw_params, center_bm=8, maxdev=10):
     # Find the most northward-pointing beam (if any close to north)
     beam_az = np.arange(hdw_params['maxbeams']) * hdw_params['beamsep'] 
@@ -88,34 +133,6 @@ def id_beam_north(hdw_params, center_bm=8, maxdev=10):
     else:
         return np.nan
 
-
-def read_hdw_dat(day, hdw_dat_fname):
-    # Pull the radar-specific parameters out of hdw.dat files
-    with open(hdw_dat_fname, 'r') as f:
-        txt = f.readlines()
-    for line in txt:
-        if line[0] is '#':  # skip comment lines
-            continue
-        vals = line.split()
-        yr = int(vals[1])
-        tot_sec = int(vals[2])
-        assert (yr < 5000) & (yr > 1980), 'year looks wrong: %i' % yr
-        assert (tot_sec < 34300000) & (tot_sec >= 0), 'tot_sec looks wrong: %i' % tot_sec
-        td = (day - dt.datetime(yr, 1, 1)).total_seconds() - tot_sec
-        if td > 0:  # This line of the file is for earlier times
-            continue
-        flv = [float(v) for v in vals[3:]]
-        prm = ['glat', 'glon', 'alt', 'boresight', 'beamsep', 'velsign',\
-             'rxstep', 'tdiff', 'phasesign', 'intoffset_x', 'intoffset_y',\
-             'intoffset_z', 'risetime', 'atten', 'maxrg', 'maxbeams']
-        hdw_params = {}
-        for ind, p in enumerate(prm):
-            hdw_params[p] = flv[ind]
-        assert hdw_params['maxbeams'] < 25, 'maxbeams is > 24 %f' % hdw_params['maxbeams']
-        assert hdw_params['beamsep'] < 5, 'beamsep is > 5 %f' % hdw_params['beamsep']
-        assert hdw_params['boresight'] < 360, 'boresight is >= 360 %f' % hdw_params['boresight']
-
-        return hdw_params
 
 
 if __name__ == '__main__':

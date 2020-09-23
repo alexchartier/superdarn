@@ -36,12 +36,11 @@ from filter_radar_data import flag_data
 
 
 def main(
-    starttime=dt.datetime(2014, 5, 1),
-    endtime=dt.datetime(2014, 5, 30),
-    in_fname_fmt='/project/superdarn/alex/cfit/%Y/%m/*.cfit',
+    starttime=dt.datetime(2013, 1, 1),
+    endtime=dt.datetime(2014, 1, 1),
+    in_fname_fmt='/project/superdarn/alex/cfit/%Y/%m/*wal*.cfit',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
     run_dir='/project/superdarn/run/',
-    hdw_dat_dir='../rst/tables/superdarn/hdw/'
     step=1,  # month
     skip_existing=False,
     bzip_output=True,

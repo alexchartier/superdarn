@@ -14,7 +14,6 @@ flag definitions:
 
 import numpy as np
 from netCDF4 import Dataset
-import julian as jd
 import matplotlib.pyplot as plt
 import cartopy.feature as cfeature
 import cartopy.crs as ccrs

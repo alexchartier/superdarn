@@ -33,6 +33,7 @@ import pdb
 import datetime as dt 
 import numpy as np
 from filter_radar_data import flag_data
+from run_meteorproc import get_radar_params
 
 
 def main(
@@ -41,13 +42,14 @@ def main(
     in_fname_fmt='/project/superdarn/alex/cfit/%Y/%m/*wal*.cfit',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
     run_dir='/project/superdarn/run/',
+    hdw_dat_dir='../rst/tables/superdarn/hdw/',
     step=1,  # month
     skip_existing=False,
     bzip_output=True,
 ):
 
 
-    radar_info = get_radar_params(hdwDatDir)
+    radar_info = get_radar_params(hdw_dat_dir)
     os.makedirs(run_dir, exist_ok=True)
 
     bzipped = False

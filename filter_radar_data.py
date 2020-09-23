@@ -14,10 +14,6 @@ flag definitions:
 
 import numpy as np
 from netCDF4 import Dataset
-import matplotlib.pyplot as plt
-import cartopy.feature as cfeature
-import cartopy.crs as ccrs
-from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 import nc_utils
 import math
 import os

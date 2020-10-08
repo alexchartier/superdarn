@@ -37,17 +37,16 @@ from run_meteorproc import get_radar_params
 
 
 def main(
-    starttime=dt.datetime(2013, 1, 1),
-    endtime=dt.datetime(2014, 1, 1),
-    in_fname_fmt='/project/superdarn/alex/cfit/%Y/%m/*wal*.cfit',
+    starttime=dt.datetime(2005, 6, 1),
+    endtime=dt.datetime(2020, 1, 1),
+    in_fname_fmt='/project/superdarn/data/cfit/%Y/%m/*wal*.cfit',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
     run_dir='/project/superdarn/run/',
     hdw_dat_dir='../rst/tables/superdarn/hdw/',
     step=1,  # month
     skip_existing=False,
-    bzip_output=True,
+    bzip_output=False,
 ):
-
 
     radar_info = get_radar_params(hdw_dat_dir)
     os.makedirs(run_dir, exist_ok=True)
@@ -76,7 +75,6 @@ def main(
                 print('\n\n%s %1.1f MB\nFile too small - skipping' % (fit_fn, fn_info.st_size / 1E6))
                 continue
             print('\n\nStarting from %s' % fit_fn)
-
 
             # Unzip if necessary
             if bzipped:
@@ -117,7 +115,8 @@ def main(
                     f.write(bzdat)
                 print('Compressed output to %s' % out_fn)
 
-        time += dt.timedelta(months=1) 
+        time = dt.datetime(time.year, time.month + step, time.day)
+        # time += dt.timedelta(months=1) 
  
 
 def fit_to_nc(

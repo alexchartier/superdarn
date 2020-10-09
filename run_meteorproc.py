@@ -15,12 +15,12 @@ import pdb
 
 
 def meteorproc(
-        starttime=dt.datetime(2009, 1, 1), 
-        endtime=dt.datetime(2009, 2, 1), 
+        starttime=dt.datetime(2016, 3, 1), 
+        endtime=dt.datetime(2020, 1, 1), 
         run_dir='./run_mw/',
         meteorproc_exe='../rst/bin/meteorproc',
         hdw_dat_dir='../rst/tables/superdarn/hdw/',
-        cfit_fname_fmt='/project/superdarn/alex/cfit/%Y/%m/%Y%m%d',
+        cfit_fname_fmt='/project/superdarn/data/cfit/%Y/%m/%Y%m%d',
         wind_fname_fmt='/project/superdarn/alex/meteorwind/%Y/%m/%Y%b%d',
         skip_existing=False,
 ):

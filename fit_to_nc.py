@@ -44,7 +44,7 @@ def main(
     run_dir='/project/superdarn/run/',
     hdw_dat_dir='../rst/tables/superdarn/hdw/',
     step=1,  # month
-    skip_existing=False,
+    skip_existing=True,
     bzip_output=False,
 ):
 

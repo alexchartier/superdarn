@@ -98,18 +98,17 @@ def scatter_filter(data):
 #smooths data with boxcar averages
 def median_filter(data):
     
-    variables = ["geolon", "geolat", "mjd", "vel", "bm", "km", "vel_e", "vel_n", "geoazm"]
-    fsFlag = data["gs"]["vals"] == 0
+    variables = ["geolon", "geolat", "mjd", "vel", "bm", "km", "geoazm"]
+    fsFlag = data["gs"] == 0
     fsData = {}
     gateSize = 150
     
     # isolating the F scatter data
     for var in variables:
-        fsData[var] = data[var]["vals"][fsFlag]
+        fsData[var] = data[var][fsFlag]
         
     uniqueTimes = np.unique(fsData["mjd"])   
-    avgFsData = {"geolon":[], "geolat":[], 
-                 "vel":[], "vel_e":[], "vel_n":[], "geoazm":[]}
+    avgFsData = {"geolon":[], "geolat":[], "vel":[], "geoazm":[]}
     
     times = []
     

@@ -10,7 +10,7 @@ import numpy as np
 import datetime as dt
 import os
 import glob
-import bz2
+# import bz2
 import pdb
 
 

@@ -34,6 +34,8 @@ import datetime as dt
 import numpy as np
 from filter_radar_data import flag_data
 from run_meteorproc import get_radar_params
+from raw_to_fit import get_random_string
+import pysat_solargeomag
 
 
 def main(
@@ -55,6 +57,12 @@ def main(
     if in_fname_fmt.split('.')[-1] == 'bz2':
         bzipped = True
 
+    # Get the solar/geomagnetic indices
+    f107_kp, ap = pysat_solargeomag.get_f107_kp_ap(
+        './solar_geo.nc', starttime, endtime,
+    )   
+    pdb.set_trace()
+
     # Loop over fit files in the monthly directories
     time = starttime
     while time <= endtime:
@@ -63,6 +71,7 @@ def main(
         os.system('rm %s/*' % run_dir)  
         out_dir = time.strftime(out_dir_fmt)
         os.makedirs(out_dir, exist_ok=True)
+
 
         # Loop over the files
         fit_fn_fmt = time.strftime(in_fname_fmt)
@@ -257,10 +266,20 @@ def def_header_info(in_fname, radar_info):
         'history': 'Created on %s' % dt.datetime.now(),
     }
 
+
 if __name__ == '__main__':
-    if len(sys.argv) > 2:
-        fit_to_nc(sys.argv[-2], sys.argv[-1])
-    else:
-        main()
+
+    args = sys.argv
+    assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
+        'python3 fit_to_nc.py 2016,1,1 2017,1,1 ' + \
+        '/project/superdarn/data/cfit/%Y/%m/*.cfit  ' + \
+        '/project/superdarn/data/netcdf/%Y/%m/'
+
+    stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
+    etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
+    run_dir = './run_%s' % get_random_string(4) 
+    main(stime, etime, run_dir, args[3], args[4])
+
+
 
 

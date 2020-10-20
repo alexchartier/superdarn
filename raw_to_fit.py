@@ -19,6 +19,7 @@ def main(
     run_dir = './run10/',
     in_dir='/project/superdarn/data/rawacf/%Y/%m/',
     out_dir='/project/superdarn/alex/cfit/%Y/%m/',
+    clobber=False,
 ):
 
     print('%s\n%s\n%s\n%s\n%s\n' % (
@@ -41,9 +42,13 @@ def main(
             in_fname_fmt = time.strftime(os.path.join(in_dir, '%Y%m%d' + '*%s*.rawacf.bz2' % radar))
             cfit_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.cfit' % radar)
             if os.path.isfile(cfit_fname):
-                print("File exists - skipping %s" % cfit_fname)
-            else:
-                status = proc_radar(radar, in_fname_fmt, cfit_fname, run_dir)
+                print("File exists: %s" % cfit_fname)
+                if clobber:
+                    print('overwriting')
+                else: 
+                    print('skipping')
+                    continue 
+            status = proc_radar(radar, in_fname_fmt, cfit_fname, run_dir)
         time += dt.timedelta(days=1)
 
 
@@ -122,15 +127,20 @@ def get_random_string(length):
 
 if __name__ == '__main__':
     args = sys.argv
-    assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
+    assert len(args) >= 5, 'Should have at least 4x args, e.g.:\n' + \
         'python3 raw_to_fit.py 2016,1,1 2017,1,1 ' + \
         '/project/superdarn/data/rawacf/%Y/%m/  ' + \
-        '/project/superdarn/alex/cfit/%Y/%m/'
+        '/project/superdarn/alex/cfit/%Y/%m/ \n' + \
+        'optionally add clobber flag at the end'
+
+    clobber = False
+    if (len(args) > 5) and (args[5] == 'clobber'):
+        clobber = True
 
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
     run_dir = './run_%s' % get_random_string(4) 
-    main(stime, etime, run_dir, args[3], args[4])
+    main(stime, etime, run_dir, args[3], args[4], clobber=clobber)
 
 
 

@@ -113,9 +113,6 @@ def convert_file(in_fname, out_fname, run_dir):
     # Set the decompressed file name
     in_fname_decompressed = '.'.join(in_fname_compressed.split('.')[:-1])
     
-    # Set the converted file name
-    out_fname = '.'.join(in_fname_decompressed.split('.')[:-1]) + '.rawacf'
-    
     # Convert the dat to rawacf
     os.system('dattorawacf %s > %s' % (in_fname_decompressed, out_fname))
     

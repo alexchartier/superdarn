@@ -23,13 +23,11 @@ __status__ = "Development"
 
 
 def main(
-    start_time=dt.datetime(2015, 6, 11),
-    end_time=dt.datetime(2015, 6, 11),
+    start_time=dt.datetime(1993, 9, 29),
+    end_time=dt.datetime(1993, 9, 30),
     run_dir='./run/',
-    #in_dir='/project/superdarn/data/dat/%Y/%m/',
-    in_dir='/Users/wikerjr1/Documents/SuperDARN/dat/%Y/%m',
-    #out_dir='/project/superdarn/data/rawacf/%Y/%m/',
-    out_dir='/Users/wikerjr1/Documents/SuperDARN/rawacfnew/%Y/%m/',
+    in_dir='/project/superdarn/data/dat/%Y/%m/',
+    out_dir='/project/superdarn/jordan/rawacf/%Y/%m/',
     clobber=False,
 ):
     """Convert dat files to rawacf files

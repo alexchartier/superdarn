@@ -52,11 +52,13 @@ def main(
     # Loop over time
     time = start_time
     while time <= end_time:
-        radar_list = get_radar_list(time.strftime(in_dir))
-        for radar in radar_list:
+        single_letter_radar_list = get_single_letter_radar_list(time.strftime(in_dir))
+        for radar in single_letter_radar_list:
+            # 20120303.0001.00.cve.rawacf.bz2
+            # 1994040714t.dat.bz2
             in_fname_fmt = time.strftime(os.path.join(
                 in_dir, '%Y%m%d' + '*%s*.dat.bz2' % radar))
-            rawacf_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.rawacf' % radar)
+            rawacf_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.rawacf' % get_three_letter_radar_id(radar))
             if os.path.isfile(rawacf_fname):
                 print("File exists: %s" % rawacf_fname)
                 if clobber:
@@ -86,31 +88,62 @@ def proc_radar(radar, in_fname_fmt, rawacf_fname, run_dir):
         return 1
 
     for in_fname in in_fnames:
+        # Copy the input file from the input directory to the run directory and
+        # attempt to preserve metadata (i.e. copy2 instead of copy)
         shutil.copy2(in_fname, run_dir)
-        in_fname_t = os.path.join(run_dir, os.path.basename(in_fname))
-        os.system('bzip2 -d %s' % in_fname_t)
 
-        in_fname_t2 = '.'.join(in_fname_t.split('.')[:-1])
-        out_fname = '.'.join(in_fname_t2.split('.')[:-1]) + '.fitacf'
-        os.system('make_fit %s > %s' % (in_fname_t2, out_fname))
-    os.system('cat *.fitacf > tmp.fitacf')
+        # Rename the file using the run directory instead of input directory
+        in_fname_compressed = os.path.join(run_dir, os.path.basename(in_fname))
+        
+        # Decrompress the file
+        os.system('bzip2 -d %s' % in_fname_compressed)
 
-    # Create a cfit
-    os.system('make_rawacf tmp.fitacf > %s' % rawacf_fname)
-    fn_inf = os.stat(rawacf_fname)
-    if fn_inf.st_size < 1E5:
-        os.remove(rawacf_fname)
-        print('rawACF %s is too small (%1.1f MB)' %
-              (rawacf_fname, fn_inf.st_size / 1E6))
-    else:
-        print('rawacf created at %s, size %1.1f MB' %
-              (rawacf_fname, fn_inf.st_size / 1E6))
-    return 0
+        # Set the decompressed file name
+        in_fname_decompressed = '.'.join(in_fname_compressed.split('.')[:-1])
+        
+        # Set the converted file name
+        out_fname = '.'.join(in_fname_decompressed.split('.')[:-1]) + '.rawacf'
+        
+        # Convert the dat to rawacf
+        os.system('dattorawacf %s > %s' % (in_fname_decompressed, out_fname))
+        
+        # Compress the newly created rawacf file
+        os.system('bzip2 -z %s' % out_fname)
 
 
-def get_radar_list(in_dir):
-    """"""
-    radar_sites = {
+def get_single_letter_radar_list(in_dir):
+    """Determine all radar stations represented in the input directory"""
+
+    print('\nRadars in current directory')
+    print('------------')
+    assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
+    file_list = glob.glob(os.path.join(in_dir, '*.bz2'))
+
+    if len(file_list) == 0:
+        print('No files in %s' % in_dir)
+    radar_list = []
+
+    i = 1
+    for f in file_list:
+        items = f.split('.')
+        if len(items) == 3:
+            # The radar indicator is always the letter after the hour value
+            radar_letter = items[0][10]
+        else:
+            raise ValueError('filename does not match expectations: %s' % f)
+
+        if radar_name not in radar_list:
+            radar_list.append(radar_letter)
+            print('%02d: %s' % (i, radarn))
+            i += 1
+        print('\n')
+    return radar_list
+
+def get_three_letter_radar_id(radar_letter):
+    # Original dat file naming format was YYYYMMDDHHS.dat
+    # (year, month, day, hour, station identifier). We switched to three-letter
+    # identifiers as the number of radar sites grew
+    radar_ids = {
         "g": "gbr",
         "s": "sch",
         "k": "kap",
@@ -132,27 +165,7 @@ def get_radar_list(in_dir):
         "q": "fir" 
     }
 
-    print('Getting list of radars in input directory')
-    assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
-    file_list = glob.glob(os.path.join(in_dir, '*.bz2'))
-
-    if len(file_list) == 0:
-        print('No files in %s' % in_dir)
-    radar_list = []
-
-# 1993101908t.dat.bz2
-    for f in file_list:
-        items = f.split('.')
-        if len(items) == 3:
-            # The radar indicator is always the letter after the hour value
-            radar_letter = items[0][10]
-            radar_name = 
-        else:
-            raise ValueError('filename does not match expectations: %s' % f)
-        if radar_name not in radar_list:
-            radar_list.append(radar_name)
-            print(radar_name)
-    return radar_list
+    return radar_ids[radar_letter]
 
 
 def get_random_string(length):

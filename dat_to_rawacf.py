@@ -56,6 +56,7 @@ def main(
         for radar in single_letter_radar_list:
             # 20120303.0001.00.cve.rawacf.bz2
             # 1994040714t.dat.bz2
+            
             in_fname_fmt = time.strftime(os.path.join(
                 in_dir, '%Y%m%d' + '*%s*.dat.bz2' % radar))
             rawacf_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.rawacf' % get_three_letter_radar_id(radar))

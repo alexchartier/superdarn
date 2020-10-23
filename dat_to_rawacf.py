@@ -23,11 +23,13 @@ __status__ = "Development"
 
 
 def main(
-    start_time=dt.datetime(1993, 9, 1),
-    end_time=dt.datetime(1993, 12, 31),
+    start_time=dt.datetime(2015, 6, 11),
+    end_time=dt.datetime(2015, 6, 11),
     run_dir='./run/',
-    in_dir='/project/superdarn/data/dat/%Y/%m/',
-    out_dir='/project/superdarn/data/rawacf/%Y/%m/',
+    #in_dir='/project/superdarn/data/dat/%Y/%m/',
+    in_dir='/Users/wikerjr1/Documents/SuperDARN/dat/%Y/%m',
+    #out_dir='/project/superdarn/data/rawacf/%Y/%m/',
+    out_dir='/Users/wikerjr1/Documents/SuperDARN/rawacfnew/%Y/%m/',
     clobber=False,
 ):
     """Convert dat files to rawacf files
@@ -52,26 +54,44 @@ def main(
     # Loop over time
     time = start_time
     while time <= end_time:
-        single_letter_radar_list = get_single_letter_radar_list(time.strftime(in_dir))
-        for radar in single_letter_radar_list:
-            # 20120303.0001.00.cve.rawacf.bz2
-            # 1994040714t.dat.bz2
-            
-            in_fname_fmt = time.strftime(os.path.join(
-                in_dir, '%Y%m%d' + '*%s*.dat.bz2' % radar))
-            rawacf_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.rawacf' % get_three_letter_radar_id(radar))
-            if os.path.isfile(rawacf_fname):
-                print("File exists: %s" % rawacf_fname)
+        # Get all file names for the current day
+        in_fname_format = time.strftime(os.path.join(in_dir, '%Y%m%d**.' + 'dat.bz2'))
+        in_fnames = glob.glob(in_fname_format)
+
+        for in_fname in in_fnames:
+            in_fname_decompressed = '.'.join(in_fname.split('.')[:-1])
+            out_fname = generate_output_filename(in_fname_decompressed, time.strftime(out_dir))
+
+            if os.path.isfile(out_fname):
+                print("File exists: %s" % out_fname)
                 if clobber:
                     print('overwriting')
                 else:
                     print('skipping')
                     continue
-            status = proc_radar(radar, in_fname_fmt, rawacf_fname, run_dir)
+            convert_file(in_fname, out_fname, run_dir)
+
+
+
+        # single_letter_radar_list = get_single_letter_radar_list(time.strftime(in_dir))
+        # for radar in single_letter_radar_list:
+        #     # 20120303.0001.00.cve.rawacf.bz2
+        #     # 1994040714t.dat.bz2
+            
+        #     in_fname_fmt = time.strftime(os.path.join(
+        #         in_dir, '%Y%m%d' + '*%s*.dat.bz2' % radar))
+        #     rawacf_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.rawacf' % get_three_letter_radar_id(radar))
+        #     if os.path.isfile(rawacf_fname):
+        #         print("File exists: %s" % rawacf_fname)
+        #         if clobber:
+        #             print('overwriting')
+        #         else:
+        #             print('skipping')
+        #             continue
+        #     status = proc_radar(radar, in_fname_fmt, rawacf_fname, run_dir)
         time += dt.timedelta(days=1)
 
-
-def proc_radar(radar, in_fname_fmt, rawacf_fname, run_dir):
+def convert_file(in_fname, out_fname, run_dir):
 
     # Clean up the run directory
     os.makedirs(run_dir, exist_ok=True)
@@ -79,37 +99,88 @@ def proc_radar(radar, in_fname_fmt, rawacf_fname, run_dir):
     os.system('rm -rf %s/*' % run_dir)
 
     # Set up storage directory
-    out_dir = os.path.dirname(rawacf_fname)
+    out_dir = os.path.dirname(out_fname)
     os.makedirs(out_dir, exist_ok=True)
 
-    # Make fitacfs for the day
-    in_fnames = glob.glob(in_fname_fmt)
-    if len(in_fnames) == 0:
-        print('No files in %s' % in_fname_fmt)
-        return 1
+    # Copy the input file from the input directory to the run directory and
+    # attempt to preserve metadata (i.e. copy2 instead of copy)
+    shutil.copy2(in_fname, run_dir)
 
-    for in_fname in in_fnames:
-        # Copy the input file from the input directory to the run directory and
-        # attempt to preserve metadata (i.e. copy2 instead of copy)
-        shutil.copy2(in_fname, run_dir)
+    # Rename the file using the run directory instead of input directory
+    in_fname_compressed = os.path.join(run_dir, os.path.basename(in_fname))
+    
+    # Decrompress the file
+    os.system('bzip2 -d %s' % in_fname_compressed)
 
-        # Rename the file using the run directory instead of input directory
-        in_fname_compressed = os.path.join(run_dir, os.path.basename(in_fname))
-        
-        # Decrompress the file
-        os.system('bzip2 -d %s' % in_fname_compressed)
+    # Set the decompressed file name
+    in_fname_decompressed = '.'.join(in_fname_compressed.split('.')[:-1])
+    
+    # Set the converted file name
+    out_fname = '.'.join(in_fname_decompressed.split('.')[:-1]) + '.rawacf'
+    
+    # Convert the dat to rawacf
+    os.system('dattorawacf %s > %s' % (in_fname_decompressed, out_fname))
+    
+    # Compress the newly created rawacf file
+    os.system('bzip2 -z %s' % out_fname)
 
-        # Set the decompressed file name
-        in_fname_decompressed = '.'.join(in_fname_compressed.split('.')[:-1])
+# def proc_radar(radar, in_fname_fmt, rawacf_fname, run_dir):
+
+#     # Clean up the run directory
+#     os.makedirs(run_dir, exist_ok=True)
+#     os.chdir(run_dir)
+#     os.system('rm -rf %s/*' % run_dir)
+
+#     # Set up storage directory
+#     out_dir = os.path.dirname(rawacf_fname)
+#     os.makedirs(out_dir, exist_ok=True)
+
+#     # Make fitacfs for the day
+#     in_fnames = glob.glob(in_fname_fmt)
+#     if len(in_fnames) == 0:
+#         print('No files in %s' % in_fname_fmt)
+#         return 1
+
+#     for in_fname in in_fnames:
+#         # Copy the input file from the input directory to the run directory and
+#         # attempt to preserve metadata (i.e. copy2 instead of copy)
+#         shutil.copy2(in_fname, run_dir)
+
+#         # Rename the file using the run directory instead of input directory
+#         in_fname_compressed = os.path.join(run_dir, os.path.basename(in_fname))
         
-        # Set the converted file name
-        out_fname = '.'.join(in_fname_decompressed.split('.')[:-1]) + '.rawacf'
+#         # Decrompress the file
+#         os.system('bzip2 -d %s' % in_fname_compressed)
+
+#         # Set the decompressed file name
+#         in_fname_decompressed = '.'.join(in_fname_compressed.split('.')[:-1])
         
-        # Convert the dat to rawacf
-        os.system('dattorawacf %s > %s' % (in_fname_decompressed, out_fname))
+#         # Set the converted file name
+#         out_fname = '.'.join(in_fname_decompressed.split('.')[:-1]) + '.rawacf'
         
-        # Compress the newly created rawacf file
-        os.system('bzip2 -z %s' % out_fname)
+#         # Convert the dat to rawacf
+#         os.system('dattorawacf %s > %s' % (in_fname_decompressed, out_fname))
+        
+#         # Compress the newly created rawacf file
+#         os.system('bzip2 -z %s' % out_fname)
+
+def generate_output_filename(input_filename, out_dir):
+    # Input filename should be of the form `YYYYMMDDHHS.dat`
+    in_fname = os.path.basename(input_filename)
+    components = in_fname.split('.')
+    if len(components) == 2:
+        time = components[0][:10]
+
+        # The radar indicator is always the letter after the hour value
+        radar_letter = components[0][10]
+    else:
+        raise ValueError('filename does not match expectations: %s' % f)
+
+    out_fname = '.'.join([time, get_three_letter_radar_id(radar_letter), 'rawacf'])
+    out_name_full = os.path.join(out_dir, out_fname)
+
+    return out_name_full
+
 
 
 def get_single_letter_radar_list(in_dir):
@@ -176,18 +247,19 @@ def get_random_string(length):
 
 
 if __name__ == '__main__':
-    args = sys.argv
-    assert len(args) >= 5, 'Should have at least 4x args, e.g.:\n' + \
-        'python3 dat_to_rawacf.py 1993,1,1 1994,1,1 ' + \
-        '/project/superdarn/data/dat/%Y/%m/  ' + \
-        '/project/superdarn/data/rawacf/%Y/%m/ \n' + \
-        'optionally add clobber flag at the end'
+    # args = sys.argv
+    # assert len(args) >= 5, 'Should have at least 4x args, e.g.:\n' + \
+    #     'python3 dat_to_rawacf.py 1993,1,1 1994,1,1 ' + \
+    #     '/project/superdarn/data/dat/%Y/%m/  ' + \
+    #     '/project/superdarn/data/rawacf/%Y/%m/ \n' + \
+    #     'optionally add clobber flag at the end'
 
-    clobber = False
-    if (len(args) > 5) and (args[5] == 'clobber'):
-        clobber = True
+    # clobber = False
+    # if (len(args) > 5) and (args[5] == 'clobber'):
+    #     clobber = True
 
-    start_time = dt.datetime.strptime(args[1], '%Y,%m,%d')
-    end_time = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    run_dir = './run_%s' % get_random_string(4)
-    main(start_time, end_time, run_dir, args[3], args[4], clobber=clobber)
+    # start_time = dt.datetime.strptime(args[1], '%Y,%m,%d')
+    # end_time = dt.datetime.strptime(args[2], '%Y,%m,%d')
+    # run_dir = './run_%s' % get_random_string(4)
+    # main(start_time, end_time, run_dir, args[3], args[4], clobber=clobber)
+    main()

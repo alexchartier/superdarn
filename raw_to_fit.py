@@ -16,7 +16,7 @@ import string
 def main(
     starttime = dt.datetime(2016, 1, 1),
     endtime = dt.datetime(2017, 1, 1),
-    run_dir = './run10/',
+    run_dir = './run/',
     in_dir='/project/superdarn/data/rawacf/%Y/%m/',
     out_dir='/project/superdarn/alex/cfit/%Y/%m/',
     clobber=False,
@@ -139,7 +139,7 @@ if __name__ == '__main__':
 
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    run_dir = './run_%s' % get_random_string(4) 
+    run_dir = './run/%s' % get_random_string(4) 
     main(stime, etime, run_dir, args[3], args[4], clobber=clobber)
 
 

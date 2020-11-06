@@ -17,20 +17,25 @@ import math
 import os
 import statistics
 import filter_radar_data
+import nc_utils
 import glob
 import datetime as dt
 from run_meteorproc import get_radar_params, id_hdw_params_t
+import sys
 import pdb
 
 
-def main():
-    time = dt.datetime(2014, 5, 22, 12, 0) 
-    hdwDatDir = '../rst/tables/superdarn/hdw/'
+def main(
+    time=dt.datetime(2014, 5, 22, 12, 0),
+    radarCode='wal',
+    inDir='data/sd_netcdf/%Y/%m/',
+    outDir='data/plots/',
+    hdwDatDir='../rst/tables/superdarn/hdw/',
+):
     radarInfo = get_radar_params(hdwDatDir)
    
-    radarCode = 'wal' 
-    inFname = time.strftime('data/sd_netcdf/%Y/%m/%Y%m%d') + '.%s.nc' % radarCode
-    outDir = os.path.join(time.strftime('%Y%b%d'), radarCode)
+    inFname = os.path.join(time.strftime(inDir), time.strftime('%Y%m%d') + '.%s.nc' % radarCode)
+    outDir = os.path.join(outDir, radarCode)
     plot_one_radar(inFname, outDir, radarInfo)
 
 
@@ -47,7 +52,8 @@ def plot_all_radars(time, inFnameFmt, radarInfo):
     for inFname in inFnames:
         radarCode = inFname.split('.')[1]
         print("Processing %s" % radarCode)
-        data = filter_radar_data.filter_sd_file(inFname)
+        data = nc_utils.ncread_vars(in_fname)
+        # data = filter_radar_data.filter_sd_file(inFname)
         
         # Find the closest MJD time to the requested time
         radarTimes = np.array([jd.from_jd(mjd, fmt="mjd") for mjd in data["mjd"]])
@@ -73,6 +79,7 @@ def plot_one_radar(inFname, outDir, radarInfo, axExtent=[-180, 180, 30, 90]):
     
     radarCode = inFname.split('.')[1]
 
+    # data = nc_utils.ncread_vars(inFname)  # go to this once the filtering is in the netCDFs
     data = filter_radar_data.filter_sd_file(inFname)
     day = jd.from_jd(data["mjd"][0], fmt="mjd")
     os.makedirs(outDir, exist_ok=True)
@@ -133,7 +140,21 @@ def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
 
 
 if __name__ == '__main__':
-    main()
+    args = sys.argv
+    assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
+        'python3 plot_radar_fvel.py 2020,1,1 sas ' + \
+        'data/sd_netcdf/%Y/%m/ data/plots/ '
+
+    time = dt.datetime.strptime(args[1], '%Y,%m,%d')
+    main(
+        time=time,
+        radarCode=args[2],
+        inDir=args[3],
+        outDir=args[4],
+        hdwDatDir='../rst/tables/superdarn/hdw/',
+    )
+
+
 
 
 

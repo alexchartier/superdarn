@@ -29,12 +29,12 @@ def filter_sd_file(in_fname):
 def flag_data(data):
     filteredData = flag_interference(data)
     removedScatter = scatter_filter(filteredData)
-    smoothedData = median_filter(removedScatter)
+    # smoothedData = median_filter(removedScatter)
 
-    for key, value in smoothedData.items():
-        smoothedData[key] = np.array(value)
+    for key, value in removedScatter.items():
+        removedScatter[key] = np.array(value)
 
-    return smoothedData
+    return removedScatter
 
 
 def flag_interference(data):
@@ -83,8 +83,8 @@ def scatter_filter(data):
     fsFlag = data["gs"] == 0
     gsList = list(data["gs"])
     
-    minVelFlag1 = data["vel"] <= 50 
-    minVelFlag2 = data["vel"] >= -50
+    minVelFlag1 = data["vel"] <= 80 
+    minVelFlag2 = data["vel"] >= -80
     minRangeFlag = data["km"] <= 400
     
     data["gs"][minVelFlag1 & minVelFlag2 & fsFlag] = 1

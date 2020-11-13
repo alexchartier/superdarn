@@ -16,7 +16,7 @@ import pdb
 
 def meteorproc(
         starttime=dt.datetime(2016, 3, 1), 
-        endtime=dt.datetime(2020, 1, 1), 
+        endtime=dt.datetime(2020, 10, 1), 
         run_dir='./run_mw/',
         meteorproc_exe='../rst/bin/meteorproc',
         hdw_dat_dir='../rst/tables/superdarn/hdw/',

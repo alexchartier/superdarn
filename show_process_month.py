@@ -33,6 +33,7 @@ def main(
             pickle.dump(monthData, f)
 
     print(len(monthData[0]))
+    pdb.set_trace()
     histogram(monthData[0], monthData[1], monthData[2], "%s: %s" % (radarName, time.strftime('%Y/%m')))
 
 
@@ -77,7 +78,7 @@ def histogram(unfiltered, outlier, scatter, title):
         
     plt.hist(unfiltered, bins = 30, range = [-1500, 1500], label = "Unfiltered")
     plt.hist(outlier, bins = 30, range = [-1500, 1500], label = "Outlier Filter")
-    #plt.hist(scatter, bins = 30, range = [-1500, 1500], label = "E & Ground Scatter Filter")
+    plt.hist(scatter, bins = 30, range = [-1500, 1500], label = "E & Ground Scatter Filter")
     plt.legend(loc='upper right')
 
     ax.set_xlim(-1500, 1500)    

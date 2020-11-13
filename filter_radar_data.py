@@ -17,7 +17,6 @@ from netCDF4 import Dataset
 import nc_utils
 import math
 import os
-import statistics
 import pdb
 
 
@@ -53,20 +52,25 @@ def flag_interference(data):
         timeIndex = data["mjd"] == uniqueTimes[index]
         fsBeamsTimed = list(data["bm"][timeIndex & fsFlag])
         
-        for beam in range(16):
+        for beam in range(data['bm'].max() + 1):
             beamFlag = data["bm"] == beam
             fsFlag = data["gs"] == 0
-                   
-            if len(data["vel"][timeIndex & fsFlag & beamFlag]) != 0:
-                beamVelMedian = statistics.median(data["vel"][timeIndex & beamFlag & fsFlag])
+
+            combInd = timeIndex & fsFlag & beamFlag
+            if len(data["vel"][combInd]) != 0:
+                beamVelMedian = np.median(data["vel"][combInd])
                 medianFlag1 = data["vel"] >= beamVelMedian + 800          
                 medianFlag2 = data["vel"] <= beamVelMedian - 800
-                data["gs"][(timeIndex & beamFlag & fsFlag) & (medianFlag1 | medianFlag2)] = 3
+                outlierFlag = combInd & (medianFlag1 | medianFlag2) 
+                if np.sum(outlierFlag) > 0:
+                    #print('Flagging %i outliers' % np.sum(outlierFlag))
+                    data["gs"][outlierFlag] = 3
                 
             fsFlag = data["gs"] == 0
             beamVelStDev = np.std(data["vel"][timeIndex & beamFlag])
             
             if beamVelStDev >= 435:
+                #print('Flagging beam %i for high Std. Dev' % beam)
                 data["gs"][timeIndex & beamFlag] = 3
 
     return data

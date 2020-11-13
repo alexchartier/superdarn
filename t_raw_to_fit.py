@@ -1,6 +1,7 @@
 import os
 import sys
 import glob
+import bz2 
 sys.path.append('/homes/chartat1/fusionpp/src/nimo/')
 import nc_utils
 import shutil
@@ -8,47 +9,31 @@ import jdutil
 import pdb 
 import datetime as dt
 import numpy as np
-import random
-import string
 
 
 def main(
-    starttime = dt.datetime(2016, 1, 1),
-    endtime = dt.datetime(2017, 1, 1),
-    run_dir = './run/',
-    in_dir='/project/superdarn/data/rawacf/%Y/%m/',
-    out_dir='/project/superdarn/alex/cfit/%Y/%m/',
-    clobber=False,
+    starttime = dt.datetime(2005, 6, 10),
+    endtime = dt.datetime(2005, 6, 30),
+    run_dir = './run311/',
+    in_dir='/project/superdarn/data/rawacf/%Y/%Y%m%d/',
+    out_dir='/project/superdarn/jordan/cfit/%Y/%m/',
 ):
-    import bz2 
 
-    print('%s\n%s\n%s\n%s\n%s\n' % (
-        'Converting files from rawACF to cFIT',
-        'from: %s to %s' % (starttime.strftime('%Y/%m/%d'), endtime.strftime('%Y/%m/%d')),
-        'input e.g.: %s' % starttime.strftime(in_dir), 
-        'output e.g.: %s' % starttime.strftime(out_dir), 
-        'Run: %s' % run_dir, 
-    ))
-         
     run_dir = os.path.abspath(run_dir)
     # Loop over time
     time = starttime
     while time <= endtime:
-        # radar_list = get_old_radar_list(time.strftime(in_dir))
+        #radar_list = get_old_radar_list(time.strftime(in_dir))
         radar_list = get_radar_list(time.strftime(in_dir))
         for radar in radar_list:
-            indirn = os.path.join(in_dir, radar)  # for old setup
-            # in_fname_fmt = time.strftime(os.path.join(indirn, '%Y%m%d' + '*%s*.rawacf.bz2' % radar))
+            #indirn = os.path.join(in_dir, radar)  # for old setup
+            #in_fname_fmt = time.strftime(os.path.join(indirn, '%Y%m%d' + '*%s*.rawacf.bz2' % radar))
             in_fname_fmt = time.strftime(os.path.join(in_dir, '%Y%m%d' + '*%s*.rawacf.bz2' % radar))
             cfit_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.cfit' % radar)
             if os.path.isfile(cfit_fname):
-                print("File exists: %s" % cfit_fname)
-                if clobber:
-                    print('overwriting')
-                else: 
-                    print('skipping')
-                    continue 
-            status = proc_radar(radar, in_fname_fmt, cfit_fname, run_dir)
+                print("File exists - skipping %s" % cfit_fname)
+            else:
+                status = proc_radar(radar, in_fname_fmt, cfit_fname, run_dir)
         time += dt.timedelta(days=1)
 
 
@@ -119,27 +104,8 @@ def get_radar_list(in_dir):
     return radar_list
 
 
-def get_random_string(length):
-    letters = string.ascii_lowercase
-    result_str = ''.join(random.choice(letters) for i in range(length))
-    return result_str
-
-
 if __name__ == '__main__':
-    args = sys.argv
-    assert len(args) >= 5, 'Should have at least 4x args, e.g.:\n' + \
-        'python3 raw_to_fit.py 2016,1,1 2017,1,1 ' + \
-        '/project/superdarn/data/rawacf/%Y/%m/  ' + \
-        '/project/superdarn/alex/cfit/%Y/%m/ \n'
-
-    clobber = False
-    if (len(args) > 5) and (args[5] == 'clobber'):
-        clobber = True
-
-    stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
-    etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    run_dir = './run/%s' % get_random_string(4) 
-    meteorproc(stime, etime, run_dir, args[3], args[4], clobber=clobber)
+    main()
 
 
 

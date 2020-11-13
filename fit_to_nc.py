@@ -24,58 +24,59 @@ author: A.T. Chartier, 5 February 2020
 import os
 import sys
 import glob
-import bz2
+#import bz2
 import shutil
 sys.path.append('/homes/chartat1/fusionpp/src/nimo/')
 import nc_utils
 import jdutil
 import pdb
 import datetime as dt 
+import calendar
 import numpy as np
 from filter_radar_data import flag_data
-from run_meteorproc import get_radar_params
+from run_meteorproc import get_radar_params, id_hdw_params_t
 from raw_to_fit import get_random_string
-import pysat_solargeomag
+import pysat, pysat_solargeomag
 
 
 def main(
-    starttime=dt.datetime(2005, 6, 1),
+    starttime=dt.datetime(2005, 12, 1),
     endtime=dt.datetime(2020, 1, 1),
-    in_fname_fmt='/project/superdarn/data/cfit/%Y/%m/*wal*.cfit',
+    in_dir_fmt='/project/superdarn/data/cfit/%Y/%m/',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
-    run_dir='/project/superdarn/run/',
+    run_dir='./run/',
     hdw_dat_dir='../rst/tables/superdarn/hdw/',
     step=1,  # month
     skip_existing=True,
     bzip_output=False,
+    fit_ext='*.cfit',
 ):
 
     radar_info = get_radar_params(hdw_dat_dir)
     os.makedirs(run_dir, exist_ok=True)
 
     bzipped = False
-    if in_fname_fmt.split('.')[-1] == 'bz2':
+    if fit_ext.split('.')[-1] == 'bz2':
         bzipped = True
 
     # Get the solar/geomagnetic indices
+    pysat.utils.set_data_dir('../')
     f107_kp, ap = pysat_solargeomag.get_f107_kp_ap(
         './solar_geo.nc', starttime, endtime,
     )   
-    pdb.set_trace()
 
     # Loop over fit files in the monthly directories
     time = starttime
     while time <= endtime:
 
         # Set up directories
-        os.system('rm %s/*' % run_dir)  
         out_dir = time.strftime(out_dir_fmt)
         os.makedirs(out_dir, exist_ok=True)
 
-
         # Loop over the files
-        fit_fn_fmt = time.strftime(in_fname_fmt)
-        fit_fnames = glob.glob(fit_fn_fmt)
+        fit_fn_fmt = time.strftime(in_dir_fmt)
+        fit_fnames = glob.glob(os.path.join(fit_fn_fmt, fit_ext))
+        print('Processing %i files on %s' % (len(fit_fnames), time.strftime('%Y/%m/%d')))
         for fit_fn in fit_fnames:
         
             # Check the file is big enough to be worth bothering with
@@ -95,7 +96,7 @@ def main(
             fn_head = '.'.join(os.path.basename(fit_fn).split('.')[:-1])
             ascii_fn = os.path.join(run_dir, '%s.txt' % fn_head)
             nc_fn = os.path.join(run_dir, '%s.nc' % fn_head)
-            out_fn = os.path.join(out_dir, '%s.nc.bz2' % fn_head)
+            out_fn = os.path.join(out_dir, '%s.nc' % fn_head)
             if os.path.isfile(out_fn):
                 if skip_existing: 
                     print('%s exists - skipping' % out_fn)
@@ -106,11 +107,12 @@ def main(
 
             # Convert the cfit to a netCDF
             radar_code = os.path.basename(fit_fn).split('.')[1]
+            radar_info_t = id_hdw_params_t(time, radar_info[radar_code])
             status = fit_to_nc(
                 in_fname=fit_fn, 
                 ascii_fname=ascii_fn, 
                 out_fname=nc_fn, 
-                radar_info=radar_info[radar_code],
+                radar_info=radar_info_t,
             )
             if status > 0:
                 print('Failed to convert %s' % fit_fn)
@@ -120,11 +122,20 @@ def main(
                 # bzip to save space
                 with open(nc_fn, 'rb') as f:
                     bzdat = bz2.compress(f.read(), 9)
+                out_fn += '.bz2'
                 with open(out_fn, 'wb') as f:
                     f.write(bzdat)
-                print('Compressed output to %s' % out_fn)
+            else:
+                shutil.move(nc_fn, out_fn)
+            print('Wrote output to %s' % out_fn)
 
-        time = dt.datetime(time.year, time.month + step, time.day)
+            # Clear out the run directory
+            files = glob.glob(os.path.join(run_dir, '*'))
+            for f in files:
+                os.remove(f)
+            
+
+        time = add_months(time, step)
         # time += dt.timedelta(months=1) 
  
 
@@ -225,6 +236,14 @@ def read_fittotxt_ascii(in_fname, headers, nbeams=16):
     return data
 
 
+def add_months(sourcedate, months):
+    month = sourcedate.month - 1 + months
+    year = sourcedate.year + month // 12
+    month = month % 12 + 1
+    day = min(sourcedate.day, calendar.monthrange(year,month)[1])
+    return dt.datetime(year, month, day, sourcedate.hour, sourcedate.minute, sourcedate.second)
+
+
 def def_vars():
     # netCDF writer expects a series of variable definitions - here they are
     stdin_int = {'units': 'none', 'type': 'u1', 'dims': 'npts'} 
@@ -255,30 +274,39 @@ def set_header(rootgrp, header_info):
     rootgrp.description = header_info['description']
     rootgrp.source = header_info['source']
     rootgrp.history = header_info['history']
+    rootgrp.hdw_dat = header_info['hdw_dat']
     return rootgrp
 
 
 def def_header_info(in_fname, radar_info):
-    pdb.set_trace()  #TODO: Add radar location, geophysical indices
-    return {
+    hdw_dat_str = ''
+    for k, v in radar_info.items():
+        hdw_dat_str += '%s: %s, ' % (k, v)
+    hdr = {
         'description': 'Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF v2.5',
         'source': 'in_fname',
         'history': 'Created on %s' % dt.datetime.now(),
+        'hdw_dat': hdw_dat_str, 
     }
+    return {**hdr, **radar_info}
+
 
 
 if __name__ == '__main__':
 
     args = sys.argv
     assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
-        'python3 fit_to_nc.py 2016,1,1 2017,1,1 ' + \
-        '/project/superdarn/data/cfit/%Y/%m/*.cfit  ' + \
+        'python3 fit_to_nc.py 2016,1 2017,1 ' + \
+        '/project/superdarn/data/cfit/%Y/%m/  ' + \
         '/project/superdarn/data/netcdf/%Y/%m/'
 
-    stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
-    etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
+    stime = dt.datetime.strptime(args[1], '%Y,%m')
+    etime = dt.datetime.strptime(args[2], '%Y,%m')
+    in_dir = args[3]
+    out_dir = args[4]
+    
     run_dir = './run_%s' % get_random_string(4) 
-    main(stime, etime, run_dir, args[3], args[4])
+    main(stime, etime, in_dir, out_dir, run_dir)
 
 
 

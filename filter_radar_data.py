@@ -90,6 +90,24 @@ def scatter_filter(data):
     data["gs"][fsFlag & minRangeFlag] = 2    
  
     gsList = list(data["gs"])
+
+    return data
+
+
+#smooths data with boxcar averages
+def median_filter(data):
+    
+    variables = ["geolon", "geolat", "mjd", "vel", "bm", "km", "geoazm"]
+    fsFlag = data["gs"] == 0
+    fsData = {}
+    gateSize = 150
+    
+    # isolating the F scatter data
+    for var in variables:
+        fsData[var] = data[var][fsFlag]
+        
+    uniqueTimes = np.unique(fsData["mjd"])   
+    avgFsData = {"geolon":[], "geolat":[], "vel":[], "geoazm":[]}
     
     print('# of After 0s: %i' % gsList.count(0))
     print('# of After 3s: %i' % gsList.count(3))

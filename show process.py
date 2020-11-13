@@ -18,9 +18,13 @@ import nc_utils
 def main():
     in_fname = input("netCDF Filename: ")
     
-    unfiltered = filter_radar_data.load_data(in_fname)
+    unfiltered = load_data(in_fname)
+
     outlier = filter_radar_data.flag_interference(unfiltered)
     scatter = filter_radar_data.scatter_filter(outlier)
+    
+    print(len(unfiltered["vel"][unfiltered["gs"] == 0]))
+    print(len(outlier["vel"][unfiltered["gs"] == 0]))
             
     histogram(unfiltered["vel"][unfiltered["gs"] == 0], 
               outlier["vel"][outlier["gs"] == 0], 
@@ -46,7 +50,7 @@ def histogram(unfiltered, outlier, scatter, title):
     plt.legend(loc='upper right')
 
     ax.set_xlim(-1500, 1500)    
-    ax.set_ylim(0,80000)
+    #ax.set_ylim(0,80000)
 
     plt.suptitle("F Region Scatter: " + title, fontsize=16)
     plt.show()

@@ -52,7 +52,7 @@ def plot_all_radars(time, inFnameFmt, radarInfo):
     for inFname in inFnames:
         radarCode = inFname.split('.')[1]
         print("Processing %s" % radarCode)
-        data = nc_utils.ncread_vars(in_fname)
+        data = nc_utils.ncread_vars(inFname)
         # data = filter_radar_data.filter_sd_file(inFname)
         
         # Find the closest MJD time to the requested time
@@ -100,6 +100,18 @@ def plot_one_radar(inFname, outDir, radarInfo, axExtent=[-180, 180, 30, 90]):
 
 
 def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
+    
+    fsData = {}
+    variables = ["geolon", "geolat", "mjd", "vel", "bm", "km"]
+    
+    fsFlag = data["gs"] == 0
+    for var in variables:
+        fsData[var] = data[var][fsFlag]
+    
+    for key, value in fsData.items():
+            fsData[key] = np.array(value)
+
+    uniqueTimes = np.unique(fsData["mjd"])
     # Plot the radar velocities on a map
     timeIndex = data["mjd"] == mjdTime
     time = jd.from_jd(mjdTime, fmt="mjd")
@@ -132,11 +144,11 @@ def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
     gl.xformatter = LONGITUDE_FORMATTER
     gl.yformatter = LATITUDE_FORMATTER
 
-    style = {'size': 15, 'color': 'gray'}
+    style = {'size': 10, 'color': 'gray'}
     gl.xlabel_style = style 
     gl.ylabel_style = style
-    gl.xlabels_top = False
-    gl.ylabels_left = False
+    gl.top_labels = False
+    gl.right_labels = False  
 
 
 if __name__ == '__main__':

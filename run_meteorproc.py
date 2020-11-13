@@ -11,17 +11,19 @@ import datetime as dt
 import os
 import glob
 # import bz2
+from raw_to_fit import get_random_string
+import sys
 import pdb
 
 
 def meteorproc(
-        starttime=dt.datetime(2016, 3, 1), 
-        endtime=dt.datetime(2020, 1, 1), 
+        starttime=dt.datetime(2016, 1, 1), 
+        endtime=dt.datetime(2020, 11, 1), 
+        cfit_fname_fmt='/project/superdarn/data/cfit/%Y/%m/%Y%m%d',
+        wind_fname_fmt='/project/superdarn/data/meteorwind/%Y/%m/%Y%b%d',
         run_dir='./run_mw/',
         meteorproc_exe='../rst/bin/meteorproc',
         hdw_dat_dir='../rst/tables/superdarn/hdw/',
-        cfit_fname_fmt='/project/superdarn/data/cfit/%Y/%m/%Y%m%d',
-        wind_fname_fmt='/project/superdarn/alex/meteorwind/%Y/%m/%Y%b%d',
         skip_existing=False,
 ):
     time = starttime
@@ -134,6 +136,26 @@ def id_beam_north(hdw_params, center_bm=8, maxdev=10):
         return np.nan
 
 
-
 if __name__ == '__main__':
-    meteorproc()
+    args = sys.argv
+    assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
+        'python3 run_meteorproc.py 2016,1,1 2017,1,1 ' + \
+        '/project/superdarn/alex/cfit/%Y/%m/%Y%m%d  ' + \
+        '/project/superdarn/data/meteorwind/%Y/%m/%Y%b%d \n'
+
+    clobber = False
+    if (len(args) > 5) and (args[5] == 'clobber'):
+        clobber = True
+
+    stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
+    etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
+    run_dir = './run/%s' % get_random_string(4) 
+
+    meteorproc(
+        starttime=stime, 
+        endtime=etime, 
+        cfit_fname_fmt=args[3], 
+        wind_fname_fmt=args[4],
+    )
+
+

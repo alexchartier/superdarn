@@ -19,8 +19,8 @@ import pdb
 
 
 def main( 
-    time = dt.datetime(2016, 1, 1),
-    directory = "/Users/chartat1/superdarn/data/sd_netcdf/%Y/%m/",
+    time = dt.datetime(2014, 5, 1),
+    directory = "C:/Users/sitardp1/netcdf/%Y/%m/",
     radarName = "Inuvik",
 ):
     radarCodes = radar_codes() 
@@ -33,7 +33,6 @@ def main(
             pickle.dump(monthData, f)
 
     print(len(monthData[0]))
-    pdb.set_trace()
     histogram(monthData[0], monthData[1], monthData[2], "%s: %s" % (radarName, time.strftime('%Y/%m')))
 
 
@@ -91,18 +90,16 @@ def histogram(unfiltered, outlier, scatter, title):
 
 if __name__ == '__main__':
     args = sys.argv
+    
+    """
     assert len(args) == 4, 'Should have 3x args, e.g.:\n' + \
         'python3 show_process_month.py 2016,1  ' + \
-        '/Users/chartat1/superdarn/data/sd_netcdf/%Y/%m/  ' + \
+        '/Users/sitardp1/superdarn/data/netcdf/%Y/%m/  ' + \
         'Inuvik \n'
+    """
+    #time = dt.datetime.strptime(args[1], '%Y,%m')
 
-    time = dt.datetime.strptime(args[1], '%Y,%m')
-
-    main(
-        time, 
-        directory=args[2], 
-        radarName=args[3],
-    )   
+    main()   
 
     
 

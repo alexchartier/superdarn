@@ -2,15 +2,16 @@
 """Automate the conversion of a series of SuperDARN dat files to rawacf files"""
 
 import pdb
+import sys
 import string
 import random
 import numpy as np
 import datetime as dt
+sys.path.append('/homes/chartat1/fusionpp/src/nimo/')
 import jdutil
 import shutil
 import nc_utils
 import os
-import sys
 import glob
 import bz2
 
@@ -26,10 +27,10 @@ def main(
     start_time=dt.datetime(1993, 9, 29, 14),
     end_time=dt.datetime(1993, 9, 30, 23),
     run_dir='./run/',
-    in_dir='/Users/wikerjr1/Documents/SuperDARN/dat/%Y/%m/',
-    #in_dir='/project/superdarn/data/dat/%Y/%m/',
-    out_dir='/Users/wikerjr1/Documents/SuperDARN/raww/%Y/%m/',
-    #out_dir='/project/superdarn/jordan/rawacf/%Y/%m/',
+    #in_dir='/Users/wikerjr1/Documents/SuperDARN/dat/%Y/%m/',
+    in_dir='/project/superdarn/data/dat/%Y/%m/',
+    #out_dir='/Users/wikerjr1/Documents/SuperDARN/raww/%Y/%m/',
+    out_dir='/project/superdarn/jordan/rawacf/%Y/%m/',
     clobber=False,
 ):
     """Convert dat files to rawacf files
@@ -131,13 +132,13 @@ def convert_file(in_fname_format, out_fname, run_dir):
         return 1
 
     # Clean up the run directory
-    os.makedirs(run_dir)#, exist_ok=True)
+    os.makedirs(run_dir, exist_ok=True)
     os.chdir(run_dir)
     os.system('rm -rf %s/*' % run_dir)
 
     # Set up storage directory
     out_dir = os.path.dirname(out_fname)
-    os.makedirs(out_dir)#, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
 
     # Copy the input file from the input directory to the run directory and
     # attempt to preserve metadata (i.e. copy2 instead of copy)
@@ -177,8 +178,15 @@ def convert_file(in_fname_format, out_fname, run_dir):
     os.system('dattorawacf combined.dat > %s' % (out_fname))
 
     # Compress the newly created rawacf file
-    os.system('bzip2 -z %s' % out_fname)
+    #os.system('bzip2 -z %s' % out_fname)
 
+    fn_inf = os.stat(out_fname)
+    if fn_inf.st_size < 1E5:
+        os.remove(cfit_fname)
+        print('rawacf %s is too small, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
+    else:
+        print('rawacf created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
+    
     # for in_fname in in_fnames:
     #     shutil.copy2(in_fname, run_dir)
     #     in_fname_t = os.path.join(run_dir, os.path.basename(in_fname))
@@ -276,19 +284,19 @@ def get_random_string(length):
 
 
 if __name__ == '__main__':
-    # args = sys.argv
-    # assert len(args) >= 5, 'Should have at least 4x args, e.g.:\n' + \
-    #     'python3 dat_to_rawacf.py 1993,1,1 1994,1,1 ' + \
-    #     '/project/superdarn/data/dat/%Y/%m/  ' + \
-    #     '/project/superdarn/data/rawacf/%Y/%m/ \n' + \
-    #     'optionally add clobber flag at the end'
+    #args = sys.argv
+    #assert len(args) >= 5, 'Should have at least 4x args, e.g.:\n' + \
+     #   'python3 dat_to_rawacf.py 1993,1,1,0 1994,1,1,23 ' + \
+     #   '/project/superdarn/data/dat/%Y/%m/  ' + \
+     #   '/project/superdarn/data/rawacf/%Y/%m/ \n' + \
+     #   'optionally add clobber flag at the end'
 
-    # clobber = False
-    # if (len(args) > 5) and (args[5] == 'clobber'):
-    #     clobber = True
+    #clobber = False
+    #if (len(args) > 5) and (args[5] == 'clobber'):
+    #    clobber = True
 
-    # start_time = dt.datetime.strptime(args[1], '%Y,%m,%d')
-    # end_time = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    # run_dir = './run_%s' % get_random_string(4)
-    # main(start_time, end_time, run_dir, args[3], args[4], clobber=clobber)
+    #start_time = dt.datetime.strptime(args[1], '%Y,%m,%d')
+    #end_time = dt.datetime.strptime(args[2], '%Y,%m,%d')
+    #run_dir = './run_%s' % get_random_string(4)
+    #main(start_time, end_time, run_dir, args[3], args[4], clobber=clobber)
     main()

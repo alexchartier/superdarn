@@ -23,11 +23,13 @@ __status__ = "Development"
 
 
 def main(
-    start_time=dt.datetime(1993, 9, 29),
-    end_time=dt.datetime(1993, 9, 30),
+    start_time=dt.datetime(1993, 9, 29, 14),
+    end_time=dt.datetime(1993, 9, 30, 23),
     run_dir='./run/',
-    in_dir='/project/superdarn/data/dat/%Y/%m/',
-    out_dir='/project/superdarn/jordan/rawacf/%Y/%m/',
+    in_dir='/Users/wikerjr1/Documents/SuperDARN/dat/%Y/%m/',
+    #in_dir='/project/superdarn/data/dat/%Y/%m/',
+    out_dir='/Users/wikerjr1/Documents/SuperDARN/raww/%Y/%m/',
+    #out_dir='/project/superdarn/jordan/rawacf/%Y/%m/',
     clobber=False,
 ):
     """Convert dat files to rawacf files
@@ -40,8 +42,8 @@ def main(
 
     print('%s\n%s\n%s\n%s\n%s\n' % (
         'Converting files from dat to rawACF',
-        'from: %s to %s' % (start_time.strftime('%Y/%m/%d'),
-                            end_time.strftime('%Y/%m/%d')),
+        'from: %s to %s' % (start_time.strftime('%Y/%m/%d/%H'),
+                            end_time.strftime('%Y/%m/%d/%H')),
         'Input directory:   %s' % start_time.strftime(in_dir),
         'Output directory.: %s' % start_time.strftime(out_dir),
         'Run directory:     %s' % run_dir,
@@ -53,8 +55,40 @@ def main(
     time = start_time
     while time <= end_time:
         # Get all file names for the current day
-        in_fname_format = time.strftime(os.path.join(in_dir, '%Y%m%d**.' + 'dat.bz2'))
-        in_fnames = glob.glob(in_fname_format)
+        # in_fname_format = time.strftime(os.path.join(in_dir, '%Y%m%d%H**.' + 'dat.bz2'))
+        # in_fnames = glob.glob(in_fname_format)
+
+        radar_list = get_single_letter_radar_list(time.strftime(in_dir))
+
+        for radar in radar_list:
+            in_fname_format = time.strftime(os.path.join(in_dir, '%Y%m%d%H' + '*%s*.dat.bz2' % radar))
+            
+            
+            #in_fname_decompressed = '.'.join(in_fname.split('.')[:-1])
+            three_letter_radar = get_three_letter_radar_id(radar)
+            out_fname = time.strftime(out_dir + '%Y%m%d%H.' + '%s.rawacf' % three_letter_radar)
+           # out_fname = generate_output_filename(in_fname_decompressed, time.strftime(out_dir))
+
+            if os.path.isfile(out_fname):
+                print("File exists: %s" % out_fname)
+                if clobber:
+                    print('overwriting')
+                else:
+                    print('skipping')
+                    continue
+            convert_file(in_fname_format, out_fname, run_dir)
+
+
+            # rawacf_fname = time.strftime(out_dir + '%Y%m%d%H.' + '%s.rawacf' % radar)
+            # if os.path.isfile(cfit_fname):
+            #     print("File exists: %s" % cfit_fname)
+            #     if clobber:
+            #         print('overwriting')
+            #     else: 
+            #         print('skipping')
+            #         continue 
+            # status = proc_radar(radar, in_fname_fmt, cfit_fname, run_dir)
+        time += dt.timedelta(hours=1)
 
         # The extra letter that's appended to some files (e.g. 
         # 1993092915ta.dat.bz2, 1993092915tb.dat.bz2, 1993092915t.dat.bz2) causes
@@ -68,55 +102,98 @@ def main(
         #   cat list > rawacf
         # 
 
-        for in_fname in in_fnames:
-            in_fname_decompressed = '.'.join(in_fname.split('.')[:-1])
-            out_fname = generate_output_filename(in_fname_decompressed, time.strftime(out_dir))
+        # for in_fname in in_fnames:
+        #     in_fname_decompressed = '.'.join(in_fname.split('.')[:-1])
+        #     out_fname = generate_output_filename(in_fname_decompressed, time.strftime(out_dir))
 
-            if os.path.isfile(out_fname):
-                print("File exists: %s" % out_fname)
-                if clobber:
-                    print('overwriting')
-                else:
-                    print('skipping')
-                    continue
-            convert_file(in_fname, out_fname, run_dir)
+        #     if os.path.isfile(out_fname):
+        #         print("File exists: %s" % out_fname)
+        #         if clobber:
+        #             print('overwriting')
+        #         else:
+        #             print('skipping')
+        #             continue
+        #     convert_file(in_fname, out_fname, run_dir)
 
-        time += dt.timedelta(days=1)
+        # time += dt.timedelta(hours=1)
 
 
-def convert_file(in_fname, out_fname, run_dir):
+def convert_file(in_fname_format, out_fname, run_dir):
+
+    # in_dir = os.path.dirname(in_fname)
+    # base_fname = os.path.basename(in_fname).split('.')[0]
+    # full_base_fname = os.path.join(in_dir, base_fname[:11])
+    # in_fname_format = os.path.join(full_base_fname + '*.' + 'dat.bz2')
+    in_fnames = glob.glob(in_fname_format)
+
+    if len(in_fnames) == 0:
+        print('No files in %s' % in_fname_format)
+        return 1
 
     # Clean up the run directory
-    os.makedirs(run_dir, exist_ok=True)
+    os.makedirs(run_dir)#, exist_ok=True)
     os.chdir(run_dir)
     os.system('rm -rf %s/*' % run_dir)
 
     # Set up storage directory
     out_dir = os.path.dirname(out_fname)
-    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(out_dir)#, exist_ok=True)
 
     # Copy the input file from the input directory to the run directory and
     # attempt to preserve metadata (i.e. copy2 instead of copy)
-    shutil.copy2(in_fname, run_dir)
+    for in_fname in in_fnames:
+        shutil.copy2(in_fname, run_dir)
+        in_fname_compressed = os.path.join(run_dir, os.path.basename(in_fname))
+         # Decrompress the file
+        os.system('bzip2 -d %s' % in_fname_compressed)
 
-    # Rename the file using the run directory instead of input directory
-    in_fname_compressed = os.path.join(run_dir, os.path.basename(in_fname))
-    
-    # Decrompress the file
-    os.system('bzip2 -d %s' % in_fname_compressed)
+        in_fname_decompressed = '.'.join(in_fname_compressed.split('.')[:-1])
 
-    # Set the decompressed file name
-    in_fname_decompressed = '.'.join(in_fname_compressed.split('.')[:-1])
+# for in_fname in in_fnames:
+#     shutil.copy2(in_fname, run_dir)
+#     in_fname_t = os.path.join(run_dir, os.path.basename(in_fname))
+#     os.system('bzip2 -d %s' % in_fname_t)
+
+    # in_fname_t2 = '.'.join(in_fname_t.split('.')[:-1])
+    # out_fname = '.'.join(in_fname_t2.split('.')[:-1]) + '.fitacf'
+    # os.system('make_fit %s > %s' % (in_fname_t2, out_fname))
+    # os.system('cat *.fitacf > tmp.fitacf')
+
+    # Combine multiple dat files
+    os.system('cat *.dat > combined.dat')
+    in_fname_combined = os.path.join(run_dir, 'combined.dat')
+
+    # # Rename the file using the run directory instead of input directory
+    # in_fname_compressed = os.path.join(run_dir, os.path.basename(in_fname))
     
-    # Convert the dat to rawacf
-    os.system('dattorawacf %s > %s' % (in_fname_decompressed, out_fname))
+    # # Decrompress the file
+    # os.system('bzip2 -d %s' % in_fname_compressed)
+
+    # # Set the decompressed file name
+    # in_fname_decompressed = '.'.join(in_fname_compressed.split('.')[:-1])
     
+    # # Convert the dat to rawacf
+    # os.system('dattorawacf %s > %s' % (in_fname_decompressed, out_fname))
+    os.system('dattorawacf combined.dat > %s' % (out_fname))
+
     # Compress the newly created rawacf file
     os.system('bzip2 -z %s' % out_fname)
+
+    # for in_fname in in_fnames:
+    #     shutil.copy2(in_fname, run_dir)
+    #     in_fname_t = os.path.join(run_dir, os.path.basename(in_fname))
+    #     os.system('bzip2 -d %s' % in_fname_t)
+
+    #     in_fname_t2 = '.'.join(in_fname_t.split('.')[:-1])
+    #     out_fname = '.'.join(in_fname_t2.split('.')[:-1]) + '.fitacf'
+    #     os.system('make_fit %s > %s' % (in_fname_t2, out_fname))
+    # os.system('cat *.fitacf > tmp.fitacf')
 
 
 def generate_output_filename(input_filename, out_dir):
     # Input filename should be of the form `YYYYMMDDHHS.dat`
+    # Note: S can be one or more characters, but the first character
+    # determines the station
     in_fname = os.path.basename(input_filename)
     components = in_fname.split('.')
     if len(components) == 2:
@@ -125,7 +202,7 @@ def generate_output_filename(input_filename, out_dir):
         # The radar indicator is always the letter after the hour value
         radar_letter = components[0][10]
     else:
-        raise ValueError('filename does not match expectations: %s' % f)
+        raise ValueError('Filename does not match expectations: %s' % f)
 
     out_fname = '.'.join([time, get_three_letter_radar_id(radar_letter), 'rawacf'])
     out_name_full = os.path.join(out_dir, out_fname)
@@ -148,18 +225,19 @@ def get_single_letter_radar_list(in_dir):
 
     i = 1
     for f in file_list:
-        items = f.split('.')
+
+        items = os.path.basename(f).split('.')
         if len(items) == 3:
             # The radar indicator is always the letter after the hour value
             radar_letter = items[0][10]
         else:
             raise ValueError('filename does not match expectations: %s' % f)
 
-        if radar_name not in radar_list:
+        if radar_letter not in radar_list:
             radar_list.append(radar_letter)
-            print('%02d: %s' % (i, radarn))
+            print('%02d: %s' % (i, radar_letter))
             i += 1
-        print('\n')
+    print('\n')
     return radar_list
 
 def get_three_letter_radar_id(radar_letter):

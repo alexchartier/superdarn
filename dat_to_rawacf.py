@@ -74,6 +74,12 @@ def main(
 
 
 def convert_file(in_fname_format, out_fname, run_dir):
+    """
+    Convert all dat files that match the specified format to rawacf
+
+    If there are multiple files for the same hour, combine them into a single
+    file before converting to rawacf
+    """
 
     in_fnames = glob.glob(in_fname_format)
 
@@ -98,42 +104,23 @@ def convert_file(in_fname_format, out_fname, run_dir):
          # Decrompress the file
         os.system('bzip2 -d %s' % in_fname_compressed)
 
-        in_fname_decompressed = '.'.join(in_fname_compressed.split('.')[:-1])
 
-
-    # Combine multiple dat files
+    # Combine multiple dat files if there are more than one for the same hour
     os.system('cat *.dat > combined.dat')
 
+    # Convert the dat file to rawacf
     os.system('dattorawacf combined.dat > %s' % (out_fname))
 
+    # Verify that the converted rawacf file is large enough to be viable
     fn_inf = os.stat(out_fname)
     if fn_inf.st_size < 1E5:
         os.remove(out_fname)
         print('rawacf %s is too small, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
     else:
         print('rawacf created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
+    
+    # Compress the new rawacf file
     os.system('bzip2 -z %s' % out_fname)
-
-
-def generate_output_filename(input_filename, out_dir):
-    # Input filename should be of the form `YYYYMMDDHHS.dat`
-    # Note: S can be one or more characters, but the first character
-    # determines the station
-    in_fname = os.path.basename(input_filename)
-    components = in_fname.split('.')
-    if len(components) == 2:
-        time = components[0][:10]
-
-        # The radar indicator is always the letter after the hour value
-        radar_letter = components[0][10]
-    else:
-        raise ValueError('Filename does not match expectations: %s' % f)
-
-    out_fname = '.'.join([time, get_three_letter_radar_id(radar_letter), 'rawacf'])
-    out_name_full = os.path.join(out_dir, out_fname)
-
-    return out_name_full
-
 
 
 def get_single_letter_radar_list(in_dir):
@@ -166,6 +153,8 @@ def get_single_letter_radar_list(in_dir):
     return radar_list
 
 def get_three_letter_radar_id(radar_letter):
+    """Convert a single-letter radar ID to a three-letter ID"""
+
     # Original dat file naming format was YYYYMMDDHHS.dat
     # (year, month, day, hour, station identifier). We switched to three-letter
     # identifiers as the number of radar sites grew
@@ -193,12 +182,12 @@ def get_three_letter_radar_id(radar_letter):
 
     return radar_ids[radar_letter]
 
-
 def get_random_string(length):
+    """Return a random string of lowercase letters"""
+
     letters = string.ascii_lowercase
     result_str = ''.join(random.choice(letters) for i in range(length))
     return result_str
-
 
 if __name__ == '__main__':
     args = sys.argv

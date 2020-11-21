@@ -60,9 +60,10 @@ def main(
             in_fname_format = time.strftime(os.path.join(in_dir, '%Y%m%d%H' + '*%s*.dat.bz2' % radar))
             three_letter_radar = get_three_letter_radar_id(radar)
             out_fname = time.strftime(out_dir + '%Y%m%d%H.' + '%s.rawacf' % three_letter_radar)
-
+            out_compressed_fname = out_fname + ".bz2"
+            
             if os.path.isfile(out_fname):
-                print("File exists: %s" % out_fname)
+                print("File exists: %s" % out_compressed_fname)
                 if clobber:
                     print('overwriting')
                 else:
@@ -107,10 +108,11 @@ def convert_file(in_fname_format, out_fname, run_dir):
 
     fn_inf = os.stat(out_fname)
     if fn_inf.st_size < 1E5:
-        os.remove(cfit_fname)
+        os.remove(out_fname)
         print('rawacf %s is too small, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
     else:
         print('rawacf created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
+    os.system('bzip2 -z %s' % out_fname)
 
 
 def generate_output_filename(input_filename, out_dir):
@@ -210,7 +212,7 @@ if __name__ == '__main__':
     if (len(args) > 5) and (args[5] == 'clobber'):
        clobber = True
 
-    start_time = dt.datetime.strptime(args[1], '%Y,%m,%d')
-    end_time = dt.datetime.strptime(args[2], '%Y,%m,%d')
+    start_time = dt.datetime.strptime(args[1], '%Y,%m,%d,%H')
+    end_time = dt.datetime.strptime(args[2], '%Y,%m,%d,%H')
     run_dir = './run_%s' % get_random_string(4)
     main(start_time, end_time, run_dir, args[3], args[4], clobber=clobber)

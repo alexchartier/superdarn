@@ -203,5 +203,5 @@ if __name__ == '__main__':
 
     start_time = dt.datetime.strptime(args[1], '%Y,%m,%d,%H')
     end_time = dt.datetime.strptime(args[2], '%Y,%m,%d,%H')
-    run_dir = './run/%s' % get_random_string(4)
+    run_dir = './run_rawacf/%s' % get_random_string(4)
     main(start_time, end_time, run_dir, args[3], args[4], clobber=clobber)

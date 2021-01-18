@@ -119,8 +119,8 @@ def convert_file(in_fname_format, out_fname, run_dir):
     else:
         print('rawacf created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
     
-    # Compress the new rawacf file
-    os.system('bzip2 -z %s' % out_fname)
+        # Compress the new rawacf file
+        os.system('bzip2 -z %s' % out_fname)
 
 
 def get_single_letter_radar_list(in_dir):

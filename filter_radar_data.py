@@ -58,6 +58,7 @@ def flag_interference(data):
 
             combInd = timeIndex & fsFlag & beamFlag
             if len(data["vel"][combInd]) != 0:
+                # Median filtering outliers as "other"
                 beamVelMedian = np.median(data["vel"][combInd])
                 medianFlag1 = data["vel"] >= beamVelMedian + 800          
                 medianFlag2 = data["vel"] <= beamVelMedian - 800
@@ -70,7 +71,7 @@ def flag_interference(data):
             beamVelStDev = np.std(data["vel"][timeIndex & beamFlag])
             
             if beamVelStDev >= 435:
-                #print('Flagging beam %i for high Std. Dev' % beam)
+                # Flagging high standard deviation values
                 data["gs"][timeIndex & beamFlag] = 3
 
     return data
@@ -79,7 +80,7 @@ def flag_interference(data):
 def scatter_filter(data): 
     
     """
-    Ground Scatter removed via min velocity of 80 m/s
+    Ground Scatter removed via min velocity of 100 m/s
     E region Scatter removed via min range of 400 km
     
     """

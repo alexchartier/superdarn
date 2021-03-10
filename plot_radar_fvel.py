@@ -26,17 +26,18 @@ import pdb
 
 
 def main(
-    time=dt.datetime(2014, 5, 22, 12, 0),
-    radarCode='wal',
-    inDir='data/sd_netcdf/%Y/%m/',
-    outDir='data/plots/',
+    time, radarCode, inDir,
+    outDir=None,
     hdwDatDir='../rst/tables/superdarn/hdw/',
 ):
     radarInfo = get_radar_params(hdwDatDir)
    
     inFname = os.path.join(time.strftime(inDir), time.strftime('%Y%m%d') + '.%s.nc' % radarCode)
-    outDir = os.path.join(outDir, radarCode)
-    plot_one_radar(inFname, outDir, radarInfo)
+    if outDir:
+        outDir = os.path.join(outDir, radarCode)
+        plot_one_radar(inFname, radarInfo, outDir)
+    else:
+        plot_one_radar(inFname, radarInfo)
 
 
     # inFnameFmt = 'data/sd_netcdf/%Y/%m/%Y%m%d*.nc'
@@ -72,7 +73,7 @@ def plot_all_radars(time, inFnameFmt, radarInfo):
     plt.show()
 
 
-def plot_one_radar(inFname, outDir, radarInfo, axExtent=[-180, 180, 30, 90]):
+def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]):
     """ 
     plot F region scatter on a map - does a whole day's worth of files
     """
@@ -82,7 +83,9 @@ def plot_one_radar(inFname, outDir, radarInfo, axExtent=[-180, 180, 30, 90]):
     # data = nc_utils.ncread_vars(inFname)  # go to this once the filtering is in the netCDFs
     data = filter_radar_data.filter_sd_file(inFname)
     day = jd.from_jd(data["mjd"][0], fmt="mjd")
-    os.makedirs(outDir, exist_ok=True)
+    if outDir:
+        os.makedirs(outDir, exist_ok=True)
+
     uniqueTimes = np.unique(data["mjd"])
     for mjdTime in uniqueTimes:
         time = jd.from_jd(mjdTime, fmt="mjd")
@@ -95,34 +98,36 @@ def plot_one_radar(inFname, outDir, radarInfo, axExtent=[-180, 180, 30, 90]):
         timeStr = time.strftime('%Y%b%d_%H%M')
         plt.suptitle("%s - F Scatter\n%s" % (radarCode, timeStr))
 
-        plt.savefig(os.path.join(outDir, "%s.png" % timeStr), dpi=300)
-        plt.close()
+        if outDir:
+            plt.savefig(os.path.join(outDir, "%s.png" % timeStr), dpi=300)
+            plt.close()
+        else:
+            plt.show()
 
 
 def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
-    
-    fsData = {}
-    variables = ["geolon", "geolat", "mjd", "vel", "bm", "km"]
-    
-    fsFlag = data["gs"] == 0
-    for var in variables:
-        fsData[var] = data[var][fsFlag]
-    
-    for key, value in fsData.items():
-            fsData[key] = np.array(value)
-
-    uniqueTimes = np.unique(fsData["mjd"])
     # Plot the radar velocities on a map
+    # Flags: 0- F 1- gnd 2 coll, 3 other 
+
+    variables = ["geolon", "geolat", "mjd", "vel", "bm", "km"]
+    fsFlag = data["gs"] == 0
+
+    # Select the F scatter at the relevant time
     timeIndex = data["mjd"] == mjdTime
     time = jd.from_jd(mjdTime, fmt="mjd")
-
-    fsLatTimed = data["geolat"][timeIndex]
-    fsLonTimed = data["geolon"][timeIndex]
-    fsVelTimed = data["vel"][timeIndex]
+    idx = timeIndex & fsFlag
+    fsLatTimed = data["geolat"][idx]
+    fsLonTimed = data["geolon"][idx]
+    fsVelTimed = data["vel"][idx]
 
     ax = plt.axes(projection=ccrs.NorthPolarStereo())
     ax.add_feature(cfeature.LAND)
     ax.add_feature(cfeature.OCEAN)
+    ax.add_feature(cfeature.COASTLINE)
+    ax.add_feature(cfeature.BORDERS, linestyle=':')
+    ax.add_feature(cfeature.LAKES, alpha=0.5)
+    ax.add_feature(cfeature.RIVERS)
+
 
     ax.set_extent(axExtent, ccrs.PlateCarree())
     gl = ax.gridlines(
@@ -131,8 +136,8 @@ def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
     )
 
     plt.scatter(
-        fsLonTimed, fsLatTimed, 
-        c=fsVelTimed, cmap="Spectral_r", linewidth=1, 
+        fsLonTimed, fsLatTimed, s=0.2,  
+        c=fsVelTimed, cmap="Spectral_r",  
         vmin=-1000, vmax=1000, transform=ccrs.PlateCarree(),
     )
 
@@ -153,18 +158,15 @@ def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
 
 if __name__ == '__main__':
     args = sys.argv
-    assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
+    assert len(args) >= 4, 'Should have 3-4x args, e.g.:\n' + \
         'python3 plot_radar_fvel.py 2020,1,1 sas ' + \
         'data/sd_netcdf/%Y/%m/ data/plots/ '
 
     time = dt.datetime.strptime(args[1], '%Y,%m,%d')
-    main(
-        time=time,
-        radarCode=args[2],
-        inDir=args[3],
-        outDir=args[4],
-        hdwDatDir='../rst/tables/superdarn/hdw/',
-    )
+
+    argv = [time,] + args[2:] 
+    main(*argv)
+    
 
 
 

@@ -12,7 +12,7 @@ import random
 import string
 
 
-def main(
+def raw_to_fit(
     starttime = dt.datetime(2016, 1, 1),
     endtime = dt.datetime(2017, 1, 1),
     run_dir = './run/',
@@ -139,10 +139,6 @@ if __name__ == '__main__':
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
     run_dir = './run/%s' % get_random_string(4) 
-    meteorproc(stime, etime, run_dir, args[3], args[4], clobber=clobber)
-
-
-
-
+    raw_to_fit(stime, etime, run_dir, args[3], args[4], clobber=clobber)
 
 

@@ -19,6 +19,10 @@ import math
 import os
 import pdb
 
+VEL_RANGE = 800
+VEL_STDEV = 435
+MIN_VEL = 80
+MIN_RANGE = 500
 
 def filter_sd_file(in_fname):
     data = nc_utils.ncread_vars(in_fname)    
@@ -60,8 +64,8 @@ def flag_interference(data):
             if len(data["vel"][combInd]) != 0:
                 # Median filtering outliers as "other"
                 beamVelMedian = np.median(data["vel"][combInd])
-                medianFlag1 = data["vel"] >= beamVelMedian + 800          
-                medianFlag2 = data["vel"] <= beamVelMedian - 800
+                medianFlag1 = data["vel"] >= beamVelMedian + VEL_RANGE          
+                medianFlag2 = data["vel"] <= beamVelMedian - VEL_RANGE
                 outlierFlag = combInd & (medianFlag1 | medianFlag2) 
                 if np.sum(outlierFlag) > 0:
                     #print('Flagging %i outliers' % np.sum(outlierFlag))
@@ -70,8 +74,8 @@ def flag_interference(data):
             fsFlag = data["gs"] == 0
             beamVelStDev = np.std(data["vel"][timeIndex & beamFlag])
             
-            if beamVelStDev >= 435:
-                # Flagging high standard deviation values
+            if beamVelStDev >= VEL_STDEV:
+                #print('Flagging beam %i for high Std. Dev' % beam)
                 data["gs"][timeIndex & beamFlag] = 3
 
     return data
@@ -87,9 +91,9 @@ def scatter_filter(data):
     fsFlag = data["gs"] == 0
     gsList = list(data["gs"])
     
-    minVelFlag1 = data["vel"] <= 80 
-    minVelFlag2 = data["vel"] >= -80
-    minRangeFlag = data["km"] <= 500
+    minVelFlag1 = data["vel"] <= MIN_VEL 
+    minVelFlag2 = data["vel"] >= -MIN_VEL
+    minRangeFlag = data["km"] <= MIN_RANGE
     
     data["gs"][minVelFlag1 & minVelFlag2 & fsFlag] = 1
     data["gs"][fsFlag & minRangeFlag] = 2    
@@ -113,9 +117,6 @@ def median_filter(data):
         
     uniqueTimes = np.unique(fsData["mjd"])   
     avgFsData = {"geolon":[], "geolat":[], "vel":[], "geoazm":[]}
-    
-    print('# of After 0s: %i' % gsList.count(0))
-    print('# of After 3s: %i' % gsList.count(3))
 
     
     return data

@@ -182,7 +182,7 @@ def fit_to_nc(
    
     # Define the netCDF variables and dimensions 
     out_vars = read_fittotxt_ascii(ascii_fname, headers)
-    out_vars = flag_data(out_vars)
+    # out_vars = flag_data(out_vars)
     var_defs = def_vars()
     dim_defs = {'npts': None} 
     header_info = def_header_info(in_fname, radar_info)

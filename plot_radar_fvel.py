@@ -35,6 +35,7 @@ def main(
     inFname = os.path.join(time.strftime(inDir), time.strftime('%Y%m%d') + '.%s.nc' % radarCode)
     if outDir:
         outDir = os.path.join(outDir, radarCode)
+        print('Writing to %s' % outDir)
         plot_one_radar(inFname, radarInfo, outDir)
     else:
         plot_one_radar(inFname, radarInfo)
@@ -81,6 +82,7 @@ def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]
     radarCode = inFname.split('.')[1]
 
     # data = nc_utils.ncread_vars(inFname)  # go to this once the filtering is in the netCDFs
+    print('Filtering %s' % inFname)
     data = filter_radar_data.filter_sd_file(inFname)
     day = jd.from_jd(data["mjd"][0], fmt="mjd")
     if outDir:
@@ -88,6 +90,7 @@ def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]
 
     uniqueTimes = np.unique(data["mjd"])
     for mjdTime in uniqueTimes:
+        print(mjdTime)
         time = jd.from_jd(mjdTime, fmt="mjd")
         radarInfo_t = id_hdw_params_t(time, radarInfo[radarCode])
         plot_vels_at_time(data, mjdTime, radarCode, radarInfo_t, axExtent)
@@ -99,7 +102,9 @@ def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]
         plt.suptitle("%s - F Scatter\n%s" % (radarCode, timeStr))
 
         if outDir:
-            plt.savefig(os.path.join(outDir, "%s.png" % timeStr), dpi=300)
+            outFname = os.path.join(outDir, "%s.png" % timeStr)
+            print('Writing to %s' % outFname)
+            plt.savefig(outFname, dpi=300)
             plt.close()
         else:
             plt.show()
@@ -160,7 +165,7 @@ if __name__ == '__main__':
     args = sys.argv
     assert len(args) >= 4, 'Should have 3-4x args, e.g.:\n' + \
         'python3 plot_radar_fvel.py 2020,1,1 sas ' + \
-        'data/sd_netcdf/%Y/%m/ data/plots/ '
+        'data/netcdf/%Y/%m/ data/plots/ '
 
     time = dt.datetime.strptime(args[1], '%Y,%m,%d')
 

@@ -37,6 +37,7 @@ from filter_radar_data import flag_data
 from run_meteorproc import get_radar_params, id_hdw_params_t
 from raw_to_fit import get_random_string
 import pysat, pysat_solargeomag
+from pydarn import PyDARNColormaps, build_scan, radar_fov
 
 
 def main(
@@ -49,7 +50,7 @@ def main(
     step=1,  # month
     skip_existing=True,
     bzip_output=False,
-    fit_ext='*.cfit',
+    fit_ext='*.fit',
 ):
 
     radar_info = get_radar_params(hdw_dat_dir)
@@ -59,12 +60,14 @@ def main(
     if fit_ext.split('.')[-1] == 'bz2':
         bzipped = True
 
+    """
     # Get the solar/geomagnetic indices
     pysat.utils.set_data_dir('../')
     f107_kp, ap = pysat_solargeomag.get_f107_kp_ap(
         './solar_geo.nc', starttime, endtime,
     )   
 
+    """
     # Loop over fit files in the monthly directories
     time = starttime
     while time <= endtime:
@@ -76,7 +79,7 @@ def main(
         # Loop over the files
         fit_fn_fmt = time.strftime(in_dir_fmt)
         fit_fnames = glob.glob(os.path.join(fit_fn_fmt, fit_ext))
-        print('Processing %i files on %s' % (len(fit_fnames), time.strftime('%Y/%m/%d')))
+        print('Processing %i %s files in %s on %s' % (len(fit_fnames), fit_ext, fit_fn_fmt, time.strftime('%Y/%m')))
         for fit_fn in fit_fnames:
         
             # Check the file is big enough to be worth bothering with
@@ -108,12 +111,9 @@ def main(
             # Convert the cfit to a netCDF
             radar_code = os.path.basename(fit_fn).split('.')[1]
             radar_info_t = id_hdw_params_t(time, radar_info[radar_code])
-            status = fit_to_nc(
-                in_fname=fit_fn, 
-                ascii_fname=ascii_fn, 
-                out_fname=nc_fn, 
-                radar_info=radar_info_t,
-            )
+
+            status = fit_to_nc_v2(time, fit_fn, nc_fn, radar_info_t)
+
             if status > 0:
                 print('Failed to convert %s' % fit_fn)
                 continue
@@ -137,52 +137,11 @@ def main(
 
         time = add_months(time, step)
         # time += dt.timedelta(months=1) 
- 
 
-def fit_to_nc(
-    in_fname='20180126_sas.cfit',
-    ascii_fname='test.txt',
-    out_fname='radar.nc',
-    radar_info=None,
-):
 
-    """
-    NOTE: Do not change - text output order does not follow the order they are passed in
-        bm: beam
-        km: rangegate
-        geolat: geographic latitude
-        geolon: geographic longitude
-        geoazm: azimuth (off north) of the vector at the geo lat/lon
-        aacgm: altitude-adjusted corrected geomagnetic coordinates (as above)
-        gs: ground-scatter flag (0, 1) - based on observed velocity and other information
-        pwr: backscattered power observed (imperfectly)
-        vel: velocity (towards or away?) from radar 
-        wdt: Spectral width observed - may indicate degree of plasma turbulence or goodness of fit
-        # geovelne: Interpret the observed velocity in terms of North and East components
-    """
-    fittotxt_arg = '-bm -km -freq -geolat -geolon -geoazm -aacgmlat -aacgmlon -aacgmazm -gs -pwr -vel -wdt -cfit'    
-
-    if os.path.isfile(ascii_fname):  # remove existing file if necessary
-        os.system('rm %s' % ascii_fname)
-
-    # Convert cfit to ascii
-    cmd = 'fittotxt %s %s > %s' % (fittotxt_arg, in_fname, ascii_fname)
-    print('Executing %s' % cmd)
-    os.system(cmd)
-    if os.stat(ascii_fname).st_size > 0:
-        print('Converted %s to %s' % (in_fname, ascii_fname))
-    else:
-        print('Unable to process %s' % in_fname)
-        return 1
-
-    # Pull out the ascii values
-    headers = [h.strip() for h in fittotxt_arg.split('-')]
-    headers = [h for h in headers if h != '']
-    headers = headers[:-1] 
-   
-    # Define the netCDF variables and dimensions 
-    out_vars = read_fittotxt_ascii(ascii_fname, headers)
-    # out_vars = flag_data(out_vars)
+def fit_to_nc_v2(date, in_fname, out_fname, radar_info):
+    # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
+    out_vars = convert_fitacf_data(date, in_fname, radar_info)
     var_defs = def_vars()
     dim_defs = {'npts': None} 
     header_info = def_header_info(in_fname, radar_info)
@@ -193,47 +152,75 @@ def fit_to_nc(
     return 0
 
 
-def read_fittotxt_ascii(in_fname, headers, nbeams=16):
-    # Read ASCII file
-    with open(in_fname, 'r') as f:
-        txt = f.readlines()
+def convert_fitacf_data(date, in_fname, radar_info):
+    import pydarn
+    import radFov
+    SDarn_read = pydarn.SuperDARNRead(in_fname)
+    data = SDarn_read.read_fitacf()
+    bmdata = {
+        'rsep': [],
+        'frang': [],
+    }
+    for rec in data:
+        for k, v in bmdata.items():
+            bmdata[k].append(rec[k])
+        if 'slist' in rec.keys():
+            if radar_info['maxrg'] < rec['slist'].max():
+                radar_info['maxrg'] = rec['slist'].max() + 5
+    
+    for k, v in bmdata.items():
+        val = np.unique(v)
+        assert len(val) == 1, "not sure what to do with multiple beam definitions in one file"
+        bmdata[k] = int(val)
 
-    # Set up data structure
-    data = {}
-    for hd in headers:
-        data[hd] = []
-    data['mjd'] = []
+    fov = radFov.fov(
+        frang=bmdata['frang'], rsep=bmdata['rsep'], site=None, nbeams=int(radar_info['maxbeams']),
+        ngates=int(radar_info['maxrg']), bmsep=radar_info['beamsep'], recrise=radar_info['risetime'], siteLat=radar_info['glat'],
+        siteLon=radar_info['glon'], siteBore=radar_info['boresight'], siteAlt=radar_info['alt'], siteYear=date.year,
+        elevation=None, altitude=300., hop=None, model='IS',
+        coords='geo', date_time=date, coord_alt=0., fov_dir='front',
+    )
 
-    # Convert ascii to a numpy array
-    for line in txt:
-        vals = np.array([float(l) for l in line.split()])
+    # Set up data storage
+    fov_flds = 'mjd', 'beam', 'range', 'lat', 'lon', 
+    data_flds = 'pwr0', 'v', 'v_e', 'tfreq', 'gflg', 
+    elv_flds = 'elv', 'elv_low', 'elv_high'
+    is_elv = False
+    for rec in data:
+        if 'elv' in rec.keys():
+            is_elv = True
+    if is_elv:
+        data_flds += elv_flds
+    out_flds = fov_flds + data_flds
+    out = {}
+    for fld in out_flds:
+        out[fld] = []
+   
+    # Run through each beam record and store 
+    for rec in data:
+        # slist is the list of range gates with backscatter
+        if 'slist' not in rec.keys():
+            continue
+        fov_data = {}
+        time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
+        one_obj = np.ones(len(rec['slist'])) 
+        mjd = one_obj * jdutil.jd_to_mjd(jdutil.datetime_to_jd(time))
+        bmnum = one_obj * rec['bmnum']
+        fovi = fov.beams == rec['bmnum']
+        out['mjd'] += mjd.tolist()
+        out['beam'] += bmnum.tolist()
+        out['range'] += fov.slantRCenter[fovi, rec['slist']].tolist()
+        out['lat'] += fov.latCenter[fovi, rec['slist']].tolist()
+        out['lon'] += fov.lonCenter[fovi, rec['slist']].tolist()
 
-        # Check if this is a time-definition line. DARN/SuperDARN, Greenwald et al. 1995
-        if vals[0] >= 1993:  
-            time = dt.datetime(*vals.astype(int)[:6])
-
-            # Modified Julian Date is an efficient means of storing time information
-            mjd = jdutil.jd_to_mjd(jdutil.datetime_to_jd(time))  
-            
-        else:  # This is a data-containing line
-            assert len(vals) == len(headers), 'Line does not look right\n%s\n%s' % (headers, line)
-            for ind, v in enumerate(headers):
-                data[v].append(vals[ind])
-            data['mjd'].append(mjd)
-
-    # Convert variables to efficient types
-    for k, v in data.items():
-        if (k == 'gs') or (k == 'bm'):
-            data[k] = np.array(v, dtype=np.uint8)
-        if (k == 'km'):
-            data[k] = np.array(v, dtype=np.uint16)
-        else:
-            data[k] = np.array(v, dtype=np.float32)
-
-    # The flags are as follows: 0 - F, 1 - ground, 2 - coll, 3 - other
-    data['gs'][data['km'] <= 400] = 2  # (coll <= 400 km, see Hibbins et al. 2018)  
-
-    return data
+        rec['tfreq'] *= one_obj  # convert to an array
+        for fld in data_flds:
+            out[fld] += rec[fld].tolist()
+    
+    for k, v in out.items():
+        out[k] = np.array(v)
+    
+    return out
 
 
 def add_months(sourcedate, months):
@@ -248,27 +235,24 @@ def def_vars():
     # netCDF writer expects a series of variable definitions - here they are
     stdin_int = {'units': 'none', 'type': 'u1', 'dims': 'npts'} 
     stdin_flt = {'type': 'f4', 'dims': 'npts'} 
+    stdin_dbl = {'type': 'f8', 'dims': 'npts'} 
     vars = {
-        'mjd': dict({'units': 'days', 'long_name': 'Modified Julian Date'}, **stdin_flt),
-        'bm': dict({'long_name': 'Beam #'}, **stdin_int),
-        'km': dict({'units': 'km','long_name': 'Range', 'type': 'u2', 'dims': 'npts'}),
-        'geolat': dict({'units': 'deg.', 'long_name': 'Latitude'}, **stdin_flt),
-        'geolon': dict({'units': 'deg.', 'long_name': 'Longitude'}, **stdin_flt),
-        'geoazm': dict({'units': 'deg.', 'long_name': 'Azimuth'}, **stdin_flt),
-        'aacgmlat': dict({'units': 'deg.', 'long_name': 'AACGM Lat.'}, **stdin_flt),
-        'aacgmlon': dict({'units': 'deg.', 'long_name': 'AACGM Lon.'}, **stdin_flt),
-        'aacgmazm': dict({'units': 'deg.', 'long_name': 'AACGM Azimuth'}, **stdin_flt),
-        'gs': dict({'long_name': 'Flag (0 F, 1 ground, 2 collisional, 3 other)'}, **stdin_int),
-        'pwr': dict({'units': 'dB', 'long_name': 'Backscattered Power'}, **stdin_flt),
-        'vel': dict({'units': 'm/s', 'long_name': 'LOS Vel. (+ve away from radar)'}, **stdin_flt),
-        'wdt': dict({'units': 'm/s', 'long_name': 'Spectral Width'}, **stdin_flt),
-        'freq': dict({'units': 'Hz', 'long_name': 'Transmit frequency'}, **stdin_flt),
-        'vel_n': dict({'units': 'm/s', 'long_name': 'Geographic N component of velocity'}, **stdin_flt),
-        'vel_e': dict({'units': 'm/s', 'long_name': 'Geographic E component of velocity'}, **stdin_flt),
+        'mjd': dict({'units': 'days', 'long_name': 'Modified Julian Date'}, **stdin_dbl),
+        'beam': dict({'long_name': 'Beam #'}, **stdin_int),
+        'range': dict({'units': 'km','long_name': 'Slant range', 'type': 'u2', 'dims': 'npts'}),
+        'lat': dict({'units': 'deg.', 'long_name': 'Latitude'}, **stdin_flt),
+        'lon': dict({'units': 'deg.', 'long_name': 'Longitude'}, **stdin_flt),
+        'pwr0': dict({'units': 'dB', 'long_name': 'Lag zero SNR'}, **stdin_flt),
+        'v': dict({'units': 'm/s', 'long_name': 'LOS Vel. (+ve away from radar)'}, **stdin_flt),
+        'v_e': dict({'units': 'm/s', 'long_name': 'LOS Vel. error'}, **stdin_flt),
+        'tfreq': dict({'units': 'Hz', 'long_name': 'Transmit frequency'}, **stdin_flt),
+        'gflg': dict({'long_name': 'Flag (0 F, 1 ground, 2 collisional, 3 other)'}, **stdin_int),
+        'elv': dict({'units': 'degrees', 'long_name': 'Elevation angle estimate'}, **stdin_flt),
+        'elv_low': dict({'units': 'degrees', 'long_name': 'Lowest elevation angle estimate'}, **stdin_flt),
+        'elv_high': dict({'units': 'degrees', 'long_name': 'Highest elevation angle estimate'}, **stdin_flt),
     }   
 
     return vars
-        
 
 def set_header(rootgrp, header_info):
     rootgrp.description = header_info['description']
@@ -296,16 +280,16 @@ if __name__ == '__main__':
 
     args = sys.argv
     assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
-        'python3 fit_to_nc.py 2016,1 2017,1 ' + \
-        '/project/superdarn/data/cfit/%Y/%m/  ' + \
-        '/project/superdarn/data/netcdf/%Y/%m/'
+        'python3 fit_to_nc.py 2012,2 2012,2 ' + \
+        'data/fitacf/%Y/%m/  ' + \
+        'data/netcdf/%Y/%m/'
 
     stime = dt.datetime.strptime(args[1], '%Y,%m')
     etime = dt.datetime.strptime(args[2], '%Y,%m')
     in_dir = args[3]
     out_dir = args[4]
     
-    run_dir = './run_%s' % get_random_string(4) 
+    run_dir = './run/run_%s' % get_random_string(4) 
     main(stime, etime, in_dir, out_dir, run_dir)
 
 

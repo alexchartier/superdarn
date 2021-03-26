@@ -64,7 +64,9 @@ def plot_all_radars(time, inFnameFmt, radarInfo):
             continue
         mjdTime = data['mjd'][timeIndex]
         radarInfo_t = id_hdw_params_t(time, radarInfo[radarCode])
-        plot_vels_at_time(data, mjdTime, radarCode, radarInfo_t, axExtent)
+
+        data_t = tindex_data(data, mjdTime)
+        plot_vels_at_time(data_t, radarInfo_t['lat'], radarInfo_t['lon'], axExtent)
     
     clb = plt.colorbar()
     clb.ax.set_title("Velocity")
@@ -110,20 +112,20 @@ def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]
             plt.show()
 
 
-def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
-    # Plot the radar velocities on a map
-    # Flags: 0- F 1- gnd 2 coll, 3 other 
-
-    variables = ["geolon", "geolat", "mjd", "vel", "bm", "km"]
-    fsFlag = data["gs"] == 0
-
+def tindex_data(data, mjdTime, 
+        variables=["lon", "lat", "mjd", "v", "gflg", "p_l", "beam", "range"],
+):
     # Select the F scatter at the relevant time
     timeIndex = data["mjd"] == mjdTime
-    time = jd.from_jd(mjdTime, fmt="mjd")
-    idx = timeIndex & fsFlag
-    fsLatTimed = data["geolat"][idx]
-    fsLonTimed = data["geolon"][idx]
-    fsVelTimed = data["vel"][idx]
+    for var in variables:
+        data[var] = data[var][timeIndex]
+    return data
+ 
+ 
+def plot_vels_at_time(data, radarLat, radarLon, axExtent=[-180, 180, 30, 90]):
+    # Plot the radar velocities on a map
+
+    fsFlag = data["gflg"] == 0
 
     ax = plt.axes(projection=ccrs.NorthPolarStereo())
     ax.add_feature(cfeature.LAND)
@@ -133,7 +135,6 @@ def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
     ax.add_feature(cfeature.LAKES, alpha=0.5)
     ax.add_feature(cfeature.RIVERS)
 
-
     ax.set_extent(axExtent, ccrs.PlateCarree())
     gl = ax.gridlines(
         crs=ccrs.PlateCarree(), draw_labels=True,
@@ -141,13 +142,13 @@ def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
     )
 
     plt.scatter(
-        fsLonTimed, fsLatTimed, s=0.2,  
-        c=fsVelTimed, cmap="Spectral_r",  
+        data['lon'], data['lat'], s=0.2,  
+        c=data['v'], cmap="Spectral_r",  
         vmin=-1000, vmax=1000, transform=ccrs.PlateCarree(),
     )
 
     plt.plot(
-        radarInfo['glon'], radarInfo['glat'], 
+        radarLon, radarLat, 
         color="red", marker="x", transform=ccrs.PlateCarree(),
     )
 
@@ -159,6 +160,7 @@ def plot_vels_at_time(data, mjdTime, radarCode, radarInfo, axExtent):
     gl.ylabel_style = style
     gl.top_labels = False
     gl.right_labels = False  
+    return ax
 
 
 if __name__ == '__main__':

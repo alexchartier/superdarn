@@ -27,17 +27,15 @@ import glob
 #import bz2
 import shutil
 sys.path.append('/homes/chartat1/fusionpp/src/nimo/')
-import nc_utils
+import netCDF4
 import jdutil
-import pdb
 import datetime as dt 
 import calendar
 import numpy as np
-from filter_radar_data import flag_data
 from run_meteorproc import get_radar_params, id_hdw_params_t
-from raw_to_fit import get_random_string
-import pysat, pysat_solargeomag
-from pydarn import PyDARNColormaps, build_scan, radar_fov
+import pydarn
+import radFov
+import pdb
 
 
 def main(
@@ -45,29 +43,14 @@ def main(
     endtime=dt.datetime(2020, 1, 1),
     in_dir_fmt='/project/superdarn/data/cfit/%Y/%m/',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
-    run_dir='./run/',
     hdw_dat_dir='../rst/tables/superdarn/hdw/',
     step=1,  # month
     skip_existing=True,
-    bzip_output=False,
     fit_ext='*.fit',
 ):
 
     radar_info = get_radar_params(hdw_dat_dir)
-    os.makedirs(run_dir, exist_ok=True)
 
-    bzipped = False
-    if fit_ext.split('.')[-1] == 'bz2':
-        bzipped = True
-
-    """
-    # Get the solar/geomagnetic indices
-    pysat.utils.set_data_dir('../')
-    f107_kp, ap = pysat_solargeomag.get_f107_kp_ap(
-        './solar_geo.nc', starttime, endtime,
-    )   
-
-    """
     # Loop over fit files in the monthly directories
     time = starttime
     while time <= endtime:
@@ -89,16 +72,7 @@ def main(
                 continue
             print('\n\nStarting from %s' % fit_fn)
 
-            # Unzip if necessary
-            if bzipped:
-                shutil.copy2(fit_fn, run_dir)
-                new_fn = os.path.join(run_dir, os.path.basename(fit_fn))
-                os.system('bzip2 -d %s' % new_fn)
-                fit_fn = '.'.join(new_fn.split('.')[:-1])
-                
             fn_head = '.'.join(os.path.basename(fit_fn).split('.')[:-1])
-            ascii_fn = os.path.join(run_dir, '%s.txt' % fn_head)
-            nc_fn = os.path.join(run_dir, '%s.nc' % fn_head)
             out_fn = os.path.join(out_dir, '%s.nc' % fn_head)
             if os.path.isfile(out_fn):
                 if skip_existing: 
@@ -112,49 +86,43 @@ def main(
             radar_code = os.path.basename(fit_fn).split('.')[1]
             radar_info_t = id_hdw_params_t(time, radar_info[radar_code])
 
-            status = fit_to_nc_v2(time, fit_fn, nc_fn, radar_info_t)
+            status = fit_to_nc(time, fit_fn, out_fn, radar_info_t)
 
             if status > 0:
                 print('Failed to convert %s' % fit_fn)
                 continue
 
-            if bzip_output:
-                # bzip to save space
-                with open(nc_fn, 'rb') as f:
-                    bzdat = bz2.compress(f.read(), 9)
-                out_fn += '.bz2'
-                with open(out_fn, 'wb') as f:
-                    f.write(bzdat)
-            else:
-                shutil.move(nc_fn, out_fn)
             print('Wrote output to %s' % out_fn)
-
-            # Clear out the run directory
-            files = glob.glob(os.path.join(run_dir, '*'))
-            for f in files:
-                os.remove(f)
             
-
-        time = add_months(time, step)
-        # time += dt.timedelta(months=1) 
+        time = add_months(time, step)  # time += dt.timedelta(months=1) doesn't exist
 
 
-def fit_to_nc_v2(date, in_fname, out_fname, radar_info):
+def fit_to_nc(date, in_fname, out_fname, radar_info):
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
-    out_vars = convert_fitacf_data(date, in_fname, radar_info)
+    out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info)
     var_defs = def_vars()
-    dim_defs = {'npts': None} 
-    header_info = def_header_info(in_fname, radar_info)
-
+    dim_defs = {
+        'npts': out_vars['mjd'].shape[0], 
+        'nt': len(out_vars['mjd_short']),
+    } 
+    header_info = def_header_info(in_fname, hdr_vals)
+    
     # Write out the netCDF 
-    nc_utils.write_nc(out_fname, var_defs, out_vars, set_header, header_info, dim_defs)
+    with netCDF4.Dataset(out_fname, 'w') as nc: 
+        set_header(nc, header_info)
+        for k, v in dim_defs.items():
+            nc.createDimension(k, size=v)
+        for k, v in out_vars.items():
+            defs= var_defs[k]
+            var = nc.createVariable(k, defs['type'], defs['dims'])
+            var[:] = v
+            var.units = defs['units']
+            var.long_name = defs['long_name']
 
     return 0
 
 
 def convert_fitacf_data(date, in_fname, radar_info):
-    import pydarn
-    import radFov
     SDarn_read = pydarn.SuperDARNRead(in_fname)
     data = SDarn_read.read_fitacf()
     bmdata = {
@@ -173,6 +141,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
         assert len(val) == 1, "not sure what to do with multiple beam definitions in one file"
         bmdata[k] = int(val)
 
+    # Define FOV
     fov = radFov.fov(
         frang=bmdata['frang'], rsep=bmdata['rsep'], site=None, nbeams=int(radar_info['maxbeams']),
         ngates=int(radar_info['maxrg']), bmsep=radar_info['beamsep'], recrise=radar_info['risetime'], siteLat=radar_info['glat'],
@@ -181,20 +150,26 @@ def convert_fitacf_data(date, in_fname, radar_info):
         coords='geo', date_time=date, coord_alt=0., fov_dir='front',
     )
 
-    # Set up data storage
+    # Define fields 
+    short_flds = 'tfreq', 'noise.sky', 'cp',
     fov_flds = 'mjd', 'beam', 'range', 'lat', 'lon', 
-    data_flds = 'pwr0', 'v', 'v_e', 'tfreq', 'gflg', 
-    elv_flds = 'elv', 'elv_low', 'elv_high'
+    data_flds = 'p_l', 'v', 'v_e', 'gflg', 
+    elv_flds = 'elv', 'elv_low', 'elv_high',
+    mjd_s = 'mjd_short',
+
+    # Figure out if we have elevation information
     is_elv = False
     for rec in data:
         if 'elv' in rec.keys():
             is_elv = True
     if is_elv:
         data_flds += elv_flds
-    out_flds = fov_flds + data_flds
+
+    # Set up data storage
     out = {}
-    for fld in out_flds:
+    for fld in (fov_flds + data_flds + short_flds + mjd_s):
         out[fld] = []
+    
    
     # Run through each beam record and store 
     for rec in data:
@@ -204,23 +179,34 @@ def convert_fitacf_data(date, in_fname, radar_info):
         fov_data = {}
         time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
         one_obj = np.ones(len(rec['slist'])) 
-        mjd = one_obj * jdutil.jd_to_mjd(jdutil.datetime_to_jd(time))
+        mjd = jdutil.jd_to_mjd(jdutil.datetime_to_jd(time))
         bmnum = one_obj * rec['bmnum']
         fovi = fov.beams == rec['bmnum']
-        out['mjd'] += mjd.tolist()
+        out['mjd'] += (one_obj * mjd).tolist()
         out['beam'] += bmnum.tolist()
         out['range'] += fov.slantRCenter[fovi, rec['slist']].tolist()
         out['lat'] += fov.latCenter[fovi, rec['slist']].tolist()
         out['lon'] += fov.lonCenter[fovi, rec['slist']].tolist()
 
-        rec['tfreq'] *= one_obj  # convert to an array
         for fld in data_flds:
             out[fld] += rec[fld].tolist()
-    
+        for fld in short_flds:
+            out[fld] += [rec[fld],]
+        out['mjd_short'] += [mjd,]
+
+    # Convert to numpy arrays 
     for k, v in out.items():
         out[k] = np.array(v)
-    
-    return out
+
+    hdr = {
+        'lat': radar_info['glat'],
+        'lon': radar_info['glon'],
+        'alt': radar_info['alt'],
+        'rsep': bmdata['rsep'],
+        'maxrg': radar_info['maxrg'],
+    }
+
+    return out, hdr
 
 
 def add_months(sourcedate, months):
@@ -242,37 +228,45 @@ def def_vars():
         'range': dict({'units': 'km','long_name': 'Slant range', 'type': 'u2', 'dims': 'npts'}),
         'lat': dict({'units': 'deg.', 'long_name': 'Latitude'}, **stdin_flt),
         'lon': dict({'units': 'deg.', 'long_name': 'Longitude'}, **stdin_flt),
-        'pwr0': dict({'units': 'dB', 'long_name': 'Lag zero SNR'}, **stdin_flt),
+        'p_l': dict({'units': 'dB', 'long_name': 'Lambda fit SNR'}, **stdin_flt),
         'v': dict({'units': 'm/s', 'long_name': 'LOS Vel. (+ve away from radar)'}, **stdin_flt),
         'v_e': dict({'units': 'm/s', 'long_name': 'LOS Vel. error'}, **stdin_flt),
-        'tfreq': dict({'units': 'Hz', 'long_name': 'Transmit frequency'}, **stdin_flt),
         'gflg': dict({'long_name': 'Flag (0 F, 1 ground, 2 collisional, 3 other)'}, **stdin_int),
         'elv': dict({'units': 'degrees', 'long_name': 'Elevation angle estimate'}, **stdin_flt),
         'elv_low': dict({'units': 'degrees', 'long_name': 'Lowest elevation angle estimate'}, **stdin_flt),
         'elv_high': dict({'units': 'degrees', 'long_name': 'Highest elevation angle estimate'}, **stdin_flt),
+        'mjd_short': dict({'units': 'days','long_name': 'Modified Julian Date (short format)', 'type': 'f8', 'dims': 'nt'}),
+        'tfreq': dict({'units': 'kHz','long_name': 'Transmit freq', 'type': 'u2', 'dims': 'nt'}),
+        'noise.sky': dict({'units': 'none','long_name': 'Sky noise', 'type': 'f4', 'dims': 'nt'}),
+        'cp': dict({'units': 'none','long_name': 'Control program ID', 'type': 'u2', 'dims': 'nt'}),
     }   
 
     return vars
 
-def set_header(rootgrp, header_info):
+
+def set_header(rootgrp, header_info) :
     rootgrp.description = header_info['description']
     rootgrp.source = header_info['source']
     rootgrp.history = header_info['history']
-    rootgrp.hdw_dat = header_info['hdw_dat']
+    rootgrp.lat = header_info['lat']
+    rootgrp.lon = header_info['lon']
+    rootgrp.alt = header_info['alt']
+    rootgrp.rsep = header_info['rsep']
+    rootgrp.maxrg = header_info['maxrg']
     return rootgrp
 
 
-def def_header_info(in_fname, radar_info):
-    hdw_dat_str = ''
-    for k, v in radar_info.items():
-        hdw_dat_str += '%s: %s, ' % (k, v)
+def def_header_info(in_fname, hdr_vals):
     hdr = {
+        **{
         'description': 'Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF v2.5',
         'source': 'in_fname',
         'history': 'Created on %s' % dt.datetime.now(),
-        'hdw_dat': hdw_dat_str, 
+        }, 
+        **hdr_vals,
     }
-    return {**hdr, **radar_info}
+
+    return hdr
 
 
 
@@ -289,8 +283,7 @@ if __name__ == '__main__':
     in_dir = args[3]
     out_dir = args[4]
     
-    run_dir = './run/run_%s' % get_random_string(4) 
-    main(stime, etime, in_dir, out_dir, run_dir)
+    main(stime, etime, in_dir, out_dir)
 
 
 

@@ -295,7 +295,7 @@ def def_header_info(in_fname, radar_info):
 if __name__ == '__main__':
 
     args = sys.argv
-    assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
+    assert len(args) >= 5, 'Should have 4x args, e.g.:\n' + \
         'python3 fit_to_nc.py 2016,1 2017,1 ' + \
         '/project/superdarn/data/cfit/%Y/%m/  ' + \
         '/project/superdarn/data/netcdf/%Y/%m/'
@@ -304,9 +304,13 @@ if __name__ == '__main__':
     etime = dt.datetime.strptime(args[2], '%Y,%m')
     in_dir = args[3]
     out_dir = args[4]
+    run_dir = './run/run_%s' % get_random_string(4) 
+
+    if len(args) > 5:
+        main(stime, etime, in_dir, out_dir, run_dir, fit_ext=args[5])
     
-    run_dir = './run_%s' % get_random_string(4) 
-    main(stime, etime, in_dir, out_dir, run_dir)
+    else:
+        main(stime, etime, in_dir, out_dir, run_dir)
 
 
 

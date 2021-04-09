@@ -1,4 +1,5 @@
 """
+
 fit_to_nc.py
 
 Turn cfit into netCDF files
@@ -41,7 +42,7 @@ import pdb
 def main(
     starttime=dt.datetime(2005, 12, 1),
     endtime=dt.datetime(2020, 1, 1),
-    in_dir_fmt='/project/superdarn/data/cfit/%Y/%m/',
+    in_dir_fmt='/project/superdarn/data/rawacf/%Y/%m/',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
     hdw_dat_dir='../rst/tables/superdarn/hdw/',
     step=1,  # month
@@ -82,7 +83,7 @@ def main(
                     print('%s exists - deleting' % out_fn)
                     os.remove(out_fn)
 
-            # Convert the cfit to a netCDF
+            # Convert the fitACF to a netCDF
             radar_code = os.path.basename(fit_fn).split('.')[1]
             radar_info_t = id_hdw_params_t(time, radar_info[radar_code])
 
@@ -169,7 +170,6 @@ def convert_fitacf_data(date, in_fname, radar_info):
     out = {}
     for fld in (fov_flds + data_flds + short_flds + mjd_s):
         out[fld] = []
-    
    
     # Run through each beam record and store 
     for rec in data:
@@ -198,12 +198,22 @@ def convert_fitacf_data(date, in_fname, radar_info):
     for k, v in out.items():
         out[k] = np.array(v)
 
+    # Calculate beam azimuths assuming 20 degrees elevation
+    beam_off = radar_info['beamsep'] * (fov.beams - (radar_info['maxbeams'] - 1) / 2.0)
+    el = 15.
+    brng = np.zeros(beam_off.shape)
+    for ind, beam_off_elzero in enumerate(beam_off):
+        brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) +radar_info['boresight']
+
     hdr = {
         'lat': radar_info['glat'],
         'lon': radar_info['glon'],
         'alt': radar_info['alt'],
         'rsep': bmdata['rsep'],
         'maxrg': radar_info['maxrg'],
+        'bmsep': radar_info['beamsep'],
+        'beams': fov.beams,
+        'brng_at_15deg_el': brng,
     }
 
     return out, hdr
@@ -251,8 +261,11 @@ def set_header(rootgrp, header_info) :
     rootgrp.lat = header_info['lat']
     rootgrp.lon = header_info['lon']
     rootgrp.alt = header_info['alt']
-    rootgrp.rsep = header_info['rsep']
-    rootgrp.maxrg = header_info['maxrg']
+    rootgrp.rsep_km = header_info['rsep']
+    rootgrp.maxrangegate = header_info['maxrg']
+    rootgrp.bmsep = header_info['bmsep']
+    rootgrp.beams = header_info['beams']
+    rootgrp.brng_at_15deg_el = header_info['brng_at_15deg_el']
     return rootgrp
 
 

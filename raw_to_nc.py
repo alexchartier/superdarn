@@ -45,12 +45,16 @@ def main(
     in_dir_fmt='/project/superdarn/data/rawacf/%Y/%m/',
     fit_dir_fmt='/project/superdarn/data/fitacf/%Y/%m/',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
-    hdw_dat_dir='../rst/tables/superdarn/hdw/',
     step=1,  # month
     skip_existing=True,
     fit_ext='*.fit',
 ):
 
+    rstpath = os.getenv('RSTPATH')
+    hdw_dat_dir = os.path.join(rstpath, '/tables/superdarn/hdw/')
+    
+
+    # Running raw to NC
     radar_info = get_radar_params(hdw_dat_dir)
     run_dir = './run/%s' % get_random_string(4)
     raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt)
@@ -107,7 +111,7 @@ def fit_to_nc(date, in_fname, out_fname, radar_info):
     var_defs = def_vars()
     dim_defs = {
         'npts': out_vars['mjd'].shape[0], 
-        'nt': len(out_vars['mjd_short']),
+        'nt': len(out_vars['mjd_unique']),
     } 
     header_info = def_header_info(in_fname, hdr_vals)
     
@@ -159,7 +163,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
     fov_flds = 'mjd', 'beam', 'range', 'lat', 'lon', 
     data_flds = 'p_l', 'v', 'v_e', 'gflg', 
     elv_flds = 'elv', 'elv_low', 'elv_high',
-    mjd_s = 'mjd_short',
+    mjd_s = 'mjd_unique',
 
     # Figure out if we have elevation information
     is_elv = False
@@ -196,7 +200,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
             out[fld] += rec[fld].tolist()
         for fld in short_flds:
             out[fld] += [rec[fld],]
-        out['mjd_short'] += [mjd,]
+        out['mjd_unique'] += [mjd,]
 
     # Convert to numpy arrays 
     for k, v in out.items():
@@ -239,7 +243,7 @@ def def_vars():
         'elv': dict({'units': 'degrees', 'long_name': 'Elevation angle estimate'}, **stdin_flt),
         'elv_low': dict({'units': 'degrees', 'long_name': 'Lowest elevation angle estimate'}, **stdin_flt),
         'elv_high': dict({'units': 'degrees', 'long_name': 'Highest elevation angle estimate'}, **stdin_flt),
-        'mjd_short': dict({'units': 'days','long_name': 'Modified Julian Date (short format)', 'type': 'f8', 'dims': 'nt'}),
+        'mjd_unique': dict({'units': 'days','long_name': 'Modified Julian Date (unique values)', 'type': 'f8', 'dims': 'nt'}),
         'tfreq': dict({'units': 'kHz','long_name': 'Transmit freq', 'type': 'u2', 'dims': 'nt'}),
         'noise.sky': dict({'units': 'none','long_name': 'Sky noise', 'type': 'f4', 'dims': 'nt'}),
         'cp': dict({'units': 'none','long_name': 'Control program ID', 'type': 'u2', 'dims': 'nt'}),

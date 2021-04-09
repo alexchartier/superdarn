@@ -68,7 +68,9 @@ def write_nc(
     if atts:
         rootgrp.setncatts(atts)
 
+
     write_grp(rootgrp, dim_defs, set_header, header_info, var_defs, out_vars)
+    rootgrp.set_auto_mask(False)
     rootgrp.close()
     print('File written to %s' % fn)
 
@@ -91,6 +93,8 @@ def write_grp(grp, dim_defs, set_header, header_info, var_defs, out_vars):
         ncvars[key] = grp.createVariable(key, var['type'], vd)
         ncvars[key].units = var['units']
         ncvars[key].long_name = var['long_name']
+        ncvars[key].set_auto_mask(False)
+    grp.set_auto_mask(False)
 
     # Write to variables
     for key, var in out_vars.items():

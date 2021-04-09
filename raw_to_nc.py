@@ -36,6 +36,7 @@ import numpy as np
 from run_meteorproc import get_radar_params, id_hdw_params_t
 import pydarn
 import radFov
+from raw_to_fit import raw_to_fit, get_random_string
 import pdb
 
 
@@ -43,6 +44,7 @@ def main(
     starttime=dt.datetime(2005, 12, 1),
     endtime=dt.datetime(2020, 1, 1),
     in_dir_fmt='/project/superdarn/data/rawacf/%Y/%m/',
+    fit_dir_fmt='/project/superdarn/data/fitacf/%Y/%m/',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
     hdw_dat_dir='../rst/tables/superdarn/hdw/',
     step=1,  # month
@@ -51,6 +53,8 @@ def main(
 ):
 
     radar_info = get_radar_params(hdw_dat_dir)
+    run_dir = './run/%s' % get_random_string(4)
+    raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt)
 
     # Loop over fit files in the monthly directories
     time = starttime
@@ -61,7 +65,7 @@ def main(
         os.makedirs(out_dir, exist_ok=True)
 
         # Loop over the files
-        fit_fn_fmt = time.strftime(in_dir_fmt)
+        fit_fn_fmt = time.strftime(fit_dir_fmt)
         fit_fnames = glob.glob(os.path.join(fit_fn_fmt, fit_ext))
         print('Processing %i %s files in %s on %s' % (len(fit_fnames), fit_ext, fit_fn_fmt, time.strftime('%Y/%m')))
         for fit_fn in fit_fnames:
@@ -286,15 +290,19 @@ def def_header_info(in_fname, hdr_vals):
 if __name__ == '__main__':
 
     args = sys.argv
-    assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
-        'python3 fit_to_nc.py 2012,2 2012,2 ' + \
-        'data/fitacf/%Y/%m/  ' + \
-        'data/netcdf/%Y/%m/'
 
-    stime = dt.datetime.strptime(args[1], '%Y,%m')
-    etime = dt.datetime.strptime(args[2], '%Y,%m')
+    assert len(args) == 6, 'Should have 5x args, e.g.:\n' + \
+        'python3 raw_to_nc.py 2014,4,23 2014,4,24 ' + \
+        '/project/superdarn/data/rawacf/%Y/%m/  ' + \
+        '/project/superdarn/data/fitacf/%Y/%m/  ' + \
+        '/project/superdarn/data/netcdf/%Y/%m/'
+
+    stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
+    etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
     in_dir = args[3]
     out_dir = args[4]
+    run_dir = './run/run_%s' % get_random_string(4) 
+
     
     main(stime, etime, in_dir, out_dir)
 

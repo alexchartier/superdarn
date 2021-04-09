@@ -17,13 +17,12 @@ def raw_to_fit(
     endtime = dt.datetime(2017, 1, 1),
     run_dir = './run/',
     in_dir='/project/superdarn/data/rawacf/%Y/%m/',
-    out_dir='/project/superdarn/alex/cfit/%Y/%m/',
+    out_dir='/project/superdarn/alex/fitacf/%Y/%m/',
     clobber=False,
 ):
-    import bz2 
 
     print('%s\n%s\n%s\n%s\n%s\n' % (
-        'Converting files from rawACF to cFIT',
+        'Converting files from rawACF to fitACF',
         'from: %s to %s' % (starttime.strftime('%Y/%m/%d'), endtime.strftime('%Y/%m/%d')),
         'input e.g.: %s' % starttime.strftime(in_dir), 
         'output e.g.: %s' % starttime.strftime(out_dir), 
@@ -34,25 +33,23 @@ def raw_to_fit(
     # Loop over time
     time = starttime
     while time <= endtime:
-        # radar_list = get_old_radar_list(time.strftime(in_dir))
         radar_list = get_radar_list(time.strftime(in_dir))
         for radar in radar_list:
             indirn = os.path.join(in_dir, radar)  # for old setup
-            # in_fname_fmt = time.strftime(os.path.join(indirn, '%Y%m%d' + '*%s*.rawacf.bz2' % radar))
             in_fname_fmt = time.strftime(os.path.join(in_dir, '%Y%m%d' + '*%s*.rawacf.bz2' % radar))
-            cfit_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.cfit' % radar)
-            if os.path.isfile(cfit_fname):
-                print("File exists: %s" % cfit_fname)
+            fit_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.fit' % radar)
+            if os.path.isfile(fit_fname):
+                print("File exists: %s" % fit_fname)
                 if clobber:
                     print('overwriting')
                 else: 
                     print('skipping')
                     continue 
-            status = proc_radar(radar, in_fname_fmt, cfit_fname, run_dir)
+            status = proc_radar(radar, in_fname_fmt, fit_fname, run_dir)
         time += dt.timedelta(days=1)
 
 
-def proc_radar(radar, in_fname_fmt, cfit_fname, run_dir):
+def proc_radar(radar, in_fname_fmt, out_fname, run_dir):
 
     # Clean up the run directory
     os.makedirs(run_dir, exist_ok=True)
@@ -60,7 +57,7 @@ def proc_radar(radar, in_fname_fmt, cfit_fname, run_dir):
     os.system('rm -rf %s/*' % run_dir)
 
     # Set up storage directory
-    out_dir = os.path.dirname(cfit_fname)
+    out_dir = os.path.dirname(out_fname)
     os.makedirs(out_dir, exist_ok=True)
     
     # Make fitacfs for the day
@@ -75,26 +72,20 @@ def proc_radar(radar, in_fname_fmt, cfit_fname, run_dir):
         os.system('bzip2 -d %s' % in_fname_t)
 
         in_fname_t2 = '.'.join(in_fname_t.split('.')[:-1])
-        out_fname = '.'.join(in_fname_t2.split('.')[:-1]) + '.fitacf'
-        os.system('make_fit %s > %s' % (in_fname_t2, out_fname))
+        tmp_fname = '.'.join(in_fname_t2.split('.')[:-1]) + '.fitacf'
+        os.system('make_fit %s > %s' % (in_fname_t2, tmp_fname))
     os.system('cat *.fitacf > tmp.fitacf')
    
-    # Create a cfit
-    os.system('make_cfit tmp.fitacf > %s' % cfit_fname)
-    fn_inf = os.stat(cfit_fname)
-    if fn_inf.st_size < 1E5:
-        os.remove(cfit_fname)
-        print('cfit %s too small, size %1.1f MB' % (cfit_fname, fn_inf.st_size / 1E6))
+    # Create a single fitACF at output location
+    # os.system('make_cfit tmp.fitacf > %s' % out_fname)
+    fn_inf = os.stat('tmp.fitacf')
+    if fn_inf.st_size > 1E5:
+        shutil.move('tmp.fitacf', out_fname)
+        print('file created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
     else:
-        print('cfit created at %s, size %1.1f MB' % (cfit_fname, fn_inf.st_size / 1E6))
+        print('file %s too small, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
     return 0
 
-
-def get_old_radar_list(in_dir):
-    print('Calculating list of radars')
-    flist = os.listdir(in_dir)   # Rob has the radars packaged individually 
-    return flist
-    
 
 def get_radar_list(in_dir):
     print('Calculating list of radars')
@@ -130,7 +121,7 @@ if __name__ == '__main__':
     assert len(args) >= 5, 'Should have at least 4x args, e.g.:\n' + \
         'python3 raw_to_fit.py 2016,1,1 2017,1,1 ' + \
         '/project/superdarn/data/rawacf/%Y/%m/  ' + \
-        '/project/superdarn/alex/cfit/%Y/%m/ \n'
+        '/project/superdarn/data/fitacf/%Y/%m/ \n'
 
     clobber = False
     if (len(args) > 5) and (args[5] == 'clobber'):

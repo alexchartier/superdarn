@@ -62,6 +62,7 @@ def main(
 
         # Set up directories
         out_dir = time.strftime(out_dir_fmt)
+        print('Trying to make %s' % out_dir)
         os.makedirs(out_dir, exist_ok=True)
 
         # Loop over the files
@@ -108,7 +109,6 @@ def fit_to_nc(date, in_fname, out_fname, radar_info):
     var_defs = def_vars()
     dim_defs = {
         'npts': out_vars['mjd'].shape[0], 
-        'nt': len(out_vars['mjd_short']),
     } 
     header_info = def_header_info(in_fname, hdr_vals)
     
@@ -160,7 +160,6 @@ def convert_fitacf_data(date, in_fname, radar_info):
     fov_flds = 'mjd', 'beam', 'range', 'lat', 'lon', 
     data_flds = 'p_l', 'v', 'v_e', 'gflg', 
     elv_flds = 'elv', 'elv_low', 'elv_high',
-    mjd_s = 'mjd_short',
 
     # Figure out if we have elevation information
     is_elv = False
@@ -172,7 +171,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
 
     # Set up data storage
     out = {}
-    for fld in (fov_flds + data_flds + short_flds + mjd_s):
+    for fld in (fov_flds + data_flds + short_flds):
         out[fld] = []
    
     # Run through each beam record and store 
@@ -194,9 +193,8 @@ def convert_fitacf_data(date, in_fname, radar_info):
 
         for fld in data_flds:
             out[fld] += rec[fld].tolist()
-        for fld in short_flds:
-            out[fld] += [rec[fld],]
-        out['mjd_short'] += [mjd,]
+        for fld in short_flds:  # expand out to size
+            out[fld] += (one_obj * rec[fld]).tolist()
 
     # Convert to numpy arrays 
     for k, v in out.items():
@@ -234,12 +232,13 @@ def add_months(sourcedate, months):
 def def_vars():
     # netCDF writer expects a series of variable definitions - here they are
     stdin_int = {'units': 'none', 'type': 'u1', 'dims': 'npts'} 
+    stdin_int2 = {'units': 'none', 'type': 'u2', 'dims': 'npts'} 
     stdin_flt = {'type': 'f4', 'dims': 'npts'} 
     stdin_dbl = {'type': 'f8', 'dims': 'npts'} 
     vars = {
         'mjd': dict({'units': 'days', 'long_name': 'Modified Julian Date'}, **stdin_dbl),
         'beam': dict({'long_name': 'Beam #'}, **stdin_int),
-        'range': dict({'units': 'km','long_name': 'Slant range', 'type': 'u2', 'dims': 'npts'}),
+        'range': dict({'units': 'km','long_name': 'Slant range'}, **stdin_int2),
         'lat': dict({'units': 'deg.', 'long_name': 'Latitude'}, **stdin_flt),
         'lon': dict({'units': 'deg.', 'long_name': 'Longitude'}, **stdin_flt),
         'p_l': dict({'units': 'dB', 'long_name': 'Lambda fit SNR'}, **stdin_flt),
@@ -249,10 +248,9 @@ def def_vars():
         'elv': dict({'units': 'degrees', 'long_name': 'Elevation angle estimate'}, **stdin_flt),
         'elv_low': dict({'units': 'degrees', 'long_name': 'Lowest elevation angle estimate'}, **stdin_flt),
         'elv_high': dict({'units': 'degrees', 'long_name': 'Highest elevation angle estimate'}, **stdin_flt),
-        'mjd_short': dict({'units': 'days','long_name': 'Modified Julian Date (short format)', 'type': 'f8', 'dims': 'nt'}),
-        'tfreq': dict({'units': 'kHz','long_name': 'Transmit freq', 'type': 'u2', 'dims': 'nt'}),
-        'noise.sky': dict({'units': 'none','long_name': 'Sky noise', 'type': 'f4', 'dims': 'nt'}),
-        'cp': dict({'units': 'none','long_name': 'Control program ID', 'type': 'u2', 'dims': 'nt'}),
+        'tfreq': dict({'units': 'kHz','long_name': 'Transmit freq'}, **stdin_int2),
+        'noise.sky': dict({'units': 'none','long_name': 'Sky noise'}, **stdin_flt),
+        'cp': dict({'units': 'none','long_name': 'Control program ID'}, **stdin_int2),
     }   
 
     return vars
@@ -300,11 +298,12 @@ if __name__ == '__main__':
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
     in_dir = args[3]
-    out_dir = args[4]
+    fit_dir = args[4]
+    out_dir = args[5]
     run_dir = './run/run_%s' % get_random_string(4) 
 
     
-    main(stime, etime, in_dir, out_dir)
+    main(stime, etime, in_dir, fit_dir, out_dir)
 
 
 

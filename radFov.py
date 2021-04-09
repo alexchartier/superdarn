@@ -425,14 +425,6 @@ class fov(object):
                                               srang_edge[ig], elevation=telv,
                                               altitude=talt, hop=thop,
                                               model=model, fov_dir=fov_dir)
-                    if(coords != 'geo'):
-                        from davitpy.utils.coordUtils import coord_conv
-                        lonc, latc = coord_conv(lonc, latc, "geo", coords,
-                                                altitude=t_c_alt,
-                                                date_time=date_time)
-                        lone, late = coord_conv(lone, late, "geo", coords,
-                                                altitude=t_c_alt,
-                                                date_time=date_time)
                 else:
                     latc, lonc = np.nan, np.nan
                     late, lone = np.nan, np.nan
@@ -627,7 +619,7 @@ def calcFieldPnt(tr_glat, tr_glon, tr_alt, boresight, beam_off, slant_range,
             asr *= 1.0 - 1.0 / (2.0 * hop)
             shop = hop - 0.5
 
-        # Set safty counter and iteratively determine location
+        # Set safety counter and iteratively determine location
         maxn = 30
         hdel = 100.0
         htol = 0.5

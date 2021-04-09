@@ -56,18 +56,6 @@ def plot_all_radars(time, inFnameFmt, radarInfo):
         print("Processing %s" % radarCode)
         data = nc_utils.ncread_vars(inFname)
         # data = filter_radar_data.filter_sd_file(inFname)
-        
-        # Find the closest MJD time to the requested time
-        radarTimes = np.array([jd.from_jd(mjd, fmt="mjd") for mjd in data["mjd"]])
-        timeIndex = np.argmin(np.abs(radarTimes - time))
-        if np.abs(radarTimes - time).min() > dt.timedelta(seconds=60):
-            continue
-        mjdTime = data['mjd'][timeIndex]
-        radarInfo_t = id_hdw_params_t(time, radarInfo[radarCode])
-
-        data_t = tindex_data(data, mjdTime)
-        plot_vels_at_time(data_t, radarInfo_t['lat'], radarInfo_t['lon'], axExtent)
-    
     clb = plt.colorbar()
     clb.ax.set_title("Velocity")
     clb.set_label("m/s", rotation=270)
@@ -95,7 +83,8 @@ def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]
         print(mjdTime)
         time = jd.from_jd(mjdTime, fmt="mjd")
         radarInfo_t = id_hdw_params_t(time, radarInfo[radarCode])
-        plot_vels_at_time(data, mjdTime, radarCode, radarInfo_t, axExtent)
+        # plot_vels_at_time(data, mjdTime, radarCode, radarInfo_t, axExtent)
+        plot_radar(data, radarInfo_t['lat'], radarInfo_t['lon'], axExtent, time)
     
         clb = plt.colorbar()
         clb.ax.set_title("Velocity")
@@ -112,22 +101,39 @@ def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]
             plt.show()
 
 
-def tindex_data(data, mjdTime, 
-        variables=["lon", "lat", "mjd", "v", "gflg", "p_l", "beam", "range"],
-):
-    # Select the F scatter at the relevant time
-    timeIndex = data["mjd"] == mjdTime
-    for var in variables:
-        data[var] = data[var][timeIndex]
-    return data
+def plot_radar(data, radarLat, radarLon, axExtent, time, beams=None):
+    # loop over beams, plot one by one (necessary due to time indexing)
+
+    if not beams:
+        beams = np.unique(data['beam'])
+    for beam in beams: 
+
+        # Select one beam at a time
+        bmdata = {} 
+        bmInd = data['beam'] == beam
+        if np.sum(bmInd) == 0:
+            print('No data on %i' % beam)
+            continue
+        for k, v in data.items():
+            bmdata[k] = v[bmInd]
+
+        # Find the closest MJD time to the requested time
+        radarTimes = np.array([jd.from_jd(mjd, fmt="mjd") for mjd in bmdata["mjd"]])
+        timeIndex = np.argmin(np.abs(radarTimes - time))
+        if np.abs(radarTimes - time).min() > dt.timedelta(seconds=60):
+            continue
+        mjdTime = bmdata['mjd'][timeIndex]
+
+        data_t = tindex_data(bmdata, mjdTime)
+
+        ax = plt.axes(projection=ccrs.NorthPolarStereo())
+        plot_vels_at_time(ax, data_t, radarLat, radarLon, axExtent)
+
+
  
- 
-def plot_vels_at_time(data, radarLat, radarLon, axExtent=[-180, 180, 30, 90]):
+def plot_vels_at_time(ax, data, radarLat, radarLon, axExtent=[-180, 180, 30, 90]):
     # Plot the radar velocities on a map
 
-    fsFlag = data["gflg"] == 0
-
-    ax = plt.axes(projection=ccrs.NorthPolarStereo())
     ax.add_feature(cfeature.LAND)
     ax.add_feature(cfeature.OCEAN)
     ax.add_feature(cfeature.COASTLINE)
@@ -142,7 +148,7 @@ def plot_vels_at_time(data, radarLat, radarLon, axExtent=[-180, 180, 30, 90]):
     )
 
     plt.scatter(
-        data['lon'], data['lat'], s=0.2,  
+        data['lon'], data['lat'], s=5,  
         c=data['v'], cmap="Spectral_r",  
         vmin=-1000, vmax=1000, transform=ccrs.PlateCarree(),
     )
@@ -161,6 +167,16 @@ def plot_vels_at_time(data, radarLat, radarLon, axExtent=[-180, 180, 30, 90]):
     gl.top_labels = False
     gl.right_labels = False  
     return ax
+
+
+def tindex_data(data, mjdTime, 
+        variables=["lon", "lat", "mjd", "v", "gflg", "p_l", "beam", "range"],
+):
+    # Select the F scatter at the relevant time
+    timeIndex = data["mjd"] == mjdTime
+    for var in variables:
+        data[var] = data[var][timeIndex]
+    return data
 
 
 if __name__ == '__main__':

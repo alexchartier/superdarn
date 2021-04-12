@@ -138,8 +138,6 @@ def plot_vels_at_time(ax, data, radarLat, radarLon, axExtent=[-180, 180, 30, 90]
     ax.add_feature(cfeature.OCEAN)
     ax.add_feature(cfeature.COASTLINE)
     ax.add_feature(cfeature.BORDERS, linestyle=':')
-    ax.add_feature(cfeature.LAKES, alpha=0.5)
-    ax.add_feature(cfeature.RIVERS)
 
     ax.set_extent(axExtent, ccrs.PlateCarree())
     gl = ax.gridlines(

@@ -21,18 +21,28 @@ import pdb
 def main(
     inDir = 'data/netcdf/%Y/%m/',
     time = dt.datetime(2014, 4, 23, 8, 1),
-    haarpLat=62.4,
-    haarpLon=-145.2,
+    haarpLat=62.3883,
+    haarpLon=-145.1505,
     radars = {
-        'kod.c': [500, 1000], 
-        # 'kod.d': [500, 1000], 
+        'kod.d': [500, 1000], 
         'cvw': [2800, 3200],
+        'cly': [3200, 3600],
     },
+    ionosondes = ['GAKONA', 'EIELSON', 'IDAHONATIONALLAB'],
+    ionoDir = '/Users/chartat1/fusionpp_data/ionosonde/',
 ):
     inDir = time.strftime(inDir)
+    radarFnames = {}
+    for radar in radars.keys():
+        radarFnames[radar] = os.path.join(inDir, '%s.%s.nc' % (time.strftime('%Y%m%d'), radar)) 
+    ionoFnames = {}
+    for ionosonde in ionosondes:
+        ionoFnames[ionosonde] = os.path.join(inDir, '%s.%s.nc' % (time.strftime('%Y%m%d'), radar)) 
 
+    plot_data_locs([haarpLat, haarpLon], radarFnames, ionoFnames)
+    """
     for radar, rg in radars.items():
-        inFname = os.path.join(inDir, '%s.%s.nc' % (time.strftime('%Y%m%d'), radar))
+        inFname = radarFnames[radar]
         print('plotting %s' % inFname)
 
         # bm = 8,
@@ -40,19 +50,49 @@ def main(
 
         data = nc_utils.ncread_vars(inFname)
         rgi = (data['range'] > rg[0]) & (data['range'] < rg[1])
-        for k,v in data.items():
-            data[k] = v[rgi]
+        # for k,v in data.items():
+        #     data[k] = v[rgi]
+        if 'kod' in radar:
+            data['v'][:] = -1000
+        else:
+            data['v'][:] = 1000
         hdr = nc_utils.load_nc(inFname)
 
         time = dt.datetime(2014, 4, 23, 8, 1)
 
         axExtent=[-150, -120, 40, 70]
-        beams = 5, 6, 7, 8, 9, 10, 11, 12
+        #beams = 5, 6, 7, 8, 9, 10, 11, 12
 
-        plot_radar(data, hdr.lat, hdr.lon, axExtent, time, beams)
+        plot_radar(data, hdr.lat, hdr.lon, axExtent, time,) #beams)
         plt.plot(haarpLon, haarpLat, marker='.', color='red', transform=ccrs.PlateCarree())
 
     plt.show()
+    """
+
+def plot_data_locs(haarpLoc, radarFnames, ionoFnames, axExtent=[-180, 180, 40, 90]):
+
+
+    # Load the radar locations
+    radars = {}
+    for r, fn in radarFnames.items():
+        data = nc_utils.load_nc(fn)
+        pdb.set_trace()
+        # radars[r] = 
+        
+
+    # Plot the data locations on a map
+    rp = -130, 55
+    ax = plt.axes(projection=ccrs.Orthographic(*rp))
+    data_crs = ccrs.PlateCarree()
+    ax.add_feature(cfeature.OCEAN, zorder=0)
+    ax.add_feature(cfeature.LAND, zorder=0, edgecolor='black')
+    ax.add_feature(cfeature.BORDERS, linestyle=':')
+
+    ax.set_global()
+    ax.gridlines()
+    ax.plot(haarpLoc[1], haarpLoc[0], marker='.', color='red', markersize=15, transform=data_crs)
+    plt.show()
+     
 
 
 def plotBeam(inFname, bm, radarCode):

@@ -217,6 +217,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
         'rsep': bmdata['rsep'],
         'maxrg': radar_info['maxrg'],
         'bmsep': radar_info['beamsep'],
+        'boresight': radar_info['boresight'],
         'beams': fov.beams,
         'brng_at_15deg_el': brng,
     }
@@ -269,6 +270,7 @@ def set_header(rootgrp, header_info) :
     rootgrp.rsep_km = header_info['rsep']
     rootgrp.maxrangegate = header_info['maxrg']
     rootgrp.bmsep = header_info['bmsep']
+    rootgrp.boresight = header_info['boresight']
     rootgrp.beams = header_info['beams']
     rootgrp.brng_at_15deg_el = header_info['brng_at_15deg_el']
     return rootgrp

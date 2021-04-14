@@ -74,6 +74,7 @@ def cfit_to_wind(day, cfit_fname, beam_num, wind_fname, meteorproc_exe):
 def get_radar_params(hdw_dat_dir):
     # Pull out all the time/beam/radar name info from hdw_dat_dir   
     filenames = glob.glob(os.path.join(hdw_dat_dir, '*'))
+    assert len(filenames) > 0, 'No HDW files found in: %s' % hdw_dat_dir
 
     prm = [
         'glat', 'glon', 'alt', 'boresight', 'beamsep', 'velsign',

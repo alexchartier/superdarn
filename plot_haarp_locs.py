@@ -13,49 +13,59 @@ import filter_radar_data
 import nc_utils
 import glob
 import datetime as dt
-from plot_radar_fvel import plot_vels_at_time, tindex_data
+from plot_radar_fvel import plot_radar, tindex_data
 import sys 
 import pdb 
 
 
 def main(
     inDir = 'data/netcdf/%Y/%m/',
-    radarCode = 'kod',
-    stime = dt.datetime(2014, 4, 23),
-    etime = dt.datetime(2014, 4, 24),
-    bm = 9,
+    time = dt.datetime(2014, 4, 23, 8, 1),
     haarpLat=62.4,
     haarpLon=-145.2,
+    radars = {
+        'kod.c': [500, 1000], 
+        # 'kod.d': [500, 1000], 
+        'cvw': [2800, 3200],
+    },
 ):
-    inFname = os.path.join(stime.strftime(inDir), stime.strftime('%Y%m%d') + '.%s.c.nc' % radarCode)
-    print('plotting %s' % inFname)
-    plotBeam(inFname, bm, radarCode)
+    inDir = time.strftime(inDir)
 
-    data = nc_utils.ncread_vars(inFname)
-    hdr = nc_utils.load_nc(inFname)
-    mjd0= jd.to_jd(dt.datetime(2014, 4, 23, 6, 1), fmt='mjd')
-    mjd1= jd.to_jd(dt.datetime(2014, 4, 23, 6, 1,2), fmt='mjd')
-    mjds= data['mjd_short'][(data['mjd_short'] > mjd0) & (data['mjd_short'] < mjd1)]
-    data_t = tindex_data(data, mjds[0])
+    for radar, rg in radars.items():
+        inFname = os.path.join(inDir, '%s.%s.nc' % (time.strftime('%Y%m%d'), radar))
+        print('plotting %s' % inFname)
 
-    ax = plot_vels_at_time(data_t, hdr.lat, hdr.lon, axExtent=[-150, -130, 50, 70])
-    plt.plot(haarpLon, haarpLat, marker='.', color='red', transform=ccrs.PlateCarree())
+        # bm = 8,
+        #plotBeam(inFname, bm, radar)
+
+        data = nc_utils.ncread_vars(inFname)
+        rgi = (data['range'] > rg[0]) & (data['range'] < rg[1])
+        for k,v in data.items():
+            data[k] = v[rgi]
+        hdr = nc_utils.load_nc(inFname)
+
+        time = dt.datetime(2014, 4, 23, 8, 1)
+
+        axExtent=[-150, -120, 40, 70]
+        beams = 5, 6, 7, 8, 9, 10, 11, 12
+
+        plot_radar(data, hdr.lat, hdr.lon, axExtent, time, beams)
+        plt.plot(haarpLon, haarpLat, marker='.', color='red', transform=ccrs.PlateCarree())
+
     plt.show()
-
 
 
 def plotBeam(inFname, bm, radarCode):
 
-    times, rg, pwr, vel, tfreq, skynoise, rsep, = loadBeam(inFname, bm)
     plt.style.use('dark_background')
     plt.rcParams.update({'font.size': 18})
     fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(16, 9), gridspec_kw={'height_ratios': [1, 4]})
-    plt.suptitle('%s: %s' % (radarCode, times[0].strftime('%d %b %Y')))
+    plt.suptitle('Beam %i, %s: %s' % (bm, radarCode, times[0].strftime('%d %b %Y')))
 
     """
     1. narrow frequency plot
     """
-    ax1.plot(times, tfreq/1E3)
+    ax1.plot(times, tfreq/1E3, '.')
     ax1.set_xlim([times.min(), times.max()])
     ax1.set_ylim([8, 20])
     ax1.set_ylabel('Tx Freq. (MHz)')
@@ -66,11 +76,16 @@ def plotBeam(inFname, bm, radarCode):
     2. Velocity plot, not yet with alpha = power
     """
     # define scale, with white at zero
-    colormap = 'PiYG'  #'bwr'
+    colormap = 'bwr'  #'bwr'
     cmap = plt.get_cmap(colormap)
     norm = plt.Normalize(-1000, 1000)
     vel = np.fliplr(vel).T
+    gflg = np.fliplr(gflg).T 
+    gflg[np.flip(rg) < 1000, :] *= np.nan
     cm = cmap(norm(vel))
+    cm[gflg==1, 0] = 0
+    cm[gflg==1, 1] = 1
+    cm[gflg==1, 2] = 0
 
     # set alpha values of pixels - couldn't make it do anything
     pmax = 20
@@ -98,10 +113,10 @@ def plotBeam(inFname, bm, radarCode):
     plt.show()
 
 
-def loadBeam(inFname, bm,):
+def loadBeam(inFname, bm):
     data = nc_utils.ncread_vars(inFname)
     hdr = nc_utils.load_nc(inFname)
-    
+   
     rsep = hdr.rsep
     rmax = hdr.maxrg
     radarLat = hdr.lat
@@ -115,16 +130,19 @@ def loadBeam(inFname, bm,):
     rg_idx = np.arange(rmax) 
     rg = (np.arange(rmax + 1) * rsep + data['range'].min()).astype('int')
 
-    times = np.array([jd.from_jd(mjd, fmt="mjd") for mjd in data["mjd_short"]])
-    pwr = np.zeros((len(times), len(rg))) * np.nan
-    vel = np.zeros((len(times), len(rg))) * np.nan
-    for t, mjd in enumerate(data["mjd_short"]):
+    mjds = np.unique(bmdata["mjd"])
+    pwr = np.zeros((len(mjds), len(rg))) * np.nan
+    vel = np.zeros((len(mjds), len(rg))) * np.nan
+    gflg = np.zeros((len(mjds), len(rg))) * np.nan
+    for t, mjd in enumerate(mjds):
         ti = bmdata['mjd'] == mjd
         rgi = np.searchsorted(rg, bmdata['range'][ti])
         pwr[t, rgi] = bmdata['p_l'][ti]
         vel[t, rgi] = bmdata['v'][ti]
+        gflg[t, rgi] = bmdata['gflg'][ti]
 
-    return times, rg, pwr, vel, data['tfreq'], data['noise.sky'], rsep
+    times = np.array([jd.from_jd(mjd, fmt="mjd") for mjd in data['mjd_unique']])
+    return times, rg, pwr, vel, data['tfreq'], data['noise.sky'], rsep, gflg
 
 
 

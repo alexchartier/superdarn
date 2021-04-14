@@ -1,4 +1,5 @@
 """
+
 fit_to_nc.py
 
 Turn cfit into netCDF files
@@ -51,9 +52,8 @@ def main(
 ):
 
     rstpath = os.getenv('RSTPATH')
-    hdw_dat_dir = os.path.join(rstpath, '/tables/superdarn/hdw/')
+    hdw_dat_dir = os.path.join(rstpath, 'tables/superdarn/hdw/')
     
-
     # Running raw to NC
     radar_info = get_radar_params(hdw_dat_dir)
     run_dir = './run/%s' % get_random_string(4)
@@ -65,6 +65,7 @@ def main(
 
         # Set up directories
         out_dir = time.strftime(out_dir_fmt)
+        print('Trying to make %s' % out_dir)
         os.makedirs(out_dir, exist_ok=True)
 
         # Loop over the files
@@ -111,7 +112,6 @@ def fit_to_nc(date, in_fname, out_fname, radar_info):
     var_defs = def_vars()
     dim_defs = {
         'npts': out_vars['mjd'].shape[0], 
-        'nt': len(out_vars['mjd_unique']),
     } 
     header_info = def_header_info(in_fname, hdr_vals)
     
@@ -163,7 +163,6 @@ def convert_fitacf_data(date, in_fname, radar_info):
     fov_flds = 'mjd', 'beam', 'range', 'lat', 'lon', 
     data_flds = 'p_l', 'v', 'v_e', 'gflg', 
     elv_flds = 'elv', 'elv_low', 'elv_high',
-    mjd_s = 'mjd_unique',
 
     # Figure out if we have elevation information
     is_elv = False
@@ -175,9 +174,8 @@ def convert_fitacf_data(date, in_fname, radar_info):
 
     # Set up data storage
     out = {}
-    for fld in (fov_flds + data_flds + short_flds + mjd_s):
+    for fld in (fov_flds + data_flds + short_flds):
         out[fld] = []
-    
    
     # Run through each beam record and store 
     for rec in data:
@@ -198,13 +196,19 @@ def convert_fitacf_data(date, in_fname, radar_info):
 
         for fld in data_flds:
             out[fld] += rec[fld].tolist()
-        for fld in short_flds:
-            out[fld] += [rec[fld],]
-        out['mjd_unique'] += [mjd,]
+        for fld in short_flds:  # expand out to size
+            out[fld] += (one_obj * rec[fld]).tolist()
 
     # Convert to numpy arrays 
     for k, v in out.items():
         out[k] = np.array(v)
+
+    # Calculate beam azimuths assuming 20 degrees elevation
+    beam_off = radar_info['beamsep'] * (fov.beams - (radar_info['maxbeams'] - 1) / 2.0)
+    el = 15.
+    brng = np.zeros(beam_off.shape)
+    for ind, beam_off_elzero in enumerate(beam_off):
+        brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) +radar_info['boresight']
 
     hdr = {
         'lat': radar_info['glat'],
@@ -212,6 +216,9 @@ def convert_fitacf_data(date, in_fname, radar_info):
         'alt': radar_info['alt'],
         'rsep': bmdata['rsep'],
         'maxrg': radar_info['maxrg'],
+        'bmsep': radar_info['beamsep'],
+        'beams': fov.beams,
+        'brng_at_15deg_el': brng,
     }
 
     return out, hdr
@@ -228,12 +235,13 @@ def add_months(sourcedate, months):
 def def_vars():
     # netCDF writer expects a series of variable definitions - here they are
     stdin_int = {'units': 'none', 'type': 'u1', 'dims': 'npts'} 
+    stdin_int2 = {'units': 'none', 'type': 'u2', 'dims': 'npts'} 
     stdin_flt = {'type': 'f4', 'dims': 'npts'} 
     stdin_dbl = {'type': 'f8', 'dims': 'npts'} 
     vars = {
         'mjd': dict({'units': 'days', 'long_name': 'Modified Julian Date'}, **stdin_dbl),
         'beam': dict({'long_name': 'Beam #'}, **stdin_int),
-        'range': dict({'units': 'km','long_name': 'Slant range', 'type': 'u2', 'dims': 'npts'}),
+        'range': dict({'units': 'km','long_name': 'Slant range'}, **stdin_int2),
         'lat': dict({'units': 'deg.', 'long_name': 'Latitude'}, **stdin_flt),
         'lon': dict({'units': 'deg.', 'long_name': 'Longitude'}, **stdin_flt),
         'p_l': dict({'units': 'dB', 'long_name': 'Lambda fit SNR'}, **stdin_flt),
@@ -243,10 +251,9 @@ def def_vars():
         'elv': dict({'units': 'degrees', 'long_name': 'Elevation angle estimate'}, **stdin_flt),
         'elv_low': dict({'units': 'degrees', 'long_name': 'Lowest elevation angle estimate'}, **stdin_flt),
         'elv_high': dict({'units': 'degrees', 'long_name': 'Highest elevation angle estimate'}, **stdin_flt),
-        'mjd_unique': dict({'units': 'days','long_name': 'Modified Julian Date (unique values)', 'type': 'f8', 'dims': 'nt'}),
-        'tfreq': dict({'units': 'kHz','long_name': 'Transmit freq', 'type': 'u2', 'dims': 'nt'}),
-        'noise.sky': dict({'units': 'none','long_name': 'Sky noise', 'type': 'f4', 'dims': 'nt'}),
-        'cp': dict({'units': 'none','long_name': 'Control program ID', 'type': 'u2', 'dims': 'nt'}),
+        'tfreq': dict({'units': 'kHz','long_name': 'Transmit freq'}, **stdin_int2),
+        'noise.sky': dict({'units': 'none','long_name': 'Sky noise'}, **stdin_flt),
+        'cp': dict({'units': 'none','long_name': 'Control program ID'}, **stdin_int2),
     }   
 
     return vars
@@ -259,8 +266,11 @@ def set_header(rootgrp, header_info) :
     rootgrp.lat = header_info['lat']
     rootgrp.lon = header_info['lon']
     rootgrp.alt = header_info['alt']
-    rootgrp.rsep = header_info['rsep']
-    rootgrp.maxrg = header_info['maxrg']
+    rootgrp.rsep_km = header_info['rsep']
+    rootgrp.maxrangegate = header_info['maxrg']
+    rootgrp.bmsep = header_info['bmsep']
+    rootgrp.beams = header_info['beams']
+    rootgrp.brng_at_15deg_el = header_info['brng_at_15deg_el']
     return rootgrp
 
 
@@ -291,11 +301,12 @@ if __name__ == '__main__':
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
     in_dir = args[3]
-    out_dir = args[4]
+    fit_dir = args[4]
+    out_dir = args[5]
     run_dir = './run/run_%s' % get_random_string(4) 
 
     
-    main(stime, etime, in_dir, out_dir)
+    main(stime, etime, in_dir, fit_dir, out_dir)
 
 
 

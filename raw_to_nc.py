@@ -32,11 +32,9 @@ import jdutil
 import datetime as dt 
 import calendar
 import numpy as np
-from run_meteorproc import get_radar_params, id_hdw_params_t
+from sd_utils import get_radar_params, id_hdw_params_t, get_random_string
 import pydarn
 import radFov
-import string
-import random
 import pdb
 
 
@@ -57,7 +55,10 @@ def main(
     # Running raw to NC
     radar_info = get_radar_params(hdw_dat_dir)
     run_dir = './run/%s' % get_random_string(4)
-    raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt)
+    try:
+        raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt)
+    except:
+        print('Unable to convert rawacfs from %s' % starttime.strftime(in_dir_fmt))
 
     # Loop over fit files in the monthly directories
     time = starttime
@@ -386,12 +387,6 @@ def get_radar_list(in_dir):
             radar_list.append(radarn)
             print(radarn)
     return radar_list
-
-
-def get_random_string(length):
-    letters = string.ascii_lowercase
-    result_str = ''.join(random.choice(letters) for i in range(length))
-    return result_str
 
 
 

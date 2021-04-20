@@ -84,7 +84,7 @@ def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]
         time = jd.from_jd(mjdTime, fmt="mjd")
         radarInfo_t = id_hdw_params_t(time, radarInfo[radarCode])
         # plot_vels_at_time(data, mjdTime, radarCode, radarInfo_t, axExtent)
-        plot_radar(data, radarInfo_t['lat'], radarInfo_t['lon'], axExtent, time)
+        plot_radar(data, radarInfo_t['lat'], radarInfo_t['lon'], time)
     
         clb = plt.colorbar()
         clb.ax.set_title("Velocity")
@@ -101,11 +101,20 @@ def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]
             plt.show()
 
 
-def plot_radar(data, radarLat, radarLon, axExtent, time, beams=None):
+def plot_radar(ax, data, radarLat, radarLon, time, beams=None):
     # loop over beams, plot one by one (necessary due to time indexing)
 
     if not beams:
         beams = np.unique(data['beam'])
+
+    rp = -130, 55
+    ax = plt.axes(projection=ccrs.Orthographic(*rp))
+    ax.add_feature(cfeature.LAND)
+    ax.add_feature(cfeature.OCEAN)
+    ax.add_feature(cfeature.COASTLINE)
+    ax.add_feature(cfeature.BORDERS, linestyle=':')
+    ax.set_global()
+
     for beam in beams: 
 
         # Select one beam at a time
@@ -126,44 +135,28 @@ def plot_radar(data, radarLat, radarLon, axExtent, time, beams=None):
 
         data_t = tindex_data(bmdata, mjdTime)
 
-        ax = plt.axes(projection=ccrs.NorthPolarStereo())
-        plot_vels_at_time(ax, data_t, radarLat, radarLon, axExtent)
-
+        plot_vels_at_time(ax, data_t, radarLat, radarLon)
+    return ax
 
  
-def plot_vels_at_time(ax, data, radarLat, radarLon, axExtent=[-180, 180, 30, 90]):
+def plot_vels_at_time(ax, data, radarLat, radarLon):
     # Plot the radar velocities on a map
 
-    ax.add_feature(cfeature.LAND)
-    ax.add_feature(cfeature.OCEAN)
-    ax.add_feature(cfeature.COASTLINE)
-    ax.add_feature(cfeature.BORDERS, linestyle=':')
 
-    ax.set_extent(axExtent, ccrs.PlateCarree())
-    gl = ax.gridlines(
-        crs=ccrs.PlateCarree(), draw_labels=True,
-        linewidth=2, color='gray', alpha=0.5, linestyle='-',
-    )
+    data_crs = ccrs.PlateCarree() 
 
-    plt.scatter(
+
+    ax.scatter(
         data['lon'], data['lat'], s=5,  
         c=data['v'], cmap="Spectral_r",  
         vmin=-1000, vmax=1000, transform=ccrs.PlateCarree(),
     )
 
-    plt.plot(
+    ax.plot(
         radarLon, radarLat, 
-        color="red", marker="x", transform=ccrs.PlateCarree(),
+        color="k", marker=".", markersize=9, transform=data_crs,
     )
 
-    gl.xformatter = LONGITUDE_FORMATTER
-    gl.yformatter = LATITUDE_FORMATTER
-
-    style = {'size': 10, 'color': 'gray'}
-    gl.xlabel_style = style 
-    gl.ylabel_style = style
-    gl.top_labels = False
-    gl.right_labels = False  
     return ax
 
 

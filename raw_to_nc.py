@@ -30,6 +30,7 @@ import shutil
 import netCDF4
 import jdutil
 import datetime as dt 
+from dateutil.relativedelta import relativedelta
 import calendar
 import numpy as np
 from sd_utils import get_radar_params, id_hdw_params_t, get_random_string
@@ -50,15 +51,14 @@ def main(
 ):
 
     rstpath = os.getenv('RSTPATH')
+    assert rstpath, 'RSTPATH environment variable needs to be set'
     hdw_dat_dir = os.path.join(rstpath, 'tables/superdarn/hdw/')
     
     # Running raw to NC
     radar_info = get_radar_params(hdw_dat_dir)
     run_dir = './run/%s' % get_random_string(4)
-    try:
+    if in_dir_fmt:
         raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt)
-    except:
-        print('Unable to convert rawacfs from %s' % starttime.strftime(in_dir_fmt))
 
     # Loop over fit files in the monthly directories
     time = starttime
@@ -70,7 +70,11 @@ def main(
         os.makedirs(out_dir, exist_ok=True)
 
         # Loop over the files
+        #fit_fn_fmt = time.strftime(os.path.join(fit_dir_fmt, '%Y%m%d'))
         fit_fn_fmt = time.strftime(fit_dir_fmt)
+        temp = f'fit_fn_fmt: {fit_fn_fmt}'
+        print(temp)
+        print(os.path.join(fit_fn_fmt, fit_ext))
         fit_fnames = glob.glob(os.path.join(fit_fn_fmt, fit_ext))
         print('Processing %i %s files in %s on %s' % (len(fit_fnames), fit_ext, fit_fn_fmt, time.strftime('%Y/%m')))
         for fit_fn in fit_fnames:
@@ -309,9 +313,15 @@ def raw_to_fit(
 
     run_dir = os.path.abspath(run_dir)
     # Loop over time
+    ct = 0
     time = starttime
     while time <= endtime:
-        radar_list = get_radar_list(time.strftime(in_dir))
+        in_dir_t = time.strftime(in_dir)
+        if not os.path.isdir(in_dir_t):
+            time += relativedelta(months=1)
+            print('%s not found - skipping' % in_dir_t)
+            continue
+        radar_list = get_radar_list(in_dir_t)
         for radar in radar_list:
             indirn = os.path.join(in_dir, radar)  # for old setup
             in_fname_fmt = time.strftime(os.path.join(in_dir, '%Y%m%d' + '*%s*.rawacf.bz2' % radar))
@@ -394,7 +404,7 @@ if __name__ == '__main__':
 
     args = sys.argv
 
-    assert len(args) == 6, 'Should have 5x args, e.g.:\n' + \
+    assert len(args) >= 5, 'Should have 5x args, e.g.:\n' + \
         'python3 raw_to_nc.py 2014,4,23 2014,4,24 ' + \
         '/project/superdarn/data/rawacf/%Y/%m/  ' + \
         '/project/superdarn/data/fitacf/%Y/%m/  ' + \
@@ -402,9 +412,15 @@ if __name__ == '__main__':
 
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    in_dir = args[3]
-    fit_dir = args[4]
-    out_dir = args[5]
+    if len(args) == 6:
+
+        in_dir = args[3]
+        fit_dir = args[4]
+        out_dir = args[5]
+    elif len(args) == 5:
+        in_dir = None
+        fit_dir = args[3]
+        out_dir = args[4]
     run_dir = './run/run_%s' % get_random_string(4) 
 
     

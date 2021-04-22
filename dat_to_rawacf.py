@@ -11,6 +11,7 @@ sys.path.append('/homes/chartat1/fusionpp/src/nimo/')
 import jdutil
 import shutil
 import nc_utils
+from sd_utils import get_random_string
 import os
 import glob
 import bz2
@@ -182,12 +183,7 @@ def get_three_letter_radar_id(radar_letter):
 
     return radar_ids[radar_letter]
 
-def get_random_string(length):
-    """Return a random string of lowercase letters"""
 
-    letters = string.ascii_lowercase
-    result_str = ''.join(random.choice(letters) for i in range(length))
-    return result_str
 
 if __name__ == '__main__':
     args = sys.argv

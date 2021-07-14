@@ -27,6 +27,7 @@ __maintainer__ = "Jordan Wiker"
 __email__ = "jordan.wiker@jhuapl.edu"
 __status__ = "Development"
 
+
 def main(
     in_filename = '/project/superdarn/data/map/2014/05/20140524.map',
     out_filename = '/homes/superdarn/output.nc',
@@ -38,21 +39,33 @@ def main(
 
 
 def save_data(data, attributes, AtoGHeight, in_filename, out_filename):    
+    print('Saving data to %s' % out_filename)
     with netCDF4.Dataset(out_filename, 'w') as nc: 
         set_header(nc, AtoGHeight, in_filename)
 
-        mapData = nc.createGroup('Map_data')
-        mapData.createDimension('numPoints', len(data['times']))
+        nc.createDimension('numPoints', len(data['times']))
         for k, v in data.items():
             var_attributes = attributes[k]
-            var = mapData.createVariable(k, 'f4', 'numPoints')
+            if k == 'times':
+                #NOTE(ATC) F4 doesn't have 1-sec precision for 1970 timestamps, need to use i4
+                var = nc.createVariable(k, 'i4', 'numPoints')  
+            else:
+                var = nc.createVariable(k, 'f4', 'numPoints')
             var[:] = v
             var.units = var_attributes['units']
             var.long_name = var_attributes['long_name']
 
 
 def get_data(in_filename, AtoGHeight):
+    print('Processing %s' % in_filename)
     map_data = pydarn.SuperDARNRead(in_filename).read_map()
+    for k, v in map_data[0].items():
+        print(k)
+        try:
+            print(v)
+        except:
+            print(v.shape)
+    pdb.set_trace()
 
     latMagVector = []
     lonMagVector = []
@@ -64,7 +77,7 @@ def get_data(in_filename, AtoGHeight):
 
     velocityVector = []
     timeVector = []
-
+    
     for entry in map_data: 
         numPoints = len(entry['vector.vel.median'])
         t = dt.datetime(
@@ -77,6 +90,7 @@ def get_data(in_filename, AtoGHeight):
         azM = entry['vector.kvect']
         
         velocityVector.append(entry['vector.vel.median'])
+        sdVector.append(entry['vector.vel.sd'])
         latMagVector.append(entry['vector.mlat'])
         lonMagVector.append(entry['vector.mlon'])
         azimuthMagVector.append(azM)    
@@ -87,17 +101,10 @@ def get_data(in_filename, AtoGHeight):
         latGeoVector.append(latG)
         lonGeoVector.append(lonG)
         
-        # TODO: convert mAz to gAz
         azG = convert_azm_aacgm2geo(azM, latG, lonG, t, refAlt=AtoGHeight)
-
         azimuthGeoVector.append(azG)
     
-    fields = 'times','mLat','mLon','mAz','gLat','gLon','vel'
-
     data = {}
-    for field in fields:
-        data[field] = []
-
     data['times'] = np.array(np.concatenate(timeVector))
     data['mLat'] = np.array(np.concatenate(latMagVector))
     data['mLon'] = np.array(np.concatenate(lonMagVector))
@@ -106,6 +113,7 @@ def get_data(in_filename, AtoGHeight):
     data['gLat'] = np.array(np.concatenate(latGeoVector))
     data['gLon'] = np.array(np.concatenate(lonGeoVector))
     data['vel'] = np.array(np.concatenate(velocityVector))
+    data['sd'] = np.array(np.concatenate(sdVector))
     
     return data
     
@@ -131,7 +139,8 @@ def get_attributes():
         'gLat': dict({'units': 'degrees', 'long_name': 'Geographic Latitude'}),
         'gLon': dict({'units': 'degrees', 'long_name': 'Geographic Longitude'}),
         'gAz': dict({'units': 'degrees', 'long_name': 'Geographic Azimuth'}),
-        'vel': dict({'units': 'm/s', 'long_name': 'Velocity Scalar'}),
+        'vel': dict({'units': 'm/s', 'long_name': 'Velocity'}),
+        'sd': dict({'units': 'm/s', 'long_name': 'Velocity Standard Deviation'}),
     }   
     return attributes
 

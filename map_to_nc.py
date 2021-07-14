@@ -13,10 +13,12 @@ Terms:
 import os
 import sys
 import numpy as np
+import nvector as nv
 import pydarn
 import datetime as dt
 import aacgmv2
 import netCDF4
+import pdb
     
 __author__ = "Jordan Wiker"
 __copyright__ = "Copyright 2021, JHUAPL"
@@ -48,22 +50,20 @@ def save_data(data, attributes, AtoGHeight, in_filename, out_filename):
             var.units = var_attributes['units']
             var.long_name = var_attributes['long_name']
 
-        #nc.close() 
-
 
 def get_data(in_filename, AtoGHeight):
     map_data = pydarn.SuperDARNRead(in_filename).read_map()
 
-    latMagVector        = []
-    lonMagVector        = []
-    azimuthMagVector    = []
+    latMagVector = []
+    lonMagVector = []
+    azimuthMagVector = []
 
-    latGeoVector        = []
-    lonGeoVector        = []
-    azimuthGeoVector    = []
+    latGeoVector = []
+    lonGeoVector = []
+    azimuthGeoVector = []
 
-    velocityVector      = []
-    timeVector          = []
+    velocityVector = []
+    timeVector = []
 
     for entry in map_data: 
         numPoints = len(entry['vector.vel.median'])
@@ -73,18 +73,24 @@ def get_data(in_filename, AtoGHeight):
         )  
         # Convert time to seconds since 1970-01-01 00:00
         times = [t.timestamp()] * numPoints
-
         timeVector.append(times)
+        azM = entry['vector.kvect']
+        
         velocityVector.append(entry['vector.vel.median'])
         latMagVector.append(entry['vector.mlat'])
         lonMagVector.append(entry['vector.mlon'])
-        azimuthMagVector.append(entry['vector.kvect'])    
+        azimuthMagVector.append(azM)    
         
-        latG, lonG, heightG = aacgmv2.convert_latlon_arr(entry['vector.mlat'], entry['vector.mlon'], AtoGHeight, t, method_code='A2G')
+        latG, lonG, heightG = aacgmv2.convert_latlon_arr(
+            entry['vector.mlat'], entry['vector.mlon'], AtoGHeight, t, method_code='A2G',
+        )
         latGeoVector.append(latG)
         lonGeoVector.append(lonG)
         
         # TODO: convert mAz to gAz
+        azG = convert_azm_aacgm2geo(azM, latG, lonG, t, refAlt=AtoGHeight)
+
+        azimuthGeoVector.append(azG)
     
     fields = 'times','mLat','mLon','mAz','gLat','gLon','vel'
 
@@ -92,13 +98,14 @@ def get_data(in_filename, AtoGHeight):
     for field in fields:
         data[field] = []
 
-    data['times']   = np.array(np.concatenate(timeVector))
-    data['mLat']    = np.array(np.concatenate(latMagVector))
-    data['mLon']    = np.array(np.concatenate(lonMagVector))
-    data['mAz']     = np.array(np.concatenate(azimuthMagVector))
-    data['gLat']    = np.array(np.concatenate(latGeoVector))
-    data['gLon']    = np.array(np.concatenate(lonGeoVector))
-    data['vel']     = np.array(np.concatenate(velocityVector))
+    data['times'] = np.array(np.concatenate(timeVector))
+    data['mLat'] = np.array(np.concatenate(latMagVector))
+    data['mLon'] = np.array(np.concatenate(lonMagVector))
+    data['mAz'] = np.array(np.concatenate(azimuthMagVector))
+    data['gAz'] = np.array(np.concatenate(azimuthGeoVector))
+    data['gLat'] = np.array(np.concatenate(latGeoVector))
+    data['gLon'] = np.array(np.concatenate(lonGeoVector))
+    data['vel'] = np.array(np.concatenate(velocityVector))
     
     return data
     
@@ -123,9 +130,39 @@ def get_attributes():
         'mAz': dict({'units': 'degrees', 'long_name': 'Magnetic Azimuth'}),
         'gLat': dict({'units': 'degrees', 'long_name': 'Geographic Latitude'}),
         'gLon': dict({'units': 'degrees', 'long_name': 'Geographic Longitude'}),
+        'gAz': dict({'units': 'degrees', 'long_name': 'Geographic Azimuth'}),
         'vel': dict({'units': 'm/s', 'long_name': 'Velocity Scalar'}),
     }   
     return attributes
+
+
+def convert_azm_aacgm2geo(azM, latG, lonG, dTime, refAlt=300):
+    # Convert azimuths from AACGM to geodetic
+
+    refZ = -refAlt * 1E3  # nvector uses z = height in metres down
+    wgs84 = nv.FrameE(name='WGS84')
+    nPole = aacgmv2.convert_latlon(90, 0, refAlt, dTime, method_code="A2G")
+
+    geoAzimuths = np.ones(azM.shape) * np.nan
+
+    for ind, mAzm in enumerate(azM):
+
+        pointA = wgs84.GeoPoint(
+            latitude=latG[ind], longitude=lonG[ind], z=refZ, degrees=True,
+        )
+        pointPole = wgs84.GeoPoint(
+            latitude=nPole[0], longitude=nPole[1], z=refZ, degrees=True,
+        )
+
+        p_AB_N = pointA.delta_to(pointPole)
+        azimuth_offset = p_AB_N.azimuth_deg[0]
+        geoAzimuths[ind] = mAzm + azimuth_offset
+
+    geoAzimuths[geoAzimuths > 180] -= 360.
+    geoAzimuths[geoAzimuths < -180] += 360.
+
+    return geoAzimuths
+
 
 
 if __name__ == '__main__':

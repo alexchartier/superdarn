@@ -34,47 +34,47 @@ def read_data():
                 vn = f.get('Metadata')
                 parameters = vn['Data Parameters']
                 #print(vn['Data Parameters'][...])
+                
                     
                 # Get the data
                 data = f.get('Data')
                 dataTable = data.get('Table Layout')[...]
                         
-                dmsp_data = {"UT1_UNIX":np.array([]), "UT2_UNIX":np.array([]), 
-                             "GDLAT":np.array([]), "GLON":np.array([]), "HOR_ION_V":np.array([]), 
-                             "VERT_ION_V":np.array([])}
+                dmsp_data = {"UT1_UNIX":np.array([]), "MLAT":np.array([]), 
+                             "GDLAT":np.array([]), "GLON":np.array([]), "ION_V_SAT_FOR":np.array([]), 
+                             "ION_V_SAT_LEFT":np.array([]), "ION_V_LEFT_FLAG":np.array([]), 
+                             "ION_V_FOR_FLAG":np.array([])}
                 
                 #put data in a dictionary
+                """
+                9: UT1_UNIX
+                12: GDLAT
+                13: GLON
+                14: MLAT
+                16: ION_V_SAT_FOR :direction of space craft
+                17: ION_V_SAT_LEFT: left of direction of spacecraft
+                19: ION_V_FOR_FLAG
+                20: ION_V_LEFT_FLAG
+                """
+                indices = [9, 12, 13, 14, 16, 17, 19, 20]
                 try:
-                    if str(parameters[20][0]) == "b'VERT_ION_V'": 
-            
-                        for line in dataTable:
-                            
-                            if np.isnan(line[20]) == False:
-            
-                                for var in range(9, 13):
-                                    
-                                    key = str(parameters[var][0])
-                                    key = key.replace("b'", "")
-                                    key = key.replace("'", "")
-                                    dmsp_data[key] = np.append(dmsp_data[key], line[var])
+                    if str(parameters[19][0]) == "b'ION_V_FOR_FLAG'": 
+                        
+                        
+                        for index, line in enumerate(dataTable):
                     
-                                for var in range(19, 21):
-                                    
-                                    key = str(parameters[var][0])
-                                    key = key.replace("b'", "")
-                                    key = key.replace("'", "")
-                                    dmsp_data[key] = np.append(dmsp_data[key], line[var])
-                    
+                            for var in indices:
+                                
+                                key = str(parameters[var][0])
+                                key = key.replace("b'", "")
+                                key = key.replace("'", "")
+                                dmsp_data[key] = np.append(dmsp_data[key], line[var])
                         
                         pickle.dump(dmsp_data, open( picklename, "wb" ) )
                                     
                 except IndexError or ValueError:
                     print("eh not a file we want")
 
-
-def plot_satellitedata(dates):
-    with open("dms_20140423_18s1.001.p", 'rb') as f:
-        data = pickle.load(f)
     
 def main():
     read_data()    

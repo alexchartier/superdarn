@@ -16,11 +16,12 @@ from datetime import datetime
 import time
 
 def main():
-    #read data
+    #initial start times
     day = 22
-    startHour = 0
+    startHour = 12
     startMin = 0
     
+    #read data
     pot_file = "sami3_may%i_phi.nc" % (day)
     vel_file = "sami3_may%ia.nc" % (day)
     
@@ -31,21 +32,21 @@ def main():
     startModTime = startHour*60 + startMin
     modTimeIndex = nearest_index(startModTime, mod_timeArray)
     
-    
-    
-
-    plot_model_vel(vel_data, modTimeIndex)
-    plot_model_contour(pot_data, modTimeIndex)
+    #plot sami3 velocities, potential contours, and transform dmsp vector data
+    plot_model_vel(vel_data, day, modTimeIndex)
+    plot_model_contour(pot_data, day, modTimeIndex)
     vector_transform(vel_data, modTimeIndex, day)
-    
+
+#returns the index of an array which is closest to value    
 def nearest_index(value, array):
     
     index = (np.abs(array - value)).argmin()
     return index
 
-def title_plot(hour, filename):
+#titles the plots with date
+def title_plot(hour, day, filename):
     
-    date = "May 23"
+    date = "May" + day
     title = ("AMPERE/SAMI3 %s %s UT" % (date, hour))
     plt.suptitle(title)
     
@@ -54,43 +55,42 @@ def title_plot(hour, filename):
     plt.show()
     plt.close()
     
-    
-def plot_model_vel(vel_data, modTimeIndex):
+#plot SAMI3 velocity data in a cartesian projection
+def plot_model_vel(vel_data, day, modTimeIndex):
     
     hour = str(vel_data["time"][modTimeIndex])
 
     #plot model velocity data
-    fig, ax = plt.subplots(1, 1, subplot_kw=dict(projection='polar'))
+    fig, ax = plt.subplots(1, 1)
     
-    #change model velocity data to polar
-    poleIndex = vel_data["lat0"] >= 70
-    adjVelLats = (90 - vel_data["lat0"][poleIndex]).flatten()
-    adjVelLons = np.deg2rad(vel_data["lon0"][poleIndex]).flatten()
-    
+    modLons = vel_data["lon0"]
+    modLats = vel_data["lat0"]
+
     #more polar conversions
-    mod_vertical = vel_data["u1p0"][modTimeIndex][poleIndex]
-    mod_horizontal = vel_data["u3h0"][modTimeIndex][poleIndex]
+    mod_vertical = vel_data["u1p0"][modTimeIndex]
+    mod_horizontal = vel_data["u3h0"][modTimeIndex]
     
+    pdb.set_trace()
     
     #plot model velocity data
-    vel = ax.quiver(adjVelLons, adjVelLats, mod_horizontal, mod_vertical)
-    ax.set_rlabel_position(50) 
+    vel = ax.quiver(modLons.flatten(), modLats.flatten(), 
+                    mod_horizontal.flatten(), mod_vertical.flatten())
     
-    title_plot(hour, "mod_vel")
+    title_plot(hour, day, "mod_vel")
     
 
 
-
-def plot_model_contour(pot_data, modTimeIndex):
+#plot SAMI3 contour data in polar
+def plot_model_contour(pot_data, day, modTimeIndex):
 
     hour = str(pot_data["time"][modTimeIndex])
     phi = pot_data["phi"][modTimeIndex,:,:]
     
     
+    #adjust data for polar
     adjPotLats = 90 - pot_data["lat"]
     adjPotLons = np.deg2rad(pot_data["lon"])
     
-    # subplot_kw=dict(projection='polar')
     fig, ax = plt.subplots(1, 1, subplot_kw=dict(projection='polar'))
     
     pot = ax.contour(adjPotLons, adjPotLats, phi, cmap='hot')
@@ -99,48 +99,42 @@ def plot_model_contour(pot_data, modTimeIndex):
     cbar = fig.colorbar(pot)
     
     
-    title_plot(hour, "mod_contour")
+    title_plot(hour, day, "mod_contour")
 
 
 
 
 def vector_transform(vel_data, modTimeIndex, day):
 
-    colors = ["red", "orange", "green", "blue", "magenta"]
     fig, ax = plt.subplots(1, 1)
 
     #compare data
     for sat in range(16,19):
         
         print(sat)
-    
+        
+        #read data
         sat_file = "dms_ut_201405%i_%i.002.p" % (day, sat)
         dmsp_data = pickle.load( open(sat_file, "rb"))
         
-        startDay = datetime(2014, 5, day)
-        dayUnix = time.mktime(startDay.timetuple())
-        
-        
-        timeUnix = dayUnix + vel_data["time"][modTimeIndex]*3600
-        
-
-        
-        
+        #quality flags for data
         forQualIndex = dmsp_data["ION_V_FOR_FLAG"] == 1
         leftQualIndex = dmsp_data["ION_V_LEFT_FLAG"] == 1
-        
         qualFlag = forQualIndex & leftQualIndex
         
+        #set time index for dmsp data
+        startDay = datetime(2014, 5, day)
+        dayUnix = time.mktime(startDay.timetuple())
+        timeUnix = dayUnix + vel_data["time"][modTimeIndex]*3600
         dmspTindex = nearest_index(timeUnix, dmsp_data["UT1_UNIX"][qualFlag])
         
-        pdb.set_trace()
-        
+        #read satellite data
         satLat = dmsp_data["GDLAT"][qualFlag][dmspTindex]
         satLon = dmsp_data["GLON"][qualFlag][dmspTindex]
         forward = dmsp_data["ION_V_SAT_FOR"][qualFlag][dmspTindex]
         left = dmsp_data["ION_V_SAT_LEFT"][qualFlag][dmspTindex]
         
-        #create vectors based on satellite direction
+        #create north/east vectors based on satellite direction
         wgs84 = nv.FrameE(name='WGS84')
         init = wgs84.GeoPoint(satLat, 
                               satLon, 0, degrees=True)
@@ -150,7 +144,6 @@ def vector_transform(vel_data, modTimeIndex, day):
         
         p_AB_N = init.delta_to(final) 
         north, east, z = p_AB_N.pvector.ravel()
-        
         
         
         #use geometry to find components of dmsp measurement velocity
@@ -179,7 +172,7 @@ def vector_transform(vel_data, modTimeIndex, day):
         
         
     
-    title_plot(str(vel_data["time"][modTimeIndex]), "comparison")
+    title_plot(str(vel_data["time"][modTimeIndex]), day, "comparison")
 
 main()
     

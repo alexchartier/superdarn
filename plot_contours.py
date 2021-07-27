@@ -12,10 +12,12 @@ import pdb
 import pickle
 from scipy.interpolate import griddata
 import nvector as nv
+from datetime import datetime
+import time
 
 def main():
     #read data
-    day = 23
+    day = 22
     startHour = 0
     startMin = 0
     
@@ -25,16 +27,26 @@ def main():
     pot_data = nc_utils.ncread_vars(pot_file)
     vel_data = nc_utils.ncread_vars(vel_file)
     
-    plot_model_vel(vel_data, day, startHour)
-    plot_model_contour(pot_data, day, startHour)
-    vector_transform(vel_data, day, startHour)
+    mod_timeArray = vel_data["time"]*60
+    startModTime = startHour*60 + startMin
+    modTimeIndex = nearest_index(startModTime, mod_timeArray)
+    
+    
     
 
-
-def title_plot(day, startHour, filename):
+    plot_model_vel(vel_data, modTimeIndex)
+    plot_model_contour(pot_data, modTimeIndex)
+    vector_transform(vel_data, modTimeIndex, day)
     
-    date = "May " + str(day)
-    title = ("AMPERE/SAMI3 %s %s UT" % (date, startHour))
+def nearest_index(value, array):
+    
+    index = (np.abs(array - value)).argmin()
+    return index
+
+def title_plot(hour, filename):
+    
+    date = "May 23"
+    title = ("AMPERE/SAMI3 %s %s UT" % (date, hour))
     plt.suptitle(title)
     
     
@@ -43,9 +55,8 @@ def title_plot(day, startHour, filename):
     plt.close()
     
     
-def plot_model_vel(vel_data, day, startHour):
+def plot_model_vel(vel_data, modTimeIndex):
     
-    modTimeIndex = startHour
     hour = str(vel_data["time"][modTimeIndex])
 
     #plot model velocity data
@@ -65,17 +76,15 @@ def plot_model_vel(vel_data, day, startHour):
     vel = ax.quiver(adjVelLons, adjVelLats, mod_horizontal, mod_vertical)
     ax.set_rlabel_position(50) 
     
-    title_plot(day, startHour, "mod_vel")
+    title_plot(hour, "mod_vel")
     
 
 
 
-def plot_model_contour(pot_data, day, startHour):
+def plot_model_contour(pot_data, modTimeIndex):
 
-    #change potential data to polar and plot
-    modTimeIndex = startHour
+    hour = str(pot_data["time"][modTimeIndex])
     phi = pot_data["phi"][modTimeIndex,:,:]
-    
     
     
     adjPotLats = 90 - pot_data["lat"]
@@ -90,18 +99,16 @@ def plot_model_contour(pot_data, day, startHour):
     cbar = fig.colorbar(pot)
     
     
-    title_plot(day, startHour, "mod_contour")
+    title_plot(hour, "mod_contour")
 
 
 
 
-def vector_transform(vel_data, day, startHour):
+def vector_transform(vel_data, modTimeIndex, day):
 
     colors = ["red", "orange", "green", "blue", "magenta"]
     fig, ax = plt.subplots(1, 1)
-    dmspTindex = int(float(startHour)*3600)
-    modTimeIndex = startHour
-    
+
     #compare data
     for sat in range(16,19):
         
@@ -110,10 +117,21 @@ def vector_transform(vel_data, day, startHour):
         sat_file = "dms_ut_201405%i_%i.002.p" % (day, sat)
         dmsp_data = pickle.load( open(sat_file, "rb"))
         
+        startDay = datetime(2014, 5, day)
+        dayUnix = time.mktime(startDay.timetuple())
+        
+        
+        timeUnix = dayUnix + vel_data["time"][modTimeIndex]*3600
+        
+
+        
+        
         forQualIndex = dmsp_data["ION_V_FOR_FLAG"] == 1
         leftQualIndex = dmsp_data["ION_V_LEFT_FLAG"] == 1
         
         qualFlag = forQualIndex & leftQualIndex
+        
+        dmspTindex = nearest_index(timeUnix, dmsp_data["UT1_UNIX"][qualFlag])
         
         pdb.set_trace()
         
@@ -161,7 +179,7 @@ def vector_transform(vel_data, day, startHour):
         
         
     
-    title_plot(day, startHour, "comparison")
+    title_plot(str(vel_data["time"][modTimeIndex]), "comparison")
 
 main()
     

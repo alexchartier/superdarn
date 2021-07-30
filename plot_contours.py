@@ -21,8 +21,8 @@ import calendar
 def main():
     #initial start times
     day = 23
-    startHour = 19
-    startMin = 0
+    startHour = 20
+    startMin = 15
     sat = 16
     
     #read data
@@ -53,13 +53,12 @@ def main():
     
     #starting time and end time of data comparison
     satStartTime = dmspTindex
-    satEndTime = nearest_index(dayUnix + vel_data["time"][modTimeIndex+1]*3600, dmsp_data["UT1_UNIX"])
+    satEndTime = nearest_index(dayUnix + vel_data["time"][modTimeIndex+1]*3600, dmsp_data["UT1_UNIX"][qualFlag])
     timeRange = dmsp_data["UT1_UNIX"][qualFlag][satStartTime:satEndTime]
-    
-    
+
     
     #interpolation of model data to satellite coordinates and times in time range
-    satLatI, satLonI, satLatF, satLonF, forward, left = filter_data(dmsp_data, qualFlag, dmspTindex)
+    satLatI, satLonI, satLatF, satLonF, forward, left = sat_data(dmsp_data, qualFlag, dmspTindex)
     modEStart, modNStart = interp_mod_spatial(vel_data, modTimeIndex, satLatI, satLonI, day, startHour, startMin)
     modEEnd, modNEnd = interp_mod_spatial(vel_data, modTimeIndex +1, satLatI, satLonI, day, startHour, startMin)
     
@@ -70,17 +69,21 @@ def main():
     dmspEArray = np.array([])
     dmspNArray = np.array([])
     for timeCode in timeRange:
-        pdb.set_trace()
-        dmspTindex = int(np.where(dmsp_data["UT1_UNIX"][qualFlag] == timeCode))
-        satLatI, satLonI, satLatF, satLonF, forward, left = filter_data(dmsp_data, qualFlag, dmspTindex)
+
+        dmspTindex = np.where(dmsp_data["UT1_UNIX"][qualFlag] == timeCode)[0]
+        satLatI, satLonI, satLatF, satLonF, forward, left = sat_data(dmsp_data, qualFlag, dmspTindex)
         dmsp_east, dmsp_north = transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left)
         
         dmspEArray = np.append(dmspEArray, dmsp_east)
         dmspNArray = np.append(dmspNArray, dmsp_north)
         
     
-    
     pdb.set_trace()
+    
+    plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArray)
+    
+    
+
 
 #returns the index of an array which is closest to value    
 def nearest_index(value, array):
@@ -173,8 +176,9 @@ def plot_satellite_passes(day,hour, modTimeIndex, ax):
             
             dmspTindex += 20
     
-   
-def filter_data(dmsp_data, qualFlag, dmspTindex):
+
+#returns coordinates and velocity of measurement at a certain time    
+def sat_data(dmsp_data, qualFlag, dmspTindex):
     
     #read satellite data
     satLatI = dmsp_data["GDLAT"][qualFlag][dmspTindex]
@@ -187,7 +191,8 @@ def filter_data(dmsp_data, qualFlag, dmspTindex):
     left = dmsp_data["ION_V_SAT_LEFT"][qualFlag][dmspTindex]
     
     return satLatI, satLonI, satLatF, satLonF, forward, left
-    
+
+#return east/north components of velocity measurement    
 def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left):
     
 
@@ -214,7 +219,8 @@ def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, lef
     dmsp_north = mag * np.sin(theta)
     
     return dmsp_east, dmsp_north
-    
+ 
+#interpolate model data between satellite coordinates   
 def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, day, startHour, startMin):
     
     refAlt = 400
@@ -230,8 +236,6 @@ def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, day, startHour, s
                             vel_data["u3h0"][modTimeIndex].flatten(), (satLon, satLat), method = "linear")
     interp_mod_north = griddata((vel_data["lon0"].flatten(), vel_data["lat0"].flatten()), 
                             vel_data["u1p0"][modTimeIndex].flatten(), (satLon, satLat), method = "linear")
-    
-    
     modelPoint = wgs84.GeoPoint(satLat, satLon, -refAlt * 1E3, degrees =True)
                     
     p_AB_N = modelPoint.delta_to(polePoint)
@@ -242,7 +246,8 @@ def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, day, startHour, s
     horizontal = interp_mod_east +  np.cos(theta) * interp_mod_north                 
 
     return horizontal, vertical
-    
+
+#interpolate model data between two model timestamps    
 def interp_mod_temporal(timeRange, modStartTimeUnix, modEndTimeUnix, modEStart, modNStart, modEEnd, modNEnd):
 
     interpEArray = np.interp(timeRange, [modStartTimeUnix, modEndTimeUnix], [modEStart, modEEnd])    
@@ -250,6 +255,33 @@ def interp_mod_temporal(timeRange, modStartTimeUnix, modEndTimeUnix, modEStart, 
     
     
     return interpEArray, interpNArray
+
+#plot the comparison velocities
+def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArray):
+    
+    startTime = datetime.utcfromtimestamp(timeRange[0]).strftime( "%H:%M:%S")
+    endTime = datetime.utcfromtimestamp(timeRange[len(timeRange)-1]).strftime( "%H:%M:%S")
+    
+    fig, (ax1, ax2) = plt.subplots(2, sharex=True)
+    modE = ax1.plot(timeRange, interpEArray, label = "model E")
+    dmspE = ax1.plot(timeRange, dmspEArray, label = "dmsp E")
+    ax1.set_ylabel(" Velocity m/s")
+    ax1.set_title("East Component")
+    
+    modN = ax2.plot(timeRange, interpNArray, label = "model N")
+    dmspN = ax2.plot(timeRange, dmspNArray, label = "dmsp N")
+    ax2.set_xlabel("UNIX Seconds")
+    ax2.set_title("North Component")
+    
+    
+    
+    plt.suptitle("DMSP vs. SAMI3: %s - %s" % (startTime, endTime))
+    
+    plt.show()
+    plt.close()
+    
+    
+    
 
         
 main()

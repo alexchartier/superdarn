@@ -9,7 +9,6 @@ Created on Thu Jul 15 11:56:13 2021
 
 
 import numpy as np
-import pdb
 import h5py
 import pickle
 import time
@@ -17,8 +16,9 @@ import matplotlib.pyplot as plt
 import os
 from os import path
 
+
 def read_data(
-    directory = "/Users/sitardp1/Documents/Madrigal"
+    directory="data/dmsp/",
 ):
     for entry in os.scandir(directory):
         print(entry)
@@ -27,34 +27,29 @@ def read_data(
         if entry.path.endswith(".hdf5") and not(path.exists(picklename)):
             with h5py.File(entry, "r") as f:
                 # Get the metadata
-                vn = f.get('Metadata')
-                    
+                parameters = f.get('Metadata')['Data Parameters'][...]
+                
                 # Get the data
-                data = f.get('Data')
-                dataTable = data.get('Table Layout')[...]
+                dataTable = f.get('Data').get('Table Layout')[...]
+            breakpoint()
+                    
+            dmsp_data = {"UT1_UNIX":np.array([]), "MLAT":np.array([]), 
+                         "GDLAT":np.array([]), "GLON":np.array([]), "ION_V_SAT_FOR":np.array([]), 
+                         "ION_V_SAT_LEFT":np.array([]), "ION_V_LEFT_FLAG":np.array([]), 
+                         "ION_V_FOR_FLAG":np.array([])}
+
+
+           indices = [9, 12, 13, 14, 16, 17, 19, 20]
+            if str(parameters[19][0]) == "b'ION_V_FOR_FLAG'": 
+                for index, line in enumerate(dataTable):
+                    for var in indices:
+                        key = str(parameters[var][0])
+                        key = key.replace("b'", "") 
+                        key = key.replace("'", "") 
+                        dmsp_data[key] = np.append(dmsp_data[key], line[var])
                         
-            parameters = vn['Data Parameters']
-            dmsp_data = {"UT1_UNIX":np.array([]), "UT2_UNIX":np.array([]), 
-                         "GDLAT":np.array([]), "GLON":np.array([]), "HOR_ION_V":np.array([]), 
-                         "VERT_ION_V":np.array([])}
-            
-            #put data in a dictionary
-            if str(parameters[20][0]) == "b'VERT_ION_V'": 
-                for line in dataTable:
-                    if np.isnan(line[20]) == False:
-                        for var in range(9, 13):
-                            key = str(parameters[var][0])
-                            key = key.replace("b'", "")
-                            key = key.replace("'", "")
-                            dmsp_data[key] = np.append(dmsp_data[key], line[var])
-            
-                        for var in range(19, 21):
-                            key = str(parameters[var][0])
-                            key = key.replace("b'", "")
-                            key = key.replace("'", "")
-                            dmsp_data[key] = np.append(dmsp_data[key], line[var])
-                with open(picklename, "wb") as f:
-                    pickle.dump(dmsp_data, f)
+            with open(picklename, "wb") as f:
+                pickle.dump(dmsp_data, f)
                             
 
 
@@ -62,7 +57,7 @@ def plot_satellitedata(dates):
     with open("dms_20140423_18s1.001.p", 'rb') as f:
         data = pickle.load(f)
     breakpoint() 
-    
+
     
 if __name__ == '__main__':
     read_data()

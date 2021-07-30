@@ -14,79 +14,75 @@ import nvector as nv
 import datetime as dt
 import aacgmv2
 import calendar
+import pickle
 import proc_dmsp
+import pdb
 
 def main(
-    startTime = dt.datetime(2014, 5, 23, 20, 15),
-    endTime = dt.datetime(2014, 5, 23, 20, 30),
+    startTime = dt.datetime(2014, 5, 23, 20, 30),
+    endTime = dt.datetime(2014, 5, 23, 20, 45),
     modTimeStep = 15, 
     sat = 16,
-    #potFnFmt="sami3_may%i_phi.nc",
-    #velFnFmt="sami3_may%ia.nc",
-    satFnFmt="data/dmsp/dms_ut_201405%i_%i.002.hdf5",
+    potFnFmt="sami3_may%i_phi.nc",
+    velFnFmt="sami3_may%ia.nc",
+    satFnFmt="dms_ut_201405%i_%i.002.hdf5",
 ):
 
     assert startTime.day == endTime.day, 'Cannot handle multi-day events yet'
     
     # load data
-    #pot_file = potFnFmt % (startTime.day)
-    #vel_file = velFnFmt % (startTime.day)
+    pot_file = potFnFmt % (startTime.day)
+    vel_file = velFnFmt % (startTime.day)
     sat_file = satFnFmt % (startTime.day, sat)
     
     dmsp_data = proc_dmsp.load(sat_file)
-    breakpoint()
     pot_data = nc_utils.ncread_vars(pot_file)
     vel_data = nc_utils.ncread_vars(vel_file)
-
-
-    # select the DMSP data of interest
-    goodTimes = np.logical_and(dmsp_data['Time'] >= startTime, dmsp_data['Time'] <= endTime)
-    for k, v in dmsp_data.items():
-        dmsp_data[k] = v[goodTimes]
-
-
-    for tind, dmspTime in enumerate(dmsp_data['Time']):
-        """ do the model interpolation at each time/lat-lon location """
-
-        dmsp_data['UT1_UNIX'][tind]
-
-
-
-    # calculate modTimeIndex
-    mod_timeArray = vel_data["time"]*60
-    startModTime = startHour*60 + startMin
-    modTimeIndex = nearest_index(startModTime, mod_timeArray)
-
-    # starting time and end time of data comparison
-    satStartTime = dmspTindex
-    satEndTime = nearest_index(dayUnix + vel_data["time"][modTimeIndex+1]*3600, dmsp_data["UT1_UNIX"])
-    timeRange = dmsp_data["UT1_UNIX"][satStartTime:satEndTime]
-
     
-    # interpolation of model data to satellite coordinates and times in time range
-    satLatI, satLonI, satLatF, satLonF, forward, left = sat_data(dmsp_data, qualFlag, dmspTindex)
-    modEStart, modNStart = interp_mod_spatial(vel_data, modTimeIndex, satLatI, satLonI, day, startHour, startMin)
-    modEEnd, modNEnd = interp_mod_spatial(vel_data, modTimeIndex +1, satLatI, satLonI, day, startHour, startMin)
+    #convert input start time and end time to Unix
+    startTimeUnix = calendar.timegm(startTime.timetuple())
+    endTimeUnix = calendar.timegm(endTime.timetuple())
+
+    #find bracketing model indices
+    startDay = dt.datetime(startTime.year, startTime.month, startTime.day)
+    dayUnix = calendar.timegm(startDay.timetuple())
+    startModIndex = nearest_index(startTimeUnix - dayUnix, vel_data["time"]*3600)
+    endModIndex = nearest_index(endTimeUnix - dayUnix, vel_data["time"]*3600)   
     
-    interpEArray, interpNArray = interp_mod_temporal(timeRange, timeUnix, vel_data["time"][modTimeIndex+1]*3600, 
-                                                     modEStart, modNStart, modEEnd, modNEnd)
     
-    # create array of dmsp data in time range
+    #find bracketing dmsp indices corresponding to model indices
+    startModUnix = vel_data["time"][startModIndex]*3600 + dayUnix
+    endModUnix = vel_data["time"][endModIndex]*3600 + dayUnix
+    startSatIndex = nearest_index(startModUnix, dmsp_data["UT1_UNIX"])
+    endSatIndex = nearest_index(endModUnix, dmsp_data["UT1_UNIX"])
+    
+    #do spatial interpolation at model endpoints
+    startSatData = sat_data(dmsp_data, startSatIndex)
+    modEStart, modNStart = interp_mod_spatial(vel_data, startModIndex, startSatData[0], startSatData[1], startTime)
+    endSatData = sat_data(dmsp_data, endSatIndex)
+    modEEnd, modNEnd = interp_mod_spatial(vel_data, endModIndex, endSatData[0], endSatData[1], endTime)
+    
+    #do temporal interpolation of model in input time range
+    inSatStartTindex = nearest_index(startTimeUnix, dmsp_data["UT1_UNIX"])
+    inSatEndTindex = nearest_index(endTimeUnix, dmsp_data["UT1_UNIX"])
+    timeRange = dmsp_data["UT1_UNIX"][inSatStartTindex:inSatEndTindex]
+    
+    modEArray, modNArray = interp_mod_temporal(timeRange, startModUnix, 
+                                               endModUnix, modEStart, modNStart, modEEnd, modNEnd)
+    
+    # create array of dmsp data in input time range
     dmspEArray = np.array([])
     dmspNArray = np.array([])
-    for timeCode in timeRange:
-
-        dmspTindex = np.where(dmsp_data["UT1_UNIX"][qualFlag] == timeCode)[0]
-        satLatI, satLonI, satLatF, satLonF, forward, left = sat_data(dmsp_data, qualFlag, dmspTindex)
+     
+    for tindex in range(inSatStartTindex, inSatEndTindex):
+        
+        satLatI, satLonI, satLatF, satLonF, forward, left = sat_data(dmsp_data, tindex)
         dmsp_east, dmsp_north = transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left)
-        
         dmspEArray = np.append(dmspEArray, dmsp_east)
-        dmspNArray = np.append(dmspNArray, dmsp_north)
-        
-    
+        dmspNArray = np.append(dmspNArray, dmsp_north)    
     pdb.set_trace()
     
-    plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArray)
+    plot_velocities(timeRange, modEArray, modNArray, dmspEArray, dmspNArray)
     
     
 
@@ -137,7 +133,6 @@ def plot_model_contour(pot_data, day, modTimeIndex):
     hour = str(pot_data["time"][modTimeIndex])
     phi = pot_data["phi"][modTimeIndex,:,:]
     
-    pdb.set_trace()
     #adjust data for polar
     adjPotLats = 90 - pot_data["lat"]
     adjPotLons = np.deg2rad(pot_data["lon"])
@@ -184,17 +179,17 @@ def plot_satellite_passes(day,hour, modTimeIndex, ax):
     
 
 # returns coordinates and velocity of measurement at a certain time    
-def sat_data(dmsp_data, qualFlag, dmspTindex):
+def sat_data(dmsp_data, dmspTindex):
     
     # read satellite data
-    satLatI = dmsp_data["GDLAT"][qualFlag][dmspTindex]
-    satLonI = dmsp_data["GLON"][qualFlag][dmspTindex]
+    satLatI = dmsp_data["GDLAT"][dmspTindex]
+    satLonI = dmsp_data["GLON"][dmspTindex]
     
-    satLatF = dmsp_data["GDLAT"][qualFlag][dmspTindex + 1]
-    satLonF = dmsp_data["GLON"][qualFlag][dmspTindex + 1]
+    satLatF = dmsp_data["GDLAT"][dmspTindex + 1]
+    satLonF = dmsp_data["GLON"][dmspTindex + 1]
     
-    forward = dmsp_data["ION_V_SAT_FOR"][qualFlag][dmspTindex]
-    left = dmsp_data["ION_V_SAT_LEFT"][qualFlag][dmspTindex]
+    forward = dmsp_data["ION_V_SAT_FOR"][dmspTindex]
+    left = dmsp_data["ION_V_SAT_LEFT"][dmspTindex]
     
     return satLatI, satLonI, satLatF, satLonF, forward, left
 
@@ -227,10 +222,9 @@ def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, lef
     return dmsp_east, dmsp_north
  
 #interpolate model data between satellite coordinates   
-def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, day, startHour, startMin):
+def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, dTime):
     
     refAlt = 400
-    dTime = dt.datetime(2014, 5, day, startHour, startMin)
     mPole = aacgmv2.convert_latlon(90, 0, refAlt, dTime, method_code="A2G")
     wgs84 = nv.FrameE(name='WGS84')
     polePoint = wgs84.GeoPoint(mPole[0], 

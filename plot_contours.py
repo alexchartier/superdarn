@@ -8,56 +8,62 @@ Created on Fri Jul  9 17:41:37 2021
 import nc_utils
 import matplotlib.pyplot as plt
 import numpy as np
-import pdb
-import pickle
 from scipy.interpolate import griddata
 from scipy.interpolate import interp1d
 import nvector as nv
-from datetime import datetime
-import time
+import datetime as dt
 import aacgmv2
 import calendar
+import proc_dmsp
 
-def main():
-    #initial start times
-    day = 23
-    startHour = 20
-    startMin = 15
-    sat = 16
+def main(
+    startTime = dt.datetime(2014, 5, 23, 20, 15),
+    endTime = dt.datetime(2014, 5, 23, 20, 30),
+    modTimeStep = 15, 
+    sat = 16,
+    #potFnFmt="sami3_may%i_phi.nc",
+    #velFnFmt="sami3_may%ia.nc",
+    satFnFmt="data/dmsp/dms_ut_201405%i_%i.002.hdf5",
+):
+
+    assert startTime.day == endTime.day, 'Cannot handle multi-day events yet'
     
-    #read data
-    pot_file = "sami3_may%i_phi.nc" % (day)
-    vel_file = "sami3_may%ia.nc" % (day)
-    sat_file = "dms_ut_201405%i_%i.002.p" % (day, sat)
+    # load data
+    #pot_file = potFnFmt % (startTime.day)
+    #vel_file = velFnFmt % (startTime.day)
+    sat_file = satFnFmt % (startTime.day, sat)
     
+    dmsp_data = proc_dmsp.load(sat_file)
+    breakpoint()
     pot_data = nc_utils.ncread_vars(pot_file)
     vel_data = nc_utils.ncread_vars(vel_file)
-    dmsp_data = pickle.load( open(sat_file, "rb"))
 
-    #calculate modTimeIndex
+
+    # select the DMSP data of interest
+    goodTimes = np.logical_and(dmsp_data['Time'] >= startTime, dmsp_data['Time'] <= endTime)
+    for k, v in dmsp_data.items():
+        dmsp_data[k] = v[goodTimes]
+
+
+    for tind, dmspTime in enumerate(dmsp_data['Time']):
+        """ do the model interpolation at each time/lat-lon location """
+
+        dmsp_data['UT1_UNIX'][tind]
+
+
+
+    # calculate modTimeIndex
     mod_timeArray = vel_data["time"]*60
     startModTime = startHour*60 + startMin
     modTimeIndex = nearest_index(startModTime, mod_timeArray)
-    
-    
-    #quality flags for dmsp data
-    forQualIndex = dmsp_data["ION_V_FOR_FLAG"] == 1
-    leftQualIndex = dmsp_data["ION_V_LEFT_FLAG"] == 1
-    qualFlag = forQualIndex & leftQualIndex
-    
-    #set initial time index for dmsp data
-    startDay = datetime(2014, 5, day)
-    dayUnix = calendar.timegm(startDay.timetuple())
-    timeUnix = dayUnix + vel_data["time"][modTimeIndex]*3600
-    dmspTindex = nearest_index(timeUnix, dmsp_data["UT1_UNIX"][qualFlag])
-    
-    #starting time and end time of data comparison
+
+    # starting time and end time of data comparison
     satStartTime = dmspTindex
-    satEndTime = nearest_index(dayUnix + vel_data["time"][modTimeIndex+1]*3600, dmsp_data["UT1_UNIX"][qualFlag])
-    timeRange = dmsp_data["UT1_UNIX"][qualFlag][satStartTime:satEndTime]
+    satEndTime = nearest_index(dayUnix + vel_data["time"][modTimeIndex+1]*3600, dmsp_data["UT1_UNIX"])
+    timeRange = dmsp_data["UT1_UNIX"][satStartTime:satEndTime]
 
     
-    #interpolation of model data to satellite coordinates and times in time range
+    # interpolation of model data to satellite coordinates and times in time range
     satLatI, satLonI, satLatF, satLonF, forward, left = sat_data(dmsp_data, qualFlag, dmspTindex)
     modEStart, modNStart = interp_mod_spatial(vel_data, modTimeIndex, satLatI, satLonI, day, startHour, startMin)
     modEEnd, modNEnd = interp_mod_spatial(vel_data, modTimeIndex +1, satLatI, satLonI, day, startHour, startMin)
@@ -65,7 +71,7 @@ def main():
     interpEArray, interpNArray = interp_mod_temporal(timeRange, timeUnix, vel_data["time"][modTimeIndex+1]*3600, 
                                                      modEStart, modNStart, modEEnd, modNEnd)
     
-    #create array of dmsp data in time range
+    # create array of dmsp data in time range
     dmspEArray = np.array([])
     dmspNArray = np.array([])
     for timeCode in timeRange:
@@ -85,13 +91,13 @@ def main():
     
 
 
-#returns the index of an array which is closest to value    
+# returns the index of an array which is closest to value    
 def nearest_index(value, array):
     
     index = (np.abs(array - value)).argmin()
     return index
 
-#titles the plots with date
+# titles the plots with date
 def title_plot(hour, day, filename):
     
     date = "May" + day
@@ -102,7 +108,7 @@ def title_plot(hour, day, filename):
     plt.show()
     plt.close()
     
-#plot SAMI3 velocity data in a cartesian projection
+# plot SAMI3 velocity data in a cartesian projection
 def plot_model_vel(vel_data, day, modTimeIndex):
     
     hour = str(vel_data["time"][modTimeIndex])
@@ -125,7 +131,7 @@ def plot_model_vel(vel_data, day, modTimeIndex):
     
 
 
-#plot SAMI3 contour data in polar
+# plot SAMI3 contour data in polar
 def plot_model_contour(pot_data, day, modTimeIndex):
 
     hour = str(pot_data["time"][modTimeIndex])
@@ -163,7 +169,7 @@ def plot_satellite_passes(day,hour, modTimeIndex, ax):
         sat_file = "dms_ut_201405%i_%i.002.p" % (day, sat)
         dmsp_data = pickle.load( open(sat_file, "rb"))
         
-        startDay = datetime(2014, 5, day)
+        startDay = dt.datetime(2014, 5, day)
         
         dayUnix = calendar.timegm(startDay.timetuple())
         timeUnix = dayUnix + float(hour)*3600
@@ -177,10 +183,10 @@ def plot_satellite_passes(day,hour, modTimeIndex, ax):
             dmspTindex += 20
     
 
-#returns coordinates and velocity of measurement at a certain time    
+# returns coordinates and velocity of measurement at a certain time    
 def sat_data(dmsp_data, qualFlag, dmspTindex):
     
-    #read satellite data
+    # read satellite data
     satLatI = dmsp_data["GDLAT"][qualFlag][dmspTindex]
     satLonI = dmsp_data["GLON"][qualFlag][dmspTindex]
     
@@ -196,7 +202,7 @@ def sat_data(dmsp_data, qualFlag, dmspTindex):
 def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left):
     
 
-    #create north/east vectors based on satellite direction
+    # create north/east vectors based on satellite direction
     wgs84 = nv.FrameE(name='WGS84')
     init = wgs84.GeoPoint(satLatI, 
                           satLonI, 0, degrees=True)
@@ -224,7 +230,7 @@ def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, lef
 def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, day, startHour, startMin):
     
     refAlt = 400
-    dTime = datetime(2014, 5, day, startHour, startMin)
+    dTime = dt.datetime(2014, 5, day, startHour, startMin)
     mPole = aacgmv2.convert_latlon(90, 0, refAlt, dTime, method_code="A2G")
     wgs84 = nv.FrameE(name='WGS84')
     polePoint = wgs84.GeoPoint(mPole[0], 
@@ -247,20 +253,21 @@ def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, day, startHour, s
 
     return horizontal, vertical
 
+
 #interpolate model data between two model timestamps    
 def interp_mod_temporal(timeRange, modStartTimeUnix, modEndTimeUnix, modEStart, modNStart, modEEnd, modNEnd):
 
     interpEArray = np.interp(timeRange, [modStartTimeUnix, modEndTimeUnix], [modEStart, modEEnd])    
     interpNArray = np.interp(timeRange, [modStartTimeUnix, modEndTimeUnix], [modNStart, modNEnd])
     
-    
     return interpEArray, interpNArray
 
-#plot the comparison velocities
+
+# plot the comparison velocities
 def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArray):
     
-    startTime = datetime.utcfromtimestamp(timeRange[0]).strftime( "%H:%M:%S")
-    endTime = datetime.utcfromtimestamp(timeRange[len(timeRange)-1]).strftime( "%H:%M:%S")
+    startTime = dt.datetime.utcfromtimestamp(timeRange[0]).strftime( "%H:%M:%S")
+    endTime = dt.datetime.utcfromtimestamp(timeRange[len(timeRange)-1]).strftime( "%H:%M:%S")
     
     fig, (ax1, ax2) = plt.subplots(2, sharex=True)
     modE = ax1.plot(timeRange, interpEArray, label = "model E")
@@ -273,18 +280,14 @@ def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArra
     ax2.set_xlabel("UNIX Seconds")
     ax2.set_title("North Component")
     
-    
-    
     plt.suptitle("DMSP vs. SAMI3: %s - %s" % (startTime, endTime))
     
     plt.show()
     plt.close()
-    
-    
-    
 
-        
-main()
+
+if __name__ == "__main__": 
+    main()
     
 
 

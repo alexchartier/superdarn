@@ -53,12 +53,6 @@ def read_data(
                             
 
 
-def plot_satellitedata(dates):
-    with open("dms_20140423_18s1.001.p", 'rb') as f:
-        data = pickle.load(f)
-    breakpoint() 
-
-    
 if __name__ == '__main__':
     read_data()
 

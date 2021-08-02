@@ -48,16 +48,6 @@ def proc_data(dmsp_data):
     #goodInd = np.logical_and(dmsp_data['RPA_FLAG_UT'] < 2, dmsp_data['IDM_FLAG_UT'] < 2)  # NOTE: This is only for F15
     for k, v in dmsp_data.items():
         dmsp_data[k] = v[qualFlag]
-    dmsp_data['Time'] = []
-
-    # Store values
-    for ind, yr in enumerate(dmsp_data['YEAR']):
-        time = dt.datetime(
-            yr, dmsp_data['MONTH'][ind], dmsp_data['DAY'][ind], dmsp_data['HOUR'][ind], 
-            dmsp_data['MIN'][ind], dmsp_data['SEC'][ind],
-        )
-        dmsp_data['Time'].append(time)
-
     return dmsp_data
     
 

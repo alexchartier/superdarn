@@ -19,7 +19,7 @@ import pdb
 
 def main(
     startTime = dt.datetime(2014, 5, 23, 20, 15),
-    endTime = dt.datetime(2014, 5, 23, 20, 20),
+    endTime = dt.datetime(2014, 5, 23, 20, 16),
     modTimeStep = 15, 
     sat = 16,
     potFnFmt="/Users/sitardp1/Documents/data/sami3_may%i_phi.nc",
@@ -84,28 +84,6 @@ def main(
     plot_velocities(dmsp_data["UT1_UNIX"][:len(dmsp_data["UT1_UNIX"]) -1], 
                     modEArray, modNArray, dmspEArray, dmspNArray)
 
-      
-def interp_sami3(dataTime, dataLat, dataLon, modVel):
-    
-    #1 Find model times bracketing the relevant data time
-    upperGateFlag = modVel["time"] > dataTime
-    lowerGateFlag = modVel["time"] <= dataTime
-    modT1 = nearest_index(dataTime, modVel["time"][lowerGateFlag])
-    modT2 = nearest_index(dataTime, modVel["time"][upperGateFlag])
-    
-    #2 Spatially interpolate model to the data location at modT1 and modT2
-    dTimeT1 = dt.datetime.utcfromtimestamp(modVel["time"][modT1])
-    dTimeT2 = dt.datetime.utcfromtimestamp(modVel["time"][modT2])
-    
-    geoNorthT1, geoEastT1 = interp_mod_spatial(modVel, modT1, dataLat, dataLon, dTimeT1)
-    geoNorthT2, geoEastT2 = interp_mod_spatial(modVel, modT2, dataLat, dataLon, dTimeT2)
-    
-    #3 Temporally interpolate the model to dataTime
-    interpTempE, interpTempN = interp_mod_temporal(dataTime, modVel["time"][modT1], modVel["time"][modT2], 
-                                                geoNorthT1, geoEastT1, geoNorthT2, geoEastT2)
-    
-    
-    return interpTempE, interpTempN
 
 # returns the index of an array which is closest to value    
 def nearest_index(value, array):
@@ -236,7 +214,7 @@ def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, dTime):
 
     return geoNorth, geoEast
 
-
+# theta is the angle between the vector and the x axis
 def calc_theta(
         satLat, satLon, dTime, 
         refAlt = 400,
@@ -263,6 +241,30 @@ def interp_mod_temporal(dataTime, modT1Unix, modT2Unix, geoNorthT1, geoEastT1, g
     
     return interpE, interpN
 
+def interp_sami3(dataTime, dataLat, dataLon, modVel):
+    
+    #1 Find model times bracketing the relevant data time
+    lowerGateFlag = modVel["time"] <= dataTime
+    
+    
+    modT1 = nearest_index(dataTime, modVel["time"][lowerGateFlag])
+    modT2 = modT1 + 1
+    
+    pdb.set_trace()
+    
+    #2 Spatially interpolate model to the data location at modT1 and modT2
+    dTimeT1 = dt.datetime.utcfromtimestamp(modVel["time"][modT1])
+    dTimeT2 = dt.datetime.utcfromtimestamp(modVel["time"][modT2])
+    
+    geoNorthT1, geoEastT1 = interp_mod_spatial(modVel, modT1, dataLat, dataLon, dTimeT1)
+    geoNorthT2, geoEastT2 = interp_mod_spatial(modVel, modT2, dataLat, dataLon, dTimeT2)
+    
+    #3 Temporally interpolate the model to dataTime
+    interpTempE, interpTempN = interp_mod_temporal(dataTime, modVel["time"][modT1], modVel["time"][modT2], 
+                                                geoNorthT1, geoEastT1, geoNorthT2, geoEastT2)
+    
+    
+    return interpTempE, interpTempN
 
 # plot the comparison velocities
 def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArray):

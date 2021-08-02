@@ -245,12 +245,9 @@ def interp_sami3(dataTime, dataLat, dataLon, modVel):
     
     #1 Find model times bracketing the relevant data time
     lowerGateFlag = modVel["time"] <= dataTime
-    
-    
+
     modT1 = nearest_index(dataTime, modVel["time"][lowerGateFlag])
     modT2 = modT1 + 1
-    
-    pdb.set_trace()
     
     #2 Spatially interpolate model to the data location at modT1 and modT2
     dTimeT1 = dt.datetime.utcfromtimestamp(modVel["time"][modT1])

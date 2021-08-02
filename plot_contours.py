@@ -17,10 +17,11 @@ import calendar
 import pickle
 import proc_dmsp
 import pdb
+import cartopy
 
 def main(
-    startTime = dt.datetime(2014, 5, 23, 20, 30),
-    endTime = dt.datetime(2014, 5, 23, 20, 45),
+    startTime = dt.datetime(2014, 5, 23, 20, 15),
+    endTime = dt.datetime(2014, 5, 23, 20, 30),
     modTimeStep = 15, 
     sat = 16,
     potFnFmt="sami3_may%i_phi.nc",
@@ -80,10 +81,9 @@ def main(
         dmsp_east, dmsp_north = transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left)
         dmspEArray = np.append(dmspEArray, dmsp_east)
         dmspNArray = np.append(dmspNArray, dmsp_north)    
-    pdb.set_trace()
-    
+        
     plot_velocities(timeRange, modEArray, modNArray, dmspEArray, dmspNArray)
-    
+    plot_dmsp_vels(dmsp_data, inSatStartTindex, inSatEndTindex, dmspEArray, dmspNArray)
     
 
 
@@ -123,9 +123,7 @@ def plot_model_vel(vel_data, day, modTimeIndex):
     vel = ax.quiver(modLons.flatten(), modLats.flatten(), 
                     mod_horizontal.flatten(), mod_vertical.flatten())
     
-    title_plot(hour, str(day), "mod_vel")
-    
-
+    title_plot(hour, str(day), "mod_vel") 
 
 # plot SAMI3 contour data in polar
 def plot_model_contour(pot_data, day, modTimeIndex):
@@ -136,25 +134,30 @@ def plot_model_contour(pot_data, day, modTimeIndex):
     #adjust data for polar
     adjPotLats = 90 - pot_data["lat"]
     adjPotLons = np.deg2rad(pot_data["lon"])
-    
-    for timeCodes in range (0, 12):
-        modTimeIndex += 1
-        print(modTimeIndex)
-        
-        hour = str(pot_data["time"][modTimeIndex])
-    
-        fig, ax = plt.subplots(1, 1, subplot_kw=dict(projection='polar'))
-        
-        pot = ax.contour(adjPotLons, adjPotLats, phi, cmap='hot')
-        ax.set_theta_zero_location("E")
-        ax.set_rlabel_position(50)
-        cbar = fig.colorbar(pot)
-        
-        plot_satellite_passes(day, hour, modTimeIndex, ax)
-        
-        title_plot(hour, str(day), "mod_contour" +str(timeCodes))
-        plt.close()
 
+    hour = str(pot_data["time"][modTimeIndex])
+
+    fig, ax = plt.subplots(1, 1, subplot_kw=dict(projection='polar'))
+    
+    pot = ax.contour(adjPotLons, adjPotLats, phi, cmap='hot')
+    ax.set_theta_zero_location("E")
+    ax.set_rlabel_position(50)
+    cbar = fig.colorbar(pot)
+    
+    plot_satellite_passes(day, hour, modTimeIndex, ax)
+    
+    title_plot(hour, str(day), "mod_contour")
+    plt.close()
+    
+def plot_dmsp_vels(dmsp_data, inSatStartTindex, inSatEndTindex, dmspEArray, dmspNArray):
+    
+    
+    fig, ax = plt.subplots(1, 1)
+    longitudes = dmsp_data["GLON"][inSatStartTindex:inSatEndTindex]
+    latitudes = dmsp_data["GDLAT"][inSatStartTindex:inSatEndTindex]
+    ax.quiver(longitudes, latitudes, dmspEArray, dmspNArray)
+    
+    plt.show()
 
 def plot_satellite_passes(day,hour, modTimeIndex, ax):
     colors = ["red", "blue", " green"]
@@ -221,7 +224,8 @@ def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, lef
     
     return dmsp_east, dmsp_north
  
-#interpolate model data between satellite coordinates   
+#interpolate model data between satellite coordinates  
+#probably should break into two functions: interpolate and adjust
 def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, dTime):
     
     refAlt = 400
@@ -246,7 +250,6 @@ def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, dTime):
     horizontal = interp_mod_east +  np.cos(theta) * interp_mod_north                 
 
     return horizontal, vertical
-
 
 #interpolate model data between two model timestamps    
 def interp_mod_temporal(timeRange, modStartTimeUnix, modEndTimeUnix, modEStart, modNStart, modEEnd, modNEnd):

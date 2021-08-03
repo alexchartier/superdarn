@@ -77,9 +77,14 @@ def main(
     modNArray = np.array([])
     
     print(len(dmsp_data['UT1_UNIX'])-1)
-        
+    
+    latInd = modVelData["lat0"] >= 45
+    modVelData["lon0"] = modVelData["lon0"][latInd]
+    modVelData["lat0"] = modVelData["lat0"][latInd]
+
+    pdb.set_trace()
     interpolant = interpolate.interp2d(modVelData["lon0"].flatten(), 
-                                       modVelData["lat0"].flatten(), modVelData["u1p0"][0].flatten())
+                                       modVelData["lat0"].flatten(), modVelData["u1p0"][0][latInd].flatten())
     
     for tind in range(len(dmsp_data['UT1_UNIX'])-1):
         print(tind)

@@ -14,19 +14,16 @@ import nvector as nv
 import datetime as dt
 import aacgmv2
 import calendar
-import pickle
-from scipy import interpolate
 import cartopy.crs as ccrs
 import pdb
 
 def main(
     startTime = dt.datetime(2014, 5, 23, 20, 15, 0),
-    endTime = dt.datetime(2014, 5, 23, 20, 30, 0),
-    modTimeStep = 15, 
+    endTime = dt.datetime(2014, 5, 23, 20, 20, 15),
     sat = 16,
     potFnFmt="/Users/sitardp1/Documents/data/sami3_may%i_phi.nc",
     velFnFmt="/Users/sitardp1/Documents/data/sami3_may%ia.nc",
-    satFnFmt="/Users/sitardp1/Documents/data/dms_ut_201405%i_%i.002.hdf5",
+    satFnFmt="/Users/sitardp1/Documents/Madrigal/dms_ut_201405%i_%i.002.hdf5",
 ):
     
     assert startTime.day == endTime.day, 'Cannot handle multi-day events yet'
@@ -78,14 +75,7 @@ def main(
     modNArray = np.array([])
     
     print(len(dmsp_data['UT1_UNIX'])-1)
-    """
-    latInd = modVelData["lat0"] >= 60
-    modVelData["lon0"] = modVelData["lon0"][latInd]
-    modVelData["lat0"] = modVelData["lat0"][latInd]
 
-    interpolant = interpolate.interp2d(modVelData["lon0"].flatten(), 
-                                       modVelData["lat0"].flatten(), modVelData["u1p0"][0][latInd].flatten())
-    """
     for tind in range(len(dmsp_data['UT1_UNIX'])-1):
         print(tind)
     
@@ -95,15 +85,16 @@ def main(
         modEArray = np.append(modEArray, modVelE)
         modNArray = np.append(modNArray, modVelN)
     
+    
     #plot velocities vs time and on contour map
     plot_velocities(dmsp_data["UT1_UNIX"][:len(dmsp_data["UT1_UNIX"]) -1], 
                     modEArray, modNArray, dmspEArray, dmspNArray)
-    
-    plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray)
+
+    plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray, modVelData)
 
     
 
-def plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray):
+def plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray, modVelData):
     plt.figure(figsize=(8, 10))
     ax1 = plt.subplot(1, 1, 1, projection=ccrs.AzimuthalEquidistant(central_latitude= 90))
     
@@ -112,17 +103,47 @@ def plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray
     ax1.coastlines('50m')
     ax1.gridlines()
     modIndex = nearest_index(dmsp_data["UT1_UNIX"][0], pot_data["time"])
+    
+    dmspLons = dmsp_data["GLON"][:len(dmsp_data["UT1_UNIX"]) -1]
+    dmspLats = dmsp_data["GDLAT"][:len(dmsp_data["UT1_UNIX"]) -1]
+    
+    #plot contours
     ax1.contour(pot_data["lon"] -180, pot_data["lat"], pot_data["phi"][modIndex], cmap = "hot", transform = ccrs.PlateCarree())
-    ax1.quiver(dmsp_data["GLON"][:len(dmsp_data["UT1_UNIX"]) -1], dmsp_data["GDLAT"][:len(dmsp_data["UT1_UNIX"]) -1], 
-               dmspEArray, dmspNArray, color = "red",
-               transform=ccrs.PlateCarree())
-    ax1.quiver(dmsp_data["GLON"][:len(dmsp_data["UT1_UNIX"]) -1], dmsp_data["GDLAT"][:len(dmsp_data["UT1_UNIX"]) -1], 
-               modEArray, modNArray, color = "blue",
+    
+    #plot dmsp velocity data
+    ax1.quiver(dmspLons, dmspLats, 
+               dmspEArray, dmspNArray, color = "blue", width = .002, label = "dmsp data",
                transform=ccrs.PlateCarree())
     
+    #plot interpolated model data
+    ax1.quiver(dmspLons, dmspLats, 
+               modEArray, modNArray, color = "green", width = .002, label = "model data",
+               transform=ccrs.PlateCarree())
+
+    #if this ends up being permanent, create new function, and process in beginning
+    #process gridded model data
+    latIndex = modVelData["lat0"] >=45
+    modVelData["lat0"] = modVelData["lat0"][latIndex]
+    modVelData["lon0"] = modVelData["lon0"][latIndex]
+    
+    modEVels = modVelData["u3h0"][modIndex][latIndex]
+    modNVels = modVelData["u1p0"][modIndex][latIndex]
+    
+    for index in range(len(modEVels)):
+        
+        print(index)
+        theta = calc_theta(modVelData["lat0"][index], modVelData["lon0"][index], 
+                           dt.datetime.utcfromtimestamp(modVelData["time"][modIndex]))
+        
+        modEVels[index] += np.cos(theta) * modNVels[index]
+        modNVels[index] = np.sin(theta) * modNVels[index]
+    
+    #plot gridded model data    
+    ax1.quiver(modVelData["lon0"], modVelData["lat0"], modEVels, modNVels, transform = ccrs.PlateCarree())
     startTime = dt.datetime.utcfromtimestamp(dmsp_data["UT1_UNIX"][0]).strftime( "%H:%M:%S")
     endTime = dt.datetime.utcfromtimestamp(dmsp_data["UT1_UNIX"][len(dmsp_data["UT1_UNIX"])-1]).strftime( "%H:%M:%S")
     
+    plt.legend()
     plt.suptitle("%s - %s" % (startTime, endTime))
     plt.savefig("/Users/sitardp1/Documents/data/contour_plot.png", dpi=300)
 
@@ -185,15 +206,7 @@ def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, lef
 def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, dTime):
 
     #interpolate model data between satellite coordinates
-    
-    """
-    interpolant.z = vel_data["u1p0"][modTimeIndex].flatten()
-    interpModN = interpolant(satLon, satLat)
-    
-    interpolant.z = vel_data["u3h0"][modTimeIndex].flatten()
-    interpModE = interpolant(satLon, satLat)
-    
-    """
+
     interpModN = griddata(
         (vel_data["lon0"].flatten(), vel_data["lat0"].flatten()), 
         vel_data["u1p0"][modTimeIndex].flatten(), (satLon, satLat), method = "linear")

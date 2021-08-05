@@ -18,20 +18,22 @@ import cartopy.crs as ccrs
 import pdb
 
 def main(
-    startTime = dt.datetime(2014, 5, 23, 20, 15, 0),
-    endTime = dt.datetime(2014, 5, 23, 20, 20, 15),
+    startTime = dt.datetime(2014, 5, 23, 20, 10, 0),
+    endTime = dt.datetime(2014, 5, 23, 20, 20, 0),
     sat = 16,
-    potFnFmt="/Users/sitardp1/Documents/data/sami3_may%i_phi.nc",
     velFnFmt="/Users/sitardp1/Documents/data/sami3_may%ia.nc",
     satFnFmt="/Users/sitardp1/Documents/Madrigal/dms_ut_201405%i_%i.002.hdf5",
+    potFnFmt = "/Users/sitardp1/Documents/data/pymix/ampere_mix_2014-05-%iT%s-%s-00Z.nc"
 ):
     
     assert startTime.day == endTime.day, 'Cannot handle multi-day events yet'
     
     # load data
-    pot_file = potFnFmt % (startTime.day)
+    potStartTime = startTime.replace(minute = round(startTime.minute/10)*10)
+    pot_file = potFnFmt % (startTime.day, startTime.strftime("%H"), potStartTime.strftime("%M"))
     vel_file = velFnFmt % (startTime.day)
     sat_file = satFnFmt % (startTime.day, sat)
+
     
     dmsp_data = proc_dmsp.load(sat_file)
     pot_data = nc_utils.ncread_vars(pot_file)
@@ -41,7 +43,6 @@ def main(
     day = dt.datetime(startTime.year, startTime.month, startTime.day)
     dayUnix = calendar.timegm(day.timetuple())
     modVelData["time"] = dayUnix + modVelData["time"]*3600
-    pot_data["time"] = dayUnix + pot_data["time"]*3600
     modVelData["lon0"] -= 180
     modVelData["u1p0"] /= 100
     modVelData["u3h0"] /= 100
@@ -73,7 +74,8 @@ def main(
     # loop through the data and interpolate the model to each space/time location  
     modEArray = np.array([])
     modNArray = np.array([])
-    
+
+    """
     print(len(dmsp_data['UT1_UNIX'])-1)
 
     for tind in range(len(dmsp_data['UT1_UNIX'])-1):
@@ -84,11 +86,15 @@ def main(
         modVelE, modVelN = interp_sami3(unix, satData[0], satData[1], modVelData)
         modEArray = np.append(modEArray, modVelE)
         modNArray = np.append(modNArray, modVelN)
-    
+    """
+    pdb.set_trace()
+    modEArray = np.full(dmspEArray.shape, float("nan"))
+    modNArray = np.full(dmspEArray.shape, float("nan"))
     
     #plot velocities vs time and on contour map
     plot_velocities(dmsp_data["UT1_UNIX"][:len(dmsp_data["UT1_UNIX"]) -1], 
                     modEArray, modNArray, dmspEArray, dmspNArray)
+    
 
     plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray, modVelData)
 
@@ -102,13 +108,15 @@ def plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray
     ax1.set_extent([-180, 180, 45, 90], ccrs.PlateCarree())
     ax1.coastlines('50m')
     ax1.gridlines()
-    modIndex = nearest_index(dmsp_data["UT1_UNIX"][0], pot_data["time"])
+    modIndex = nearest_index(dmsp_data["UT1_UNIX"][0], modVelData["time"])
     
     dmspLons = dmsp_data["GLON"][:len(dmsp_data["UT1_UNIX"]) -1]
     dmspLats = dmsp_data["GDLAT"][:len(dmsp_data["UT1_UNIX"]) -1]
     
     #plot contours
-    ax1.contour(pot_data["lon"] -180, pot_data["lat"], pot_data["phi"][modIndex], cmap = "hot", transform = ccrs.PlateCarree())
+    ax1.contour(pot_data["Geographic Longitude"],
+                pot_data["Geographic Latitude"], 
+                pot_data["Potential"], cmap = "hot", transform = ccrs.PlateCarree())
     
     #plot dmsp velocity data
     ax1.quiver(dmspLons, dmspLats, 
@@ -131,7 +139,6 @@ def plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray
     
     for index in range(len(modEVels)):
         
-        print(index)
         theta = calc_theta(modVelData["lat0"][index], modVelData["lon0"][index], 
                            dt.datetime.utcfromtimestamp(modVelData["time"][modIndex]))
         

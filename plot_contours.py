@@ -15,6 +15,7 @@ import datetime as dt
 import aacgmv2
 import calendar
 import cartopy.crs as ccrs
+import sys
 import pdb
 
 def main(
@@ -30,7 +31,7 @@ def main(
     
     # load data
     potStartTime = startTime.replace(minute = round(startTime.minute/10)*10)
-    pot_file = potFnFmt % (startTime.day, startTime.strftime("%H"), potStartTime.strftime("%M"))
+    pot_file = potFnFmt % (potStartTime.day, potStartTime.strftime("%H"), potStartTime.strftime("%M"))
     vel_file = velFnFmt % (startTime.day)
     sat_file = satFnFmt % (startTime.day, sat)
 
@@ -74,8 +75,7 @@ def main(
     # loop through the data and interpolate the model to each space/time location  
     modEArray = np.array([])
     modNArray = np.array([])
-
-    """
+    
     print(len(dmsp_data['UT1_UNIX'])-1)
 
     for tind in range(len(dmsp_data['UT1_UNIX'])-1):
@@ -86,10 +86,6 @@ def main(
         modVelE, modVelN = interp_sami3(unix, satData[0], satData[1], modVelData)
         modEArray = np.append(modEArray, modVelE)
         modNArray = np.append(modNArray, modVelN)
-    """
-    pdb.set_trace()
-    modEArray = np.full(dmspEArray.shape, float("nan"))
-    modNArray = np.full(dmspEArray.shape, float("nan"))
     
     #plot velocities vs time and on contour map
     plot_velocities(dmsp_data["UT1_UNIX"][:len(dmsp_data["UT1_UNIX"]) -1], 
@@ -136,7 +132,7 @@ def plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray
     
     modEVels = modVelData["u3h0"][modIndex][latIndex]
     modNVels = modVelData["u1p0"][modIndex][latIndex]
-    
+ 
     for index in range(len(modEVels)):
         
         theta = calc_theta(modVelData["lat0"][index], modVelData["lon0"][index], 
@@ -147,6 +143,7 @@ def plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray
     
     #plot gridded model data    
     ax1.quiver(modVelData["lon0"], modVelData["lat0"], modEVels, modNVels, transform = ccrs.PlateCarree())
+    
     startTime = dt.datetime.utcfromtimestamp(dmsp_data["UT1_UNIX"][0]).strftime( "%H:%M:%S")
     endTime = dt.datetime.utcfromtimestamp(dmsp_data["UT1_UNIX"][len(dmsp_data["UT1_UNIX"])-1]).strftime( "%H:%M:%S")
     
@@ -307,6 +304,21 @@ def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArra
 
 
 if __name__ == "__main__": 
+    args = sys.argv
+    assert len(args) == 4, "Should have 3 arguments:\n" + \
+        "- Start time Ex: 2014,5,23,20,15,0\n" \
+        "- End time Ex: 2014,5,23,20,15,0\n" \
+        "- Satellite Number"
+    
+    timeStr = '%Y,%m,%d,%H,%M,%S' 
+    startTime = dt.datetime.strptime(args[1], timeStr)  
+    endTime = dt.datetime.strptime(args[2], timeStr)  
+    sat = int(args[3])
+    
+    print(startTime, endTime)
+    
+    main(startTime, endTime, sat)
+                               
     main()
     
 

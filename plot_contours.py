@@ -300,6 +300,40 @@ def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArra
 
 
 if __name__ == "__main__": 
+
+    args = sys.argv
+    
+    startTime = dt.datetime(2014, 5, 23, 20, 15, 0),
+    endTime = dt.datetime(2014, 5, 23, 20, 20, 15),
+    sat = 16,
+    potFnFmt="/Users/sitardp1/Documents/data/sami3_may%i_phi.nc",
+    velFnFmt="/Users/sitardp1/Documents/data/sami3_may%ia.nc",
+    satFnFmt="/Users/sitardp1/Documents/Madrigal/dms_ut_201405%i_%i.002.hdf5",
+
+    assert len(args) == 7, 'Should have 6 arguments:\n' + \
+        ' -  starttime\n' + \
+        ' -  endtime\n' + \
+        ' - satellite\n' + \
+        ' - potential file\n' + \
+        ' - velocity file\n' + \
+        ' - satellite file\n' + \
+        '\ne.g.: python3 plot_contours.py  ' + \
+        '2014,5,23,20,15 2014,5,23,20,20 ' + \
+        'F16' + \
+        '/Users/sitardp1/Documents/data/sami3_may%i_phi.nc' + \ 
+        '/Users/sitardp1/Documents/data/sami3_may%ia.nc' + \
+        '/Users/sitardp1/Documents/Madrigal/dms_ut_201405%i_%i.002.hdf5' + \
+
+  
+    timeStr = '%Y,%m,%d,%H,%M' 
+    sTime = dt.datetime.strptime(args[1], timeStr)  
+    eTime = dt.datetime.strptime(args[2], timeStr)  
+    
+    main(in_fname, out_fname, AtoGHeight)
+
+
+
+
     main()
     
 

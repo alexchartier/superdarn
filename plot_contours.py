@@ -17,6 +17,7 @@ import calendar
 import cartopy.crs as ccrs
 import sys
 import os
+import pdb
 
 def main(
     startTime, endTime, sat, velFnFmt, potFnFmt, satFnFmt,
@@ -84,8 +85,26 @@ def main(
     plot_polar(potData, dmspData, dmspEArray, dmspNArray, modEArray, modNArray, modVelData)
 
     
-
-def plot_polar(potData, dmspData, dmspEArray, dmspNArray, modEArray, modNArray, modVelData):
+def adjust_model_vels(modVelData, dmspData):
+    
+    modIndex = nearest_index(dmspData["UT1_UNIX"][0], modVelData["time"])
+    latIndex = modVelData["lat0"] >=45
+    lats = modVelData["lat0"][latIndex]
+    lons = modVelData["lon0"][latIndex]
+    
+    modEVels = modVelData["u3h0"][modIndex][latIndex]
+    modNVels = modVelData["u1p0"][modIndex][latIndex]
+ 
+    for index in range(len(modEVels)):
+        theta = calc_theta(lats[index], lons[index], 
+                           dt.datetime.utcfromtimestamp(modVelData["time"][modIndex]))
+        
+        modEVels[index] += np.cos(theta) * modNVels[index]
+        modNVels[index] = np.sin(theta) * modNVels[index]
+    
+    return lats, lons, modEVels, modNVels
+    
+def plot_polar(potData, dmspData, dmspEArray, dmspNArray, interpModE, interpModN, modVelData):
     plt.figure(figsize=(8, 10))
     ax1 = plt.subplot(1, 1, 1, projection=ccrs.AzimuthalEquidistant(central_latitude= 90))
     
@@ -98,10 +117,12 @@ def plot_polar(potData, dmspData, dmspEArray, dmspNArray, modEArray, modNArray, 
     dmspLons = dmspData["GLON"][:len(dmspData["UT1_UNIX"]) -1]
     dmspLats = dmspData["GDLAT"][:len(dmspData["UT1_UNIX"]) -1]
     
+    potData["lon"][potData["lon"] > 180] -= 360   
+    
     #plot contours
-    ax1.contour(potData["Geographic Longitude"],
-                potData["Geographic Latitude"], 
-                potData["Potential"], cmap = "hot", transform = ccrs.PlateCarree())
+    ax1.contour(potData["lon"],
+                potData["lat"], 
+                potData["phi"][modIndex], cmap = "hot", transform = ccrs.PlateCarree())
     
     #plot dmsp velocity data
     ax1.quiver(dmspLons, dmspLats, 
@@ -110,28 +131,13 @@ def plot_polar(potData, dmspData, dmspEArray, dmspNArray, modEArray, modNArray, 
     
     #plot interpolated model data
     ax1.quiver(dmspLons, dmspLats, 
-               modEArray, modNArray, color = "green", width = .002, label = "model data",
+               interpModE, interpModN, color = "green", width = .002, label = "model data",
                transform=ccrs.PlateCarree())
-
-    #if this ends up being permanent, create new function, and process in beginning
-    #process gridded model data
-    latIndex = modVelData["lat0"] >=45
-    modVelData["lat0"] = modVelData["lat0"][latIndex]
-    modVelData["lon0"] = modVelData["lon0"][latIndex]
     
-    modEVels = modVelData["u3h0"][modIndex][latIndex]
-    modNVels = modVelData["u1p0"][modIndex][latIndex]
- 
-    for index in range(len(modEVels)):
-        
-        theta = calc_theta(modVelData["lat0"][index], modVelData["lon0"][index], 
-                           dt.datetime.utcfromtimestamp(modVelData["time"][modIndex]))
-        
-        modEVels[index] += np.cos(theta) * modNVels[index]
-        modNVels[index] = np.sin(theta) * modNVels[index]
+    gridLats, gridLons, gridEVels, gridNVels = adjust_model_vels(modVelData, dmspData)
     
     #plot gridded model data    
-    ax1.quiver(modVelData["lon0"], modVelData["lat0"], modEVels, modNVels, transform = ccrs.PlateCarree())
+    ax1.quiver(gridLons, gridLats, gridEVels, gridNVels, transform = ccrs.PlateCarree())
     
     startTime = dt.datetime.utcfromtimestamp(dmspData["UT1_UNIX"][0]).strftime( "%H:%M:%S")
     endTime = dt.datetime.utcfromtimestamp(dmspData["UT1_UNIX"][len(dmspData["UT1_UNIX"])-1]).strftime( "%H:%M:%S")
@@ -203,7 +209,6 @@ def interp_mod_spatial(velData, modTimeIndex, satLat, satLon, dTime):
     interpModE = griddata(
         (velData["lon0"].flatten(), velData["lat0"].flatten()), 
         velData["u3h0"][modTimeIndex].flatten(), (satLon, satLat), method = "linear")
-
     
     # Convert from Magnetic-oriented to geographic-oriented velocities 
     theta = calc_theta(satLat, satLon, dTime, refAlt=400)
@@ -218,7 +223,7 @@ def calc_theta(
         satLat, satLon, dTime, 
         refAlt = 400,
 ):
-    """ theta is the angle between the vector and the x axis """
+    """ theta is the angle between the vector from the satellite to the magnetic pole and the x axis """
 
     # Calculates the angle between geographic and magnetic pole
     mPole = aacgmv2.convert_latlon(90, 0, refAlt, dTime, method_code="A2G")
@@ -254,8 +259,7 @@ def interp_sami3(dataTime, dataLat, dataLon, modVel):
     #2 Spatially interpolate model to the data location at modT1 and modT2
     dTimeT1 = dt.datetime.utcfromtimestamp(modVel["time"][modT1])
     dTimeT2 = dt.datetime.utcfromtimestamp(modVel["time"][modT2])
-   
-        
+    
     geoNorthT1, geoEastT1 = interp_mod_spatial(modVel, modT1, dataLat, dataLon, dTimeT1)
     geoNorthT2, geoEastT2 = interp_mod_spatial(modVel, modT2, dataLat, dataLon, dTimeT2)
     
@@ -303,17 +307,17 @@ if __name__ == "__main__":
         ' - velocity file\n' + \
         ' - satellite file\n' + \
         '\ne.g.:\n python3 plot_contours.py  ' + \
-        '2014,5,23,20,15 2014,5,23,20,20 ' + \
+        '2014,5,23,20,15,0 2014,5,23,20,20,15 ' + \
         'F16 ' + \
         '/Users/sitardp1/Documents/data/sami3_may%ia.nc ' + \
         '/Users/sitardp1/Documents/data/sami3_may%i_phi.nc ' + \
         '/Users/sitardp1/Documents/Madrigal/dms_ut_201405%i_%i.002.hdf5 '
 
-    timeStr = '%Y,%m,%d,%H,%M' 
+    timeStr = '%Y,%m,%d,%H,%M,%S' 
     sTime = dt.datetime.strptime(args[1], timeStr)  
     eTime = dt.datetime.strptime(args[2], timeStr)  
     sat = int(args[3][1:])
-    breakpoint()
+    
     main(
         startTime=sTime,
         endTime=eTime,

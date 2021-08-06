@@ -16,87 +16,76 @@ import aacgmv2
 import calendar
 import cartopy.crs as ccrs
 import sys
-import pdb
+import os
 
 def main(
-    startTime = dt.datetime(2014, 5, 23, 20, 10, 0),
-    endTime = dt.datetime(2014, 5, 23, 20, 20, 0),
-    sat = 16,
-    velFnFmt="/Users/sitardp1/Documents/data/sami3_may%ia.nc",
-    satFnFmt="/Users/sitardp1/Documents/Madrigal/dms_ut_201405%i_%i.002.hdf5",
-    potFnFmt = "/Users/sitardp1/Documents/data/pymix/ampere_mix_2014-05-%iT%s-%s-00Z.nc"
+    startTime, endTime, sat, velFnFmt, potFnFmt, satFnFmt,
 ):
     
     assert startTime.day == endTime.day, 'Cannot handle multi-day events yet'
     
     # load data
-    potStartTime = startTime.replace(minute = round(startTime.minute/10)*10)
-    pot_file = potFnFmt % (potStartTime.day, potStartTime.strftime("%H"), potStartTime.strftime("%M"))
-    vel_file = velFnFmt % (startTime.day)
-    sat_file = satFnFmt % (startTime.day, sat)
+    velFile = os.path.expanduser(velFnFmt) % startTime.day
+    potFile = os.path.expanduser(potFnFmt) % startTime.day
+    satFile = os.path.expanduser(satFnFmt) % (startTime.day, sat)
 
-    
-    dmsp_data = proc_dmsp.load(sat_file)
-    pot_data = nc_utils.ncread_vars(pot_file)
-    modVelData = nc_utils.ncread_vars(vel_file)
+    modVelData = nc_utils.ncread_vars(velFile)
+    potData = nc_utils.ncread_vars(potFile)
+    dmspData = proc_dmsp.load(satFile)
     
     #various adjustments of data: change model times to unix, adjust model longitude and velocity
     day = dt.datetime(startTime.year, startTime.month, startTime.day)
     dayUnix = calendar.timegm(day.timetuple())
-    modVelData["time"] = dayUnix + modVelData["time"]*3600
-    modVelData["lon0"] -= 180
-    modVelData["u1p0"] /= 100
-    modVelData["u3h0"] /= 100
-
+    modVelData["time"] = dayUnix + modVelData["time"] * 3600
+    modVelData["lon0"][modVelData["lon0"] > 180] -= 360   
+    modVelData["u1p0"] /= 100  # cm/s -> m/s
+    modVelData["u3h0"] /= 100  # cm/s -> m/s
 
     #indexing with start time and end time. adds one index to make up for off by one error
-    endTimeIndex = nearest_index(calendar.timegm(endTime.timetuple()), dmsp_data["UT1_UNIX"])
+    endTimeIndex = nearest_index(calendar.timegm(endTime.timetuple()), dmspData["UT1_UNIX"])
     dmsp_idx = np.logical_and( 
-        dmsp_data["UT1_UNIX"] > calendar.timegm(startTime.timetuple()),
-        dmsp_data["UT1_UNIX"] < dmsp_data["UT1_UNIX"][endTimeIndex + 1],
+        dmspData["UT1_UNIX"] > calendar.timegm(startTime.timetuple()),
+        dmspData["UT1_UNIX"] < dmspData["UT1_UNIX"][endTimeIndex + 1],
     )
     
     # Select relevant parts of DMSP data
-    for k, v in dmsp_data.items():
-        dmsp_data[k] = v[dmsp_idx]
+    for k, v in dmspData.items():
+        dmspData[k] = v[dmsp_idx]
         
     # calculate DMSP vels
     dmspEArray = np.array([])
     dmspNArray = np.array([])
     
-    
-    #will be one less than length of dmsp array
-    for tindex in range(len(dmsp_data["UT1_UNIX"])-1):
-        satLatI, satLonI, satLatF, satLonF, forward, left = sat_data(dmsp_data, tindex)
-        dmsp_east, dmsp_north = transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left)
-        dmspEArray = np.append(dmspEArray, dmsp_east)
-        dmspNArray = np.append(dmspNArray, dmsp_north)     
+    # will be one less than length of dmsp array
+    for tindex in range(len(dmspData["UT1_UNIX"])-1):
+        satLatI, satLonI, satLatF, satLonF, forward, left = sat_data(dmspData, tindex)
+        dmspEast, dmspNorth = transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left)
+        dmspEArray = np.append(dmspEArray, dmspEast)
+        dmspNArray = np.append(dmspNArray, dmspNorth)     
     
     # loop through the data and interpolate the model to each space/time location  
     modEArray = np.array([])
     modNArray = np.array([])
     
-    print(len(dmsp_data['UT1_UNIX'])-1)
+    print(len(dmspData['UT1_UNIX'])-1)
 
-    for tind in range(len(dmsp_data['UT1_UNIX'])-1):
+    for tind in range(len(dmspData['UT1_UNIX'])-1):
         print(tind)
-    
-        unix = dmsp_data["UT1_UNIX"][tind]
-        satData = sat_data(dmsp_data, tind)
+        unix = dmspData["UT1_UNIX"][tind]
+        satData = sat_data(dmspData, tind)
         modVelE, modVelN = interp_sami3(unix, satData[0], satData[1], modVelData)
         modEArray = np.append(modEArray, modVelE)
         modNArray = np.append(modNArray, modVelN)
     
     #plot velocities vs time and on contour map
-    plot_velocities(dmsp_data["UT1_UNIX"][:len(dmsp_data["UT1_UNIX"]) -1], 
+    plot_velocities(dmspData["UT1_UNIX"][:len(dmspData["UT1_UNIX"]) -1], 
                     modEArray, modNArray, dmspEArray, dmspNArray)
     
-
-    plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray, modVelData)
+    plot_polar(potData, dmspData, dmspEArray, dmspNArray, modEArray, modNArray, modVelData)
 
     
 
-def plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray, modVelData):
+def plot_polar(potData, dmspData, dmspEArray, dmspNArray, modEArray, modNArray, modVelData):
     plt.figure(figsize=(8, 10))
     ax1 = plt.subplot(1, 1, 1, projection=ccrs.AzimuthalEquidistant(central_latitude= 90))
     
@@ -104,15 +93,15 @@ def plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray
     ax1.set_extent([-180, 180, 45, 90], ccrs.PlateCarree())
     ax1.coastlines('50m')
     ax1.gridlines()
-    modIndex = nearest_index(dmsp_data["UT1_UNIX"][0], modVelData["time"])
+    modIndex = nearest_index(dmspData["UT1_UNIX"][0], modVelData["time"])
     
-    dmspLons = dmsp_data["GLON"][:len(dmsp_data["UT1_UNIX"]) -1]
-    dmspLats = dmsp_data["GDLAT"][:len(dmsp_data["UT1_UNIX"]) -1]
+    dmspLons = dmspData["GLON"][:len(dmspData["UT1_UNIX"]) -1]
+    dmspLats = dmspData["GDLAT"][:len(dmspData["UT1_UNIX"]) -1]
     
     #plot contours
-    ax1.contour(pot_data["Geographic Longitude"],
-                pot_data["Geographic Latitude"], 
-                pot_data["Potential"], cmap = "hot", transform = ccrs.PlateCarree())
+    ax1.contour(potData["Geographic Longitude"],
+                potData["Geographic Latitude"], 
+                potData["Potential"], cmap = "hot", transform = ccrs.PlateCarree())
     
     #plot dmsp velocity data
     ax1.quiver(dmspLons, dmspLats, 
@@ -144,8 +133,8 @@ def plot_polar(pot_data, dmsp_data, dmspEArray, dmspNArray, modEArray, modNArray
     #plot gridded model data    
     ax1.quiver(modVelData["lon0"], modVelData["lat0"], modEVels, modNVels, transform = ccrs.PlateCarree())
     
-    startTime = dt.datetime.utcfromtimestamp(dmsp_data["UT1_UNIX"][0]).strftime( "%H:%M:%S")
-    endTime = dt.datetime.utcfromtimestamp(dmsp_data["UT1_UNIX"][len(dmsp_data["UT1_UNIX"])-1]).strftime( "%H:%M:%S")
+    startTime = dt.datetime.utcfromtimestamp(dmspData["UT1_UNIX"][0]).strftime( "%H:%M:%S")
+    endTime = dt.datetime.utcfromtimestamp(dmspData["UT1_UNIX"][len(dmspData["UT1_UNIX"])-1]).strftime( "%H:%M:%S")
     
     plt.legend()
     plt.suptitle("%s - %s" % (startTime, endTime))
@@ -163,60 +152,57 @@ def nearest_index(value, array):
  
 
 # returns coordinates and velocity of measurement at a certain time    
-def sat_data(dmsp_data, dmspTindex):
+def sat_data(dmspData, dmspTindex):
     
     # read satellite data
-    satLatI = dmsp_data["GDLAT"][dmspTindex]
-    satLonI = dmsp_data["GLON"][dmspTindex]
+    satLatI = dmspData["GDLAT"][dmspTindex]
+    satLonI = dmspData["GLON"][dmspTindex]
     
-    satLatF = dmsp_data["GDLAT"][dmspTindex + 1]
-    satLonF = dmsp_data["GLON"][dmspTindex + 1]
+    satLatF = dmspData["GDLAT"][dmspTindex + 1]
+    satLonF = dmspData["GLON"][dmspTindex + 1]
     
-    forward = dmsp_data["ION_V_SAT_FOR"][dmspTindex]
-    left = dmsp_data["ION_V_SAT_LEFT"][dmspTindex]
+    forward = dmspData["ION_V_SAT_FOR"][dmspTindex]
+    left = dmspData["ION_V_SAT_LEFT"][dmspTindex]
     
     return satLatI, satLonI, satLatF, satLonF, forward, left
 
-#return east/north components of velocity measurement    
-def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left):
-    
 
+def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left):
+    """ return east/north components of velocity measurement """ 
+    
     # create north/east vectors based on satellite direction
     wgs84 = nv.FrameE(name='WGS84')
-    init = wgs84.GeoPoint(satLatI, 
-                          satLonI, 0, degrees=True)
+    init = wgs84.GeoPoint(satLatI, satLonI, 0, degrees=True)
     
-    final = wgs84.GeoPoint(satLatF, 
-                          satLonF, 0, degrees=True)
+    final = wgs84.GeoPoint(satLatF, satLonF, 0, degrees=True)
     
     p_AB_N = init.delta_to(final) 
     north, east, z = p_AB_N.pvector.ravel()
     
-    
-    #use geometry to find components of dmsp measurement velocity
-    theta_for = np.arctan2(north, east)
-    alpha = np.arctan(abs(forward) / abs(left))
-    theta = theta_for + np.pi/2 - alpha
-    mag = np.hypot(forward, left)
+    # use geometry to find components of dmsp measurement velocity
+    thetaForward = np.arctan2(north, east)  # Angle between geographic East and the satellite's direction
+    alpha = np.arctan(abs(forward) / abs(left))  # Angle between satellite left and velocity direction
+    theta = thetaForward + np.pi / 2 - alpha   #Angle between velocity direction and East
+    mag = np.hypot(forward, left)  # magnitude of velocity
 
-    #dmsp measurement components
-    dmsp_east = mag * np.cos(theta)
-    dmsp_north = mag * np.sin(theta)
+    # dmsp measurement components
+    dmspEast = mag * np.cos(theta)
+    dmspNorth = mag * np.sin(theta)
     
-    return dmsp_east, dmsp_north
+    return dmspEast, dmspNorth
  
  
-#interpolate model data between satellite coordinates  
-def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, dTime):
+def interp_mod_spatial(velData, modTimeIndex, satLat, satLon, dTime):
+    """ interpolate model data between satellite coordinates """
 
     #interpolate model data between satellite coordinates
 
     interpModN = griddata(
-        (vel_data["lon0"].flatten(), vel_data["lat0"].flatten()), 
-        vel_data["u1p0"][modTimeIndex].flatten(), (satLon, satLat), method = "linear")
+        (velData["lon0"].flatten(), velData["lat0"].flatten()), 
+        velData["u1p0"][modTimeIndex].flatten(), (satLon, satLat), method = "linear")
     interpModE = griddata(
-        (vel_data["lon0"].flatten(), vel_data["lat0"].flatten()), 
-        vel_data["u3h0"][modTimeIndex].flatten(), (satLon, satLat), method = "linear")
+        (velData["lon0"].flatten(), velData["lat0"].flatten()), 
+        velData["u3h0"][modTimeIndex].flatten(), (satLon, satLat), method = "linear")
 
     
     # Convert from Magnetic-oriented to geographic-oriented velocities 
@@ -227,11 +213,13 @@ def interp_mod_spatial(vel_data, modTimeIndex, satLat, satLon, dTime):
 
     return geoNorth, geoEast
 
-# theta is the angle between the vector and the x axis
+
 def calc_theta(
         satLat, satLon, dTime, 
         refAlt = 400,
 ):
+    """ theta is the angle between the vector and the x axis """
+
     # Calculates the angle between geographic and magnetic pole
     mPole = aacgmv2.convert_latlon(90, 0, refAlt, dTime, method_code="A2G")
     wgs84 = nv.FrameE(name='WGS84')
@@ -246,13 +234,14 @@ def calc_theta(
     return theta 
 
 
-#interpolate model data between two model timestamps    
 def interp_mod_temporal(dataTime, modT1Unix, modT2Unix, geoNorthT1, geoEastT1, geoNorthT2, geoEastT2):
+    """ interpolate model data between two model timestamps """
 
     interpE = np.interp(dataTime, [modT1Unix, modT2Unix], [geoEastT1, geoEastT2])    
     interpN = np.interp(dataTime, [modT1Unix, modT2Unix], [geoNorthT1, geoNorthT2])
     
     return interpE, interpN
+
 
 def interp_sami3(dataTime, dataLat, dataLon, modVel):
     
@@ -274,11 +263,11 @@ def interp_sami3(dataTime, dataLat, dataLon, modVel):
     interpTempE, interpTempN = interp_mod_temporal(dataTime, modVel["time"][modT1], modVel["time"][modT2], 
                                                 geoNorthT1, geoEastT1, geoNorthT2, geoEastT2)
     
-    
     return interpTempE, interpTempN
 
-# plot the comparison velocities
+
 def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArray):
+    """ plot the comparison velocities """
     
     startTime = dt.datetime.utcfromtimestamp(timeRange[0]).strftime( "%H:%M:%S")
     endTime = dt.datetime.utcfromtimestamp(timeRange[len(timeRange)-1]).strftime( "%H:%M:%S")
@@ -306,14 +295,6 @@ def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArra
 if __name__ == "__main__": 
 
     args = sys.argv
-    
-    startTime = dt.datetime(2014, 5, 23, 20, 15, 0),
-    endTime = dt.datetime(2014, 5, 23, 20, 20, 15),
-    sat = 16,
-    potFnFmt="/Users/sitardp1/Documents/data/sami3_may%i_phi.nc",
-    velFnFmt="/Users/sitardp1/Documents/data/sami3_may%ia.nc",
-    satFnFmt="/Users/sitardp1/Documents/Madrigal/dms_ut_201405%i_%i.002.hdf5",
-
     assert len(args) == 7, 'Should have 6 arguments:\n' + \
         ' -  starttime\n' + \
         ' -  endtime\n' + \
@@ -321,25 +302,25 @@ if __name__ == "__main__":
         ' - potential file\n' + \
         ' - velocity file\n' + \
         ' - satellite file\n' + \
-        '\ne.g.: python3 plot_contours.py  ' + \
+        '\ne.g.:\n python3 plot_contours.py  ' + \
         '2014,5,23,20,15 2014,5,23,20,20 ' + \
-        'F16' + \
-        '/Users/sitardp1/Documents/data/sami3_may%i_phi.nc' + \ 
-        '/Users/sitardp1/Documents/data/sami3_may%ia.nc' + \
-        '/Users/sitardp1/Documents/Madrigal/dms_ut_201405%i_%i.002.hdf5' + \
+        'F16 ' + \
+        '/Users/sitardp1/Documents/data/sami3_may%ia.nc ' + \
+        '/Users/sitardp1/Documents/data/sami3_may%i_phi.nc ' + \
+        '/Users/sitardp1/Documents/Madrigal/dms_ut_201405%i_%i.002.hdf5 '
 
     timeStr = '%Y,%m,%d,%H,%M' 
     sTime = dt.datetime.strptime(args[1], timeStr)  
     eTime = dt.datetime.strptime(args[2], timeStr)  
     sat = int(args[3][1:])
-
+    breakpoint()
     main(
         startTime=sTime,
         endTime=eTime,
         sat=16,
         velFnFmt=args[4],
-        satFnFmt=args[5],
-        potFnFmt=args[6],
+        potFnFmt=args[5],
+        satFnFmt=args[6],
     )
 
 

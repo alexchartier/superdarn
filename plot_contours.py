@@ -143,18 +143,17 @@ def plot_polar(potData, dmspData, dmspEArray, dmspNArray, interpModE, interpModN
     
     #plot dmsp velocity data
     ax1.quiver(dmspLons, dmspLats, 
-               dmspEArray, dmspNArray, color = "blue", width = .002, label = "dmsp data",
+               dmspEArray, dmspNArray, color = "blue", width = .003, label = "dmsp data",
                transform=ccrs.PlateCarree())
     
     #plot interpolated model data
     ax1.quiver(dmspLons, dmspLats, 
-               interpModE, interpModN, color = "green", width = .002, label = "model data",
+               interpModE, interpModN, color = "green", width = .003, label = "model data",
                transform=ccrs.PlateCarree())
     
-    gridLats, gridLons, gridEVels, gridNVels = adjust_model_vels(modVelData, dmspData)
-    
+    #gridLats, gridLons, gridEVels, gridNVels = adjust_model_vels(modVelData, dmspData)
     #plot gridded model data    
-    ax1.quiver(gridLons, gridLats, gridEVels, gridNVels, transform = ccrs.PlateCarree())
+    #ax1.quiver(gridLons, gridLats, gridEVels, gridNVels, transform = ccrs.PlateCarree())
     
     startTime = dt.datetime.utcfromtimestamp(dmspData["UT1_UNIX"][0]).strftime( "%H:%M:%S")
     endTime = dt.datetime.utcfromtimestamp(dmspData["UT1_UNIX"][len(dmspData["UT1_UNIX"])-1]).strftime( "%H:%M:%S")
@@ -203,14 +202,17 @@ def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, lef
     north, east, z = p_AB_N.pvector.ravel()
     
     # use geometry to find components of dmsp measurement velocity
-    thetaForward = np.arctan2(north, east)  # Angle between geographic East and the satellite's direction
-    alpha = np.arctan(abs(forward) / abs(left))  # Angle between satellite left and velocity direction
-    theta = thetaForward + np.pi / 2 - alpha   #Angle between velocity direction and East
-    mag = np.hypot(forward, left)  # magnitude of velocity
-
+    forAngle = np.arctan2(north, east)  # Angle between geographic East and the satellite's direction
+    leftAngle = forAngle + np.pi/2 #Angle between geographic East and the crosstrack direction
+    
+    forX = forward * np.cos(forAngle)
+    leftX = left * np.cos(leftAngle)
+    forY = forward * np.sin(forAngle)
+    leftY = left * np.sin(leftAngle)
+    
     # dmsp measurement components
-    dmspEast = mag * np.cos(theta)
-    dmspNorth = mag * np.sin(theta)
+    dmspEast = forX + leftX
+    dmspNorth = forY + leftY
     
     return dmspEast, dmspNorth
  

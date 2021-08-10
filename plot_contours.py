@@ -9,7 +9,7 @@ import proc_dmsp
 import nc_utils
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.interpolate import griddata
+import scipy.interpolate 
 import nvector as nv
 import datetime as dt
 import aacgmv2
@@ -24,24 +24,47 @@ def main(
 ):
     
     assert startTime.day == endTime.day, 'Cannot handle multi-day events yet'
-    
-    # load data
+   
+    # Filenames 
     velFile = os.path.expanduser(velFnFmt) % startTime.day
     potFile = os.path.expanduser(potFnFmt) % startTime.day
     satFile = os.path.expanduser(satFnFmt) % (startTime.day, sat)
 
+    # load data
     modVelData = nc_utils.ncread_vars(velFile)
     potData = nc_utils.ncread_vars(potFile)
     dmspData = proc_dmsp.load(satFile)
-    
-    #various adjustments of data: change model times to unix, adjust model longitude and velocity
-    day = dt.datetime(startTime.year, startTime.month, startTime.day)
-    dayUnix = calendar.timegm(day.timetuple())
-    modVelData["time"] = dayUnix + modVelData["time"] * 3600
-    modVelData["lon0"][modVelData["lon0"] > 180] -= 360   
-    modVelData["u1p0"] /= 100  # cm/s -> m/s
-    modVelData["u3h0"] /= 100  # cm/s -> m/s
+  
+    # pre-processing 
+    modVelData = reformat_modvels(startTime, modVelData) 
+    dmspData, dmspEArray, dmspNArray = downsample_dmsp(startTime, endTime, dmspData)
 
+    # loop through the data and interpolate the model to each space/time location  
+    modEArray = np.array([])
+    modNArray = np.array([])
+    
+    # idx = velData["lat0"].flatten() > 0
+    lons = modVelData["lon0"].flatten()
+    lats = modVelData["lat0"].flatten()
+
+    intFn = scipy.interpolate.LinearNDInterpolator((lons, lats), np.ones(lons.shape))
+
+    print(len(dmspData['UT1_UNIX'])-1)
+    for tind in range(len(dmspData['UT1_UNIX']) - 1):
+        print(tind)
+        dataTime = dmspData["UT1_UNIX"][tind]
+        modVelE, modVelN = interp_sami3(dataTime, dmspData["GDLAT"][tind], dmspData["GLON"][tind], modVelData, intFn)
+        modEArray = np.append(modEArray, modVelE)
+        modNArray = np.append(modNArray, modVelN)
+    
+    #plot velocities vs time and on contour map
+    plot_velocities(dmspData["UT1_UNIX"][:len(dmspData["UT1_UNIX"]) -1], 
+                    modEArray, modNArray, dmspEArray, dmspNArray)
+    
+    plot_polar(potData, dmspData, dmspEArray, dmspNArray, modEArray, modNArray, modVelData)
+
+
+def downsample_dmsp(startTime, endTime, dmspData):
     #indexing with start time and end time. adds one index to make up for off by one error
     endTimeIndex = nearest_index(calendar.timegm(endTime.timetuple()), dmspData["UT1_UNIX"])
     dmsp_idx = np.logical_and( 
@@ -59,31 +82,24 @@ def main(
     
     # will be one less than length of dmsp array
     for tindex in range(len(dmspData["UT1_UNIX"])-1):
-        satLatI, satLonI, satLatF, satLonF, forward, left = sat_data(dmspData, tindex)
+        satLatI, satLonI, satLatF, satLonF, forward, left = get_sat_data_t1t2(dmspData, tindex)
         dmspEast, dmspNorth = transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left)
         dmspEArray = np.append(dmspEArray, dmspEast)
-        dmspNArray = np.append(dmspNArray, dmspNorth)     
+        dmspNArray = np.append(dmspNArray, dmspNorth)
     
-    # loop through the data and interpolate the model to each space/time location  
-    modEArray = np.array([])
-    modNArray = np.array([])
-    
-    print(len(dmspData['UT1_UNIX'])-1)
+    return dmspData, dmspEArray, dmspNArray
 
-    for tind in range(len(dmspData['UT1_UNIX'])-1):
-        print(tind)
-        unix = dmspData["UT1_UNIX"][tind]
-        satData = sat_data(dmspData, tind)
-        modVelE, modVelN = interp_sami3(unix, satData[0], satData[1], modVelData)
-        modEArray = np.append(modEArray, modVelE)
-        modNArray = np.append(modNArray, modVelN)
-    
-    #plot velocities vs time and on contour map
-    plot_velocities(dmspData["UT1_UNIX"][:len(dmspData["UT1_UNIX"]) -1], 
-                    modEArray, modNArray, dmspEArray, dmspNArray)
-    
-    plot_polar(potData, dmspData, dmspEArray, dmspNArray, modEArray, modNArray, modVelData)
 
+def reformat_modvels(startTime, modVelData):
+    #various adjustments of data: change model times to unix, adjust model longitude and velocity
+    day = dt.datetime(startTime.year, startTime.month, startTime.day)
+    dayUnix = calendar.timegm(day.timetuple())
+    modVelData["time"] = dayUnix + modVelData["time"] * 3600
+    modVelData["lon0"][modVelData["lon0"] > 180] -= 360   
+    modVelData["u1p0"] /= 100  # cm/s -> m/s
+    modVelData["u3h0"] /= 100  # cm/s -> m/s
+    return modVelData
+    
     
 def adjust_model_vels(modVelData, dmspData):
     
@@ -103,6 +119,7 @@ def adjust_model_vels(modVelData, dmspData):
         modNVels[index] = np.sin(theta) * modNVels[index]
     
     return lats, lons, modEVels, modNVels
+    
     
 def plot_polar(potData, dmspData, dmspEArray, dmspNArray, interpModE, interpModN, modVelData):
     plt.figure(figsize=(8, 10))
@@ -158,7 +175,7 @@ def nearest_index(value, array):
  
 
 # returns coordinates and velocity of measurement at a certain time    
-def sat_data(dmspData, dmspTindex):
+def get_sat_data_t1t2(dmspData, dmspTindex):
     
     # read satellite data
     satLatI = dmspData["GDLAT"][dmspTindex]
@@ -198,18 +215,15 @@ def transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, lef
     return dmspEast, dmspNorth
  
  
-def interp_mod_spatial(velData, modTimeIndex, satLat, satLon, dTime):
+def interp_mod_spatial(intFn, modVelN, modVelE, satLat, satLon, dTime):
     """ interpolate model data between satellite coordinates """
 
     #interpolate model data between satellite coordinates
+    intFn.values = np.expand_dims(modVelN, axis=1).astype('float64')
+    interpModN = intFn((satLon, satLat))
+    intFn.values = np.expand_dims(modVelE, axis=1).astype('float64')
+    interpModE = intFn((satLon, satLat))
 
-    interpModN = griddata(
-        (velData["lon0"].flatten(), velData["lat0"].flatten()), 
-        velData["u1p0"][modTimeIndex].flatten(), (satLon, satLat), method = "linear")
-    interpModE = griddata(
-        (velData["lon0"].flatten(), velData["lat0"].flatten()), 
-        velData["u3h0"][modTimeIndex].flatten(), (satLon, satLat), method = "linear")
-    
     # Convert from Magnetic-oriented to geographic-oriented velocities 
     theta = calc_theta(satLat, satLon, dTime, refAlt=400)
 
@@ -239,35 +253,26 @@ def calc_theta(
     return theta 
 
 
-def interp_mod_temporal(dataTime, modT1Unix, modT2Unix, geoNorthT1, geoEastT1, geoNorthT2, geoEastT2):
-    """ interpolate model data between two model timestamps """
+def interp_sami3(dataTime, satLat, satLon, modVel, intFn):
+    
+    # Find model times bracketing the relevant data time
+    modTI = nearest_index(dataTime, modVel["time"][modVel["time"] <= dataTime])  # First model time index
 
-    interpE = np.interp(dataTime, [modT1Unix, modT2Unix], [geoEastT1, geoEastT2])    
-    interpN = np.interp(dataTime, [modT1Unix, modT2Unix], [geoNorthT1, geoNorthT2])
-    
-    return interpE, interpN
+    # Interpolate t1
+    modVelN = modVel["u1p0"][modTI].flatten()
+    modVelE = modVel["u3h0"][modTI].flatten()
+    geoNorthT1, geoEastT1 = interp_mod_spatial(intFn, modVelN, modVelE, satLat, satLon, dt.datetime.fromtimestamp(dataTime))
 
-
-def interp_sami3(dataTime, dataLat, dataLon, modVel):
+    # Interpolate t2
+    modVelN = modVel["u1p0"][modTI + 1].flatten()
+    modVelE = modVel["u3h0"][modTI + 1].flatten()
+    geoNorthT2, geoEastT2 = interp_mod_spatial(intFn, modVelN, modVelE, satLat, satLon, dt.datetime.fromtimestamp(dataTime))
     
-    #1 Find model times bracketing the relevant data time
-    lowerGateFlag = modVel["time"] <= dataTime
-
-    modT1 = nearest_index(dataTime, modVel["time"][lowerGateFlag])
-    modT2 = modT1 + 1
+    # Temporally interpolate the model to dataTime
+    interpModE = np.interp(dataTime, [modVel["time"][modTI], modVel["time"][modTI + 1]], [geoEastT1, geoEastT2])    
+    interpModN = np.interp(dataTime, [modVel["time"][modTI], modVel["time"][modTI + 1]], [geoNorthT1, geoNorthT2])    
     
-    #2 Spatially interpolate model to the data location at modT1 and modT2
-    dTimeT1 = dt.datetime.utcfromtimestamp(modVel["time"][modT1])
-    dTimeT2 = dt.datetime.utcfromtimestamp(modVel["time"][modT2])
-    
-    geoNorthT1, geoEastT1 = interp_mod_spatial(modVel, modT1, dataLat, dataLon, dTimeT1)
-    geoNorthT2, geoEastT2 = interp_mod_spatial(modVel, modT2, dataLat, dataLon, dTimeT2)
-    
-    #3 Temporally interpolate the model to dataTime
-    interpTempE, interpTempN = interp_mod_temporal(dataTime, modVel["time"][modT1], modVel["time"][modT2], 
-                                                geoNorthT1, geoEastT1, geoNorthT2, geoEastT2)
-    
-    return interpTempE, interpTempN
+    return interpModE, interpModN
 
 
 def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArray):
@@ -293,7 +298,7 @@ def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArra
     plt.suptitle("DMSP vs. SAMI3: %s - %s" % (startTime, endTime))
     
     plt.show()
-    plt.close()
+    #plt.close()
 
 
 if __name__ == "__main__": 

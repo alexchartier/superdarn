@@ -17,27 +17,35 @@ import calendar
 import cartopy.crs as ccrs
 import sys
 import os
-import pdb
+import spatial_interpolators
+from sknni import SkNNI
+from pylab import *
+
 
 def main(
-    startTime, endTime, sat, velFnFmt, potFnFmt, satFnFmt,
+    startTime, endTime, sat, potFnFmt, velFnFmt, satFnFmt,
 ):
     
     assert startTime.day == endTime.day, 'Cannot handle multi-day events yet'
-   
+
+    samiTime = dt.datetime(
+        startTime.year, startTime.month, startTime.day, startTime.hour, 
+        int(np.round(startTime.minute / 10) * 10),
+    )
     # Filenames 
-    velFile = os.path.expanduser(velFnFmt) % startTime.day
-    potFile = os.path.expanduser(potFnFmt) % startTime.day
+    potFile = os.path.expanduser(samiTime.strftime(potFnFmt))
+    velFile = os.path.expanduser(samiTime.strftime(velFnFmt))
     satFile = os.path.expanduser(satFnFmt) % (startTime.day, sat)
 
     # load data
-    modVelData = nc_utils.ncread_vars(velFile)
     potData = nc_utils.ncread_vars(potFile)
+    # plot_potential(potData, startTime)
+    modVelData = nc_utils.ncread_vars(velFile)
     dmspData = proc_dmsp.load(satFile)
-  
+
     # pre-processing 
     modVelData = reformat_modvels(startTime, modVelData) 
-    dmspData, dmspEArray, dmspNArray = downsample_dmsp(startTime, endTime, dmspData)
+    dmspData = preproc_dmsp(startTime, endTime, dmspData)
 
     # loop through the data and interpolate the model to each space/time location  
     modEArray = np.array([])
@@ -49,23 +57,29 @@ def main(
 
     intFn = scipy.interpolate.LinearNDInterpolator((lons, lats), np.ones(lons.shape))
 
-    print(len(dmspData['UT1_UNIX'])-1)
     for tind in range(len(dmspData['UT1_UNIX']) - 1):
         print(tind)
         dataTime = dmspData["UT1_UNIX"][tind]
-        modVelE, modVelN = interp_sami3(dataTime, dmspData["GDLAT"][tind], dmspData["GLON"][tind], modVelData, intFn)
+        modVelE, modVelN = interp_sami3(
+            dataTime, dmspData["GDLAT"][tind], dmspData["GLON"][tind], modVelData, intFn,
+        )
         modEArray = np.append(modEArray, modVelE)
         modNArray = np.append(modNArray, modVelN)
     
-    #plot velocities vs time and on contour map
-    plot_velocities(dmspData["UT1_UNIX"][:len(dmspData["UT1_UNIX"]) -1], 
-                    modEArray, modNArray, dmspEArray, dmspNArray)
+    # plot velocities vs time and on contour map
+    #plot_velocities(dmspData["UT1_UNIX"][:len(dmspData["UT1_UNIX"]) -1], 
+    #                modEArray, modNArray, dmspEArray, dmspNArray)
     
-    plot_polar(potData, dmspData, dmspEArray, dmspNArray, modEArray, modNArray, modVelData)
+    plot_potential(potData, dt.datetime(2014, 5, 23, 20, 30, 0), dmspData, modEArray, modNArray)
+    #plot_polar(potData, dmspData, modEArray, modNArray, modVelData)
 
+def preproc_dmsp(startTime, endTime, dmspData):
 
-def downsample_dmsp(startTime, endTime, dmspData):
-    #indexing with start time and end time. adds one index to make up for off by one error
+    # Downsample
+    for k, v in dmspData.items():
+        dmspData[k] = v[::10]
+
+    # indexing with start time and end time. adds one index to make up for off by one error
     endTimeIndex = nearest_index(calendar.timegm(endTime.timetuple()), dmspData["UT1_UNIX"])
     dmsp_idx = np.logical_and( 
         dmspData["UT1_UNIX"] > calendar.timegm(startTime.timetuple()),
@@ -76,18 +90,19 @@ def downsample_dmsp(startTime, endTime, dmspData):
     for k, v in dmspData.items():
         dmspData[k] = v[dmsp_idx]
         
-    # calculate DMSP vels
-    dmspEArray = np.array([])
-    dmspNArray = np.array([])
+    # Setup DMSP vel storage
+    cardDirs = 'E', 'N'
+    for d in cardDirs:
+        dmspData[d] = np.array([])
     
-    # will be one less than length of dmsp array
+    # Calculate DMSP vels (need 2-point location of DMSP, so will be one less than length of dmsp array)
     for tindex in range(len(dmspData["UT1_UNIX"])-1):
         satLatI, satLonI, satLatF, satLonF, forward, left = get_sat_data_t1t2(dmspData, tindex)
         dmspEast, dmspNorth = transform_satellite_vectors(satLatI, satLonI, satLatF, satLonF, forward, left)
-        dmspEArray = np.append(dmspEArray, dmspEast)
-        dmspNArray = np.append(dmspNArray, dmspNorth)
-    
-    return dmspData, dmspEArray, dmspNArray
+        dmspData['E'] = np.append(dmspData['E'], dmspEast)
+        dmspData['N'] = np.append(dmspData['N'], dmspNorth)
+
+    return dmspData
 
 
 def reformat_modvels(startTime, modVelData):
@@ -120,61 +135,15 @@ def adjust_model_vels(modVelData, dmspData):
     
     return lats, lons, modEVels, modNVels
     
-    
-def plot_polar(potData, dmspData, dmspEArray, dmspNArray, interpModE, interpModN, modVelData):
-    plt.figure(figsize=(8, 10))
-    ax1 = plt.subplot(1, 1, 1, projection=ccrs.AzimuthalEquidistant(central_latitude= 90))
-    
-    
-    ax1.set_extent([-180, 180, 45, 90], ccrs.PlateCarree())
-    ax1.coastlines('50m')
-    ax1.gridlines()
-    modIndex = nearest_index(dmspData["UT1_UNIX"][0], modVelData["time"])
-    
-    dmspLons = dmspData["GLON"][:len(dmspData["UT1_UNIX"]) -1]
-    dmspLats = dmspData["GDLAT"][:len(dmspData["UT1_UNIX"]) -1]
-    
-    potData["lon"][potData["lon"] > 180] -= 360   
-    
-    #plot contours
-    ax1.contour(potData["lon"],
-                potData["lat"], 
-                potData["phi"][modIndex], cmap = "hot", transform = ccrs.PlateCarree())
-    
-    #plot dmsp velocity data
-    ax1.quiver(dmspLons, dmspLats, 
-               dmspEArray, dmspNArray, color = "blue", width = .003, label = "dmsp data",
-               transform=ccrs.PlateCarree())
-    
-    #plot interpolated model data
-    ax1.quiver(dmspLons, dmspLats, 
-               interpModE, interpModN, color = "green", width = .003, label = "model data",
-               transform=ccrs.PlateCarree())
-    
-    #gridLats, gridLons, gridEVels, gridNVels = adjust_model_vels(modVelData, dmspData)
-    #plot gridded model data    
-    #ax1.quiver(gridLons, gridLats, gridEVels, gridNVels, transform = ccrs.PlateCarree())
-    
-    startTime = dt.datetime.utcfromtimestamp(dmspData["UT1_UNIX"][0]).strftime( "%H:%M:%S")
-    endTime = dt.datetime.utcfromtimestamp(dmspData["UT1_UNIX"][len(dmspData["UT1_UNIX"])-1]).strftime( "%H:%M:%S")
-    
-    plt.legend()
-    plt.suptitle("%s - %s" % (startTime, endTime))
-    plt.savefig("/Users/sitardp1/Documents/data/contour_plot.png", dpi=300)
-
-    plt.show()
-    
-    
-
-# returns the index of an array which is closest to value    
 def nearest_index(value, array):
+# returns the index of an array which is closest to value    
     
     index = (np.abs(array - value)).argmin()
     return index
  
 
-# returns coordinates and velocity of measurement at a certain time    
 def get_sat_data_t1t2(dmspData, dmspTindex):
+# returns coordinates and velocity of measurement at a certain time    
     
     # read satellite data
     satLatI = dmspData["GDLAT"][dmspTindex]
@@ -303,6 +272,138 @@ def plot_velocities(timeRange, interpEArray, interpNArray, dmspEArray, dmspNArra
     #plt.close()
 
 
+def plot_potential(potData, time, dmspData, interpModE, interpModN):
+
+    modIndex = nearest_index(time.hour + time.minute / 60, potData['time'])
+    potData["lon"][potData["lon"] > 180] -= 360   
+    
+    # Interpolate and plot potential contours
+    lon, lat, vals = potData["lon"], potData["lat"], potData["phi"][modIndex]
+    lon[lon > 180] -= 360
+    lons_i = np.linspace(-180, 180, 181)
+    lats_i = np.linspace(0, 90, 46)
+    X_i, Y_i = np.meshgrid(lats_i, lons_i)
+    obs = np.array([lat.flatten(), lon.flatten(), vals.flatten()]).T
+    intPts = np.array([X_i.flatten(), Y_i.flatten()]).T
+    intObj = SkNNI(obs)
+    vals_g = intObj(intPts)
+
+    rad = 90 - np.abs(lats_i)
+    theta = np.deg2rad(lons_i)
+    vl = np.reshape(vals_g[:, 2], (len(lons_i), len(lats_i)))
+
+    fig, ax = plt.subplots(1, 1, subplot_kw=dict(projection='polar'))
+    p = ax.pcolormesh(theta, rad, vl.T, cmap='PuOr', shading='gouraud', vmin=-22, vmax=22)
+    p = ax.contour(theta, rad,  vl.T, 7, colors='k')
+
+    ax.clabel(p, fmt='%1.0f', fontsize=9, inline=1)
+    ax.set_aspect('equal')
+    ax.set_ylim(0, 50)
+    #ax.set_yticklabels(['80', '70', '60', '50', '0'])
+    ax.grid()
+
+    # plot dmsp velocity data
+    dmspLons = dmspData["GLON"][:len(dmspData["UT1_UNIX"]) -1]
+    dmspLats = dmspData["GDLAT"][:len(dmspData["UT1_UNIX"]) -1]
+    rad = 90 - np.abs(dmspLats)
+    theta = np.deg2rad(dmspLons)
+    ax.quiver(
+        theta, rad, dmspData['E'], dmspData['N'], 
+        color="m", width=.005, label="DMSP data", 
+    )
+        #transform=ccrs.PlateCarree(),
+
+
+    # plot interpolated model data
+    #ax.quiver(
+    #    theta, rad, interpModE, interpModN, 
+    #    color="green", width=.005, label="model data",
+    #)
+
+    plt.show()
+
+   
+
+def plot_polar(potData, dmspData, interpModE, interpModN, modVelData):
+    plt.figure(figsize=(8, 10))
+    ax1 = plt.subplot(1, 1, 1, projection=ccrs.AzimuthalEquidistant(central_latitude= 90))
+    
+    fig, ax = plt.subplots(1, 1, subplot_kw=dict(projection='polar'))
+    ax1.set_extent([-180, 180, 45, 90], ccrs.PlateCarree())
+    ax1.coastlines('50m')
+    ax1.gridlines()
+    modIndex = nearest_index(dmspData["UT1_UNIX"][0], modVelData["time"])
+    
+    dmspLons = dmspData["GLON"][:len(dmspData["UT1_UNIX"]) -1]
+    dmspLats = dmspData["GDLAT"][:len(dmspData["UT1_UNIX"]) -1]
+    
+    potData["lon"][potData["lon"] > 180] -= 360   
+    
+    # Interpolate and plot potential contours
+    lon, lat, vals = potData["lon"], potData["lat"], potData["phi"][modIndex]
+    lon[lon > 180] -= 360
+    lons_i = np.linspace(-180, 180, 181)
+    lats_i = np.linspace(0, 90, 46)
+    X_i, Y_i = np.meshgrid(lats_i, lons_i)
+    obs = np.array([lat.flatten(), lon.flatten(), vals.flatten()]).T
+    intPts = np.array([X_i.flatten(), Y_i.flatten()]).T
+    intObj = SkNNI(obs)
+    vals_g = intObj(intPts)
+
+    rad = np.deg2rad(90) - np.abs(np.deg2rad(lats_i.flatten()))
+    theta = np.deg2rad(lons_i.flatten())
+    vl = np.reshape(vals_g[:, 2], (len(lons_i), len(lats_i)))
+    ax1.pcolormesh(lons_i, lats_i, vl.T, cmap='PuOr', transform=ccrs.PlateCarree(), shading='gouraud')  
+    ax1.contour(lons_i, lats_i, vl.T, 12, colors='k', transform=ccrs.PlateCarree())  
+
+    # plot dmsp velocity data
+    ax1.quiver(dmspLons, dmspLats, dmspData['E'], dmspData['N'], 
+        color="m", width=.005, label="DMSP data", 
+        transform=ccrs.PlateCarree(),
+    )
+    """ 
+    # plot interpolated model data
+    ax1.quiver(dmspLons, dmspLats, 
+               interpModE, interpModN, color = "green", width = .003, label = "model data",
+               transform=ccrs.PlateCarree())
+    """ 
+    
+    startTime = dt.datetime.utcfromtimestamp(dmspData["UT1_UNIX"][0]).strftime( "%H:%M:%S")
+    endTime = dt.datetime.utcfromtimestamp(dmspData["UT1_UNIX"][len(dmspData["UT1_UNIX"])-1]).strftime( "%H:%M:%S")
+    
+    plt.legend()
+    plt.suptitle("%s - %s" % (startTime, endTime))
+
+    plt.show()
+
+
+def interp(vars, varsout, dt=2., dp=2.):
+    """ 
+    vars    : dictionary of variables, e.g., from nc file. See mixio/read_nc
+    varsout : names of vars to save in txt file. See, e.g., top of ampere_mix_nc2txt
+    dt      : delta theta on destination grid, in degrees
+    dp      : delta phi on destination grid, in degrees
+    """
+
+    # get source grid from vars
+    t = vars['Colatitude'][:, 0]
+    p = vars['Longitude (solar mag)'][0, :]
+    p[-1] = abs(p[-1])
+
+    # define destination grid
+    dt*=np.pi/180.
+    dp*=np.pi/180.
+    # note, below arrays include the end point. see comment on 'stop' value in arange help
+    new_t = np.arange(t.min(), t.max(), dt) 
+    new_p = np.arange(p.min(), p.max(), dp) 
+
+    for varname in varsout:
+        f = scipy.interpolate.RectBivariateSpline(t, p, vars[varname], kx=1, ky=1)  # note, assume uniform ampere grid here
+        # change vars in place
+        vars[varname] = f(new_t, new_p)
+
+
+
 if __name__ == "__main__": 
 
     args = sys.argv
@@ -317,7 +418,7 @@ if __name__ == "__main__":
         '2014,5,23,20,15,0 2014,5,23,20,20,15 ' + \
         'F16 ' + \
         '/Users/sitardp1/Documents/data/sami3_may%ia.nc ' + \
-        '/Users/sitardp1/Documents/data/sami3_may%i_phi.nc ' + \
+        '~/pymix/data/pot_sami_cond/may14_euvac/ampere_mix/ampere_mix_%Y-%m-%dT%H-%M-%SZ.nc ' + \
         '/Users/sitardp1/Documents/Madrigal/dms_ut_201405%i_%i.002.hdf5 '
 
     timeStr = '%Y,%m,%d,%H,%M,%S' 
@@ -329,8 +430,8 @@ if __name__ == "__main__":
         startTime=sTime,
         endTime=eTime,
         sat=16,
-        velFnFmt=args[4],
-        potFnFmt=args[5],
+        potFnFmt=args[4],
+        velFnFmt=args[5],
         satFnFmt=args[6],
     )
 

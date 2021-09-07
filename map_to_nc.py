@@ -18,7 +18,6 @@ import pydarn
 import datetime as dt
 import aacgmv2
 import netCDF4
-import pdb
     
 __author__ = "Jordan Wiker"
 __copyright__ = "Copyright 2021, JHUAPL"
@@ -59,14 +58,6 @@ def save_data(data, attributes, AtoGHeight, in_filename, out_filename):
 def get_data(in_filename, AtoGHeight):
     print('Processing %s' % in_filename)
     map_data = pydarn.SuperDARNRead(in_filename).read_map()
-    for k, v in map_data[0].items():
-        print(k)
-        try:
-            print(v)
-        except:
-            print(v.shape)
-    pdb.set_trace()
-
     latMagVector = []
     lonMagVector = []
     azimuthMagVector = []
@@ -76,6 +67,7 @@ def get_data(in_filename, AtoGHeight):
     azimuthGeoVector = []
 
     velocityVector = []
+    sdVector = []
     timeVector = []
     
     for entry in map_data: 
@@ -177,7 +169,7 @@ def convert_azm_aacgm2geo(azM, latG, lonG, dTime, refAlt=300):
 if __name__ == '__main__':
     args = sys.argv
     
-    assert len(args) == 4, 'Should have 3 arguments:\n' + \
+    assert len(args) >= 3, 'Should have 2-3 arguments:\n' + \
         ' -  Input filename\n' + \
         ' -  Output filename\n' + \
         ' -  AACGM to Geo conversion height (km)\n' + \
@@ -187,9 +179,10 @@ if __name__ == '__main__':
     
     in_fname = args[1]
     out_fname = args[2]
-    AtoGHeight = float(args[3])
+    if len(args) == 4:
+        args[3] = float(args[3])
     
-    main(in_fname, out_fname, AtoGHeight)
+    main(*args[1:])
 
 
 

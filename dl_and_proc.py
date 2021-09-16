@@ -19,6 +19,8 @@ def main():
     for time in times: 
         dl_one_day(dirs, time)
         raw_to_nc.main(time, time, dirs['rawacf'], dirs['fitacf'], dirs['netcdf'])
+    
+    # TODO: Delete old rawACF files
 
 
 def dl_one_day(dirs, time):

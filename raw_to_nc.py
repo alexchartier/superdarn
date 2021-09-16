@@ -174,7 +174,9 @@ def convert_fitacf_data(date, in_fname, radar_info):
     for rec in data:
         if 'elv' in rec.keys():
             is_elv = True
-    if is_elv:
+        else:
+            is_not_elv = True
+    if is_elv and not is_not_elv:  # require it for all of them
         data_flds += elv_flds
 
     # Set up data storage
@@ -187,6 +189,11 @@ def convert_fitacf_data(date, in_fname, radar_info):
         # slist is the list of range gates with backscatter
         if 'slist' not in rec.keys():
             continue
+
+        # Can't deal with returns outside of FOV
+        if rec['slist'].max() >= fov.slantRCenter.shape[1]:
+            continue
+
         fov_data = {}
         time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
         one_obj = np.ones(len(rec['slist'])) 
@@ -213,7 +220,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
     el = 15.
     brng = np.zeros(beam_off.shape)
     for ind, beam_off_elzero in enumerate(beam_off):
-        brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) +radar_info['boresight']
+        brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) + radar_info['boresight']
 
     hdr = {
         'lat': radar_info['glat'],

@@ -303,17 +303,18 @@ def plot_data(modData, radarData, time, index, hrind,
     
     #plot model data
     plt.quiver(
-    modData["lon0"]["vals"].flatten(), modData["lat0"]["vals"].flatten(), 
-    modData["uphi"]["vals"][hrind,:,:].flatten(), 
-    modData["utheta"]["vals"][hrind,:,:].flatten(), color = "gray",
-    transform=ccrs.PlateCarree(), regrid_shape= 24, width=.005, 
+        modData["lon0"]["vals"].flatten(), modData["lat0"]["vals"].flatten(), 
+        modData["uphi"]["vals"][hrind,:,:].flatten(), 
+        modData["utheta"]["vals"][hrind,:,:].flatten(), color = "gray",
+        transform=ccrs.PlateCarree(), regrid_shape= 24, width=.005, 
     )
     
     #plot radar data
-    plt.quiver(fsLonTimed, fsLatTimed, fsVelETimed, fsVelNTimed, color = "magenta", 
-                transform=ccrs.PlateCarree(),
+    plt.quiver(
+        fsLonTimed, fsLatTimed, fsVelETimed, fsVelNTimed, color = "magenta", 
+        transform=ccrs.PlateCarree(),
     
-            )
+    )
     #add radar location
     plt.plot(-133.772, 68.414, color = "red", marker = "x", transform = ccrs.PlateCarree())
     

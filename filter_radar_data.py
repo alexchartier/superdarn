@@ -62,6 +62,7 @@ def flag_interference(data):
 
             combInd = timeIndex & fsFlag & beamFlag
             if len(data["vel"][combInd]) != 0:
+                # Median filtering outliers as "other"
                 beamVelMedian = np.median(data["vel"][combInd])
                 medianFlag1 = data["vel"] >= beamVelMedian + VEL_RANGE          
                 medianFlag2 = data["vel"] <= beamVelMedian - VEL_RANGE
@@ -83,7 +84,7 @@ def flag_interference(data):
 def scatter_filter(data): 
     
     """
-    Ground Scatter removed via min velocity of 80 m/s
+    Ground Scatter removed via min velocity of 100 m/s
     E region Scatter removed via min range of 400 km
     
     """

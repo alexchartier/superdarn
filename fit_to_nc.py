@@ -40,7 +40,7 @@ import pysat, pysat_solargeomag
 
 
 def main(
-    starttime=dt.datetime(2005, 12, 1),
+    starttime=dt.datetime(1993, 1, 1),
     endtime=dt.datetime(2020, 1, 1),
     in_dir_fmt='/project/superdarn/data/cfit/%Y/%m/',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',

@@ -188,11 +188,14 @@ def convert_fitacf_data(date, in_fname, radar_info):
     for rec in data:
         # slist is the list of range gates with backscatter
         if 'slist' not in rec.keys():
+            print('Could not find slist in record - skipping')
             continue
 
         # Can't deal with returns outside of FOV
         if rec['slist'].max() >= fov.slantRCenter.shape[1]:
+            print('slist out of range - skipping record')
             continue
+            #TODO: make a better fix for these weird rangegate requests, and keep records of how often/which radars do it
 
         fov_data = {}
         time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
@@ -346,7 +349,7 @@ def raw_to_fit(
 
 
 def proc_radar(radar, in_fname_fmt, out_fname, run_dir):
-
+    # TODO: Print make_fit version into the netCDF that is created
     # Clean up the run directory
     os.makedirs(run_dir, exist_ok=True)
     os.chdir(run_dir)

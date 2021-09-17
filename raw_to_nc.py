@@ -45,11 +45,14 @@ def main(
     in_dir_fmt='/project/superdarn/data/rawacf/%Y/%m/',
     fit_dir_fmt='/project/superdarn/data/fitacf/%Y/%m/',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
+    make_fit_version = 2.5,
     step=1,  # month
     skip_existing=True,
     fit_ext='*.fit',
 ):
-
+    original_stdout = sys.stdout
+    f = open('../logs/raw_to_nc_internal.txt', 'w')
+    sys.stdout = f
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
     hdw_dat_dir = os.path.join(rstpath, 'tables/superdarn/hdw/')
@@ -58,7 +61,7 @@ def main(
     radar_info = get_radar_params(hdw_dat_dir)
     run_dir = './run/%s' % get_random_string(4)
     if in_dir_fmt:
-        raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt)
+        raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt, make_fit_version)
 
     # Loop over fit files in the monthly directories
     time = starttime
@@ -109,6 +112,7 @@ def main(
             print('Wrote output to %s' % out_fn)
             
         time = add_months(time, step)  # time += dt.timedelta(months=1) doesn't exist
+    sys.stdout = original_stdout
 
 
 def fit_to_nc(date, in_fname, out_fname, radar_info):
@@ -310,6 +314,7 @@ def raw_to_fit(
     run_dir = './run/',
     in_dir='/project/superdarn/data/rawacf/%Y/%m/',
     out_dir='/project/superdarn/alex/fitacf/%Y/%m/',
+    make_fit_version=2.5,
     clobber=False,
 ):
 
@@ -343,12 +348,12 @@ def raw_to_fit(
                 else:
                     print('skipping')
                     continue
-            status = proc_radar(radar, in_fname_fmt, fit_fname, run_dir)
+            status = proc_radar(radar, in_fname_fmt, fit_fname, make_fit_version, run_dir)
         time += dt.timedelta(days=1)
 
 
 
-def proc_radar(radar, in_fname_fmt, out_fname, run_dir):
+def proc_radar(radar, in_fname_fmt, out_fname, make_fit_version, run_dir):
     # TODO: Print make_fit version into the netCDF that is created
     # Clean up the run directory
     os.makedirs(run_dir, exist_ok=True)
@@ -372,7 +377,7 @@ def proc_radar(radar, in_fname_fmt, out_fname, run_dir):
 
         in_fname_t2 = '.'.join(in_fname_t.split('.')[:-1])
         tmp_fname = '.'.join(in_fname_t2.split('.')[:-1]) + '.fitacf'
-        os.system('make_fit %s > %s' % (in_fname_t2, tmp_fname))
+        os.system('make_fit -fitacf-version %1.1f %s > %s' % (make_fit_version, in_fname_t2, tmp_fname))
     os.system('cat *.fitacf > tmp.fitacf')
 
     # Create a single fitACF at output location
@@ -418,23 +423,25 @@ if __name__ == '__main__':
         'python3 raw_to_nc.py 2014,4,23 2014,4,24 ' + \
         '/project/superdarn/data/rawacf/%Y/%m/  ' + \
         '/project/superdarn/data/fitacf/%Y/%m/  ' + \
-        '/project/superdarn/data/netcdf/%Y/%m/'
+        '/project/superdarn/data/netcdf/%Y/%m/ 2.5'
 
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    if len(args) == 6:
+    if len(args) == 7:
 
         in_dir = args[3]
         fit_dir = args[4]
         out_dir = args[5]
-    elif len(args) == 5:
+        make_fit_version = args[6]
+    elif len(args) == 6:
         in_dir = None
         fit_dir = args[3]
         out_dir = args[4]
+        make_fit_version = args[5]
     run_dir = './run/run_%s' % get_random_string(4) 
 
     
-    main(stime, etime, in_dir, fit_dir, out_dir)
+    main(stime, etime, in_dir, fit_dir, out_dir, make_fit_version)
 
 
 

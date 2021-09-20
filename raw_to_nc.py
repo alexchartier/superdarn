@@ -51,8 +51,8 @@ def main(
     fit_ext='*.fit',
 ):
     original_stdout = sys.stdout
-    f = open('../logs/raw_to_nc_internal.txt', 'w')
-    sys.stdout = f
+    f = open('/homes/superdarn/logs/rawACF_to_netCDF_logs/rawACF_to_netCDF_%s-%s' % (starttime.strftime("%Y%m%d"), endtime.strftime("%Y%m%d")), 'w')
+    #sys.stdout = f
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
     hdw_dat_dir = os.path.join(rstpath, 'tables/superdarn/hdw/')
@@ -118,6 +118,8 @@ def main(
 def fit_to_nc(date, in_fname, out_fname, radar_info):
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
     out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info)
+    if out_vars == 0:
+        return 1
     var_defs = def_vars()
     dim_defs = {
         'npts': out_vars['mjd'].shape[0], 
@@ -155,7 +157,12 @@ def convert_fitacf_data(date, in_fname, radar_info):
     
     for k, v in bmdata.items():
         val = np.unique(v)
-        assert len(val) == 1, "not sure what to do with multiple beam definitions in one file"
+        if len(val) > 1:
+            emailSubject   = '"Multiple Beam Definitions"'
+            emailBody      = 'While converting {fitacfFile} to netCDF, {fitacfFile} was found to have {numBeamDefs} beam definitions.'.format(fitacfFile = in_fname, numBeamDefs = len(val))
+            emailAddresses = 'jordan.wiker@jhuapl.edu'
+            os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = emailBody, sub = emailSubject, addr = emailAddresses))       
+            return 0, 0
         bmdata[k] = int(val)
 
     # Define FOV
@@ -174,14 +181,22 @@ def convert_fitacf_data(date, in_fname, radar_info):
     elv_flds = 'elv', 'elv_low', 'elv_high',
 
     # Figure out if we have elevation information
-    is_elv = False
+    elv_exists = True
     for rec in data:
-        if 'elv' in rec.keys():
-            is_elv = True
-        else:
-            is_not_elv = True
-    if is_elv and not is_not_elv:  # require it for all of them
+        if 'elv' not in rec.keys():
+            elv_exists = False
+    if elv_exists:
         data_flds += elv_flds
+
+#    is_elv = False
+#    is_not_elv = False
+#    for rec in data:
+#        if 'elv' in rec.keys():
+#            is_elv = True
+#        else:
+#            is_not_elv = True
+#    if is_elv and not is_not_elv:  # require it for all of them
+#        data_flds += elv_flds
 
     # Set up data storage
     out = {}
@@ -192,12 +207,16 @@ def convert_fitacf_data(date, in_fname, radar_info):
     for rec in data:
         # slist is the list of range gates with backscatter
         if 'slist' not in rec.keys():
-            print('Could not find slist in record - skipping')
+            print('Could not find slist in record {year}{month:02d}{day:02d} {hour:02d}:{minute:02d}:{second:02d} - skipping'.format(year = rec['time.yr'], month = rec['time.mo'], day = rec['time.dy'], hour = rec['time.hr'], minute = rec['time.mt'], second = rec['time.sc']))
             continue
 
         # Can't deal with returns outside of FOV
         if rec['slist'].max() >= fov.slantRCenter.shape[1]:
             print('slist out of range - skipping record')
+            emailSubject   = '"Slist Out Of Range"'
+            emailBody      = 'While converting {fitacfFile} to netCDF, {fitacfFile} was found to have a max slist of {maxSList}'.format(fitacfFile = in_fname, maxSList = rec['slist'].max())
+            emailAddresses = 'jordan.wiker@jhuapl.edu'
+            os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = emailBody, sub = emailSubject, addr = emailAddresses))
             continue
             #TODO: make a better fix for these weird rangegate requests, and keep records of how often/which radars do it
 

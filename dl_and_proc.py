@@ -17,7 +17,6 @@ def main():
     times = get_times()
 
     for time in times: 
-        breakpoint()
         dl_one_day(dirs, time)
         raw_to_nc.main(time, time, dirs['rawacf'], dirs['fitacf'], dirs['netcdf'])
     

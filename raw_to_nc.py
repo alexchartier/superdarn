@@ -268,7 +268,8 @@ def add_months(sourcedate, months):
     day = min(sourcedate.day, calendar.monthrange(year,month)[1])
     return dt.datetime(year, month, day, sourcedate.hour, sourcedate.minute, sourcedate.second)
 
-
+def def_vars():
+     # netCDF writer expects a series of variable definitions - here they are
     stdin_int = {'units': 'none', 'type': 'u1', 'dims': 'npts'} 
     stdin_int2 = {'units': 'none', 'type': 'u2', 'dims': 'npts'} 
     stdin_flt = {'type': 'f4', 'dims': 'npts'} 

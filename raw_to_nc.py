@@ -38,6 +38,7 @@ import pydarn
 import radFov
 import pdb
 
+MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 
 def main(
     starttime=dt.datetime(2005, 12, 1),
@@ -105,8 +106,11 @@ def main(
 
             status = fit_to_nc(time, fit_fn, out_fn, radar_info_t)
 
-            if status > 0:
-                print('Failed to convert %s' % fit_fn)
+            if status == MULTIPLE_BEAM_DEFS_ERROR_CODE:
+                print('Failed to convert {fitacfFile} because it had multiple beam definitions'.format(fitacfFile = fit_fn))
+                continue
+            elif status > 0:
+                print('Failed to convert {fitacfFile}'.format(fitacfFile = fit_fn))
                 continue
 
             print('Wrote output to %s' % out_fn)
@@ -118,8 +122,9 @@ def main(
 def fit_to_nc(date, in_fname, out_fname, radar_info):
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
     out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info)
-    if out_vars == 0:
-        return 1
+    if out_vars == MULTIPLE_BEAM_DEFS_ERROR_CODE:
+        return MULTIPLE_BEAM_DEFS_ERROR_CODE
+
     var_defs = def_vars()
     dim_defs = {
         'npts': out_vars['mjd'].shape[0], 
@@ -162,7 +167,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
             emailBody      = 'While converting {fitacfFile} to netCDF, {fitacfFile} was found to have {numBeamDefs} beam definitions.'.format(fitacfFile = in_fname, numBeamDefs = len(val))
             emailAddresses = 'jordan.wiker@jhuapl.edu'
             os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = emailBody, sub = emailSubject, addr = emailAddresses))       
-            return 0, 0
+            return MULTIPLE_BEAM_DEFS_ERROR_CODE, MULTIPLE_BEAM_DEFS_ERROR_CODE
         bmdata[k] = int(val)
 
     # Define FOV
@@ -188,16 +193,6 @@ def convert_fitacf_data(date, in_fname, radar_info):
     if elv_exists:
         data_flds += elv_flds
 
-#    is_elv = False
-#    is_not_elv = False
-#    for rec in data:
-#        if 'elv' in rec.keys():
-#            is_elv = True
-#        else:
-#            is_not_elv = True
-#    if is_elv and not is_not_elv:  # require it for all of them
-#        data_flds += elv_flds
-
     # Set up data storage
     out = {}
     for fld in (fov_flds + data_flds + short_flds):
@@ -205,9 +200,12 @@ def convert_fitacf_data(date, in_fname, radar_info):
    
     # Run through each beam record and store 
     for rec in data:
+        time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
         # slist is the list of range gates with backscatter
         if 'slist' not in rec.keys():
-            print('Could not find slist in record {year}{month:02d}{day:02d} {hour:02d}:{minute:02d}:{second:02d} - skipping'.format(year = rec['time.yr'], month = rec['time.mo'], day = rec['time.dy'], hour = rec['time.hr'], minute = rec['time.mt'], second = rec['time.sc']))
+            print('Could not find slist in record {recordTime} - skipping'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S')))
+            #if rec['time.hr'] == 0 and rec['time.mt'] < 3:
+            #    breakpoint()
             continue
 
         # Can't deal with returns outside of FOV
@@ -271,8 +269,6 @@ def add_months(sourcedate, months):
     return dt.datetime(year, month, day, sourcedate.hour, sourcedate.minute, sourcedate.second)
 
 
-def def_vars():
-    # netCDF writer expects a series of variable definitions - here they are
     stdin_int = {'units': 'none', 'type': 'u1', 'dims': 'npts'} 
     stdin_int2 = {'units': 'none', 'type': 'u2', 'dims': 'npts'} 
     stdin_flt = {'type': 'f4', 'dims': 'npts'} 

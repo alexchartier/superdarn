@@ -38,6 +38,7 @@ import pydarn
 import radFov
 import pdb
 
+MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 
 def main(
     starttime=dt.datetime(2005, 12, 1),
@@ -45,11 +46,14 @@ def main(
     in_dir_fmt='/project/superdarn/data/rawacf/%Y/%m/',
     fit_dir_fmt='/project/superdarn/data/fitacf/%Y/%m/',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
+    make_fit_version = 2.5,
     step=1,  # month
     skip_existing=True,
     fit_ext='*.fit',
 ):
-
+    original_stdout = sys.stdout
+    f = open('/homes/superdarn/logs/rawACF_to_netCDF_logs/rawACF_to_netCDF_%s-%s' % (starttime.strftime("%Y%m%d"), endtime.strftime("%Y%m%d")), 'w')
+    #sys.stdout = f
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
     hdw_dat_dir = os.path.join(rstpath, 'tables/superdarn/hdw/')
@@ -58,7 +62,7 @@ def main(
     radar_info = get_radar_params(hdw_dat_dir)
     run_dir = './run/%s' % get_random_string(4)
     if in_dir_fmt:
-        raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt)
+        raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt, make_fit_version)
 
     # Loop over fit files in the monthly directories
     time = starttime
@@ -102,18 +106,25 @@ def main(
 
             status = fit_to_nc(time, fit_fn, out_fn, radar_info_t)
 
-            if status > 0:
-                print('Failed to convert %s' % fit_fn)
+            if status == MULTIPLE_BEAM_DEFS_ERROR_CODE:
+                print('Failed to convert {fitacfFile} because it had multiple beam definitions'.format(fitacfFile = fit_fn))
+                continue
+            elif status > 0:
+                print('Failed to convert {fitacfFile}'.format(fitacfFile = fit_fn))
                 continue
 
             print('Wrote output to %s' % out_fn)
             
         time = add_months(time, step)  # time += dt.timedelta(months=1) doesn't exist
+    sys.stdout = original_stdout
 
 
 def fit_to_nc(date, in_fname, out_fname, radar_info):
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
     out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info)
+    if out_vars == MULTIPLE_BEAM_DEFS_ERROR_CODE:
+        return MULTIPLE_BEAM_DEFS_ERROR_CODE
+
     var_defs = def_vars()
     dim_defs = {
         'npts': out_vars['mjd'].shape[0], 
@@ -151,7 +162,12 @@ def convert_fitacf_data(date, in_fname, radar_info):
     
     for k, v in bmdata.items():
         val = np.unique(v)
-        assert len(val) == 1, "not sure what to do with multiple beam definitions in one file"
+        if len(val) > 1:
+            emailSubject   = '"Multiple Beam Definitions"'
+            emailBody      = 'While converting {fitacfFile} to netCDF, {fitacfFile} was found to have {numBeamDefs} beam definitions.'.format(fitacfFile = in_fname, numBeamDefs = len(val))
+            emailAddresses = 'jordan.wiker@jhuapl.edu'
+            os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = emailBody, sub = emailSubject, addr = emailAddresses))       
+            return MULTIPLE_BEAM_DEFS_ERROR_CODE, MULTIPLE_BEAM_DEFS_ERROR_CODE
         bmdata[k] = int(val)
 
     # Define FOV
@@ -170,11 +186,11 @@ def convert_fitacf_data(date, in_fname, radar_info):
     elv_flds = 'elv', 'elv_low', 'elv_high',
 
     # Figure out if we have elevation information
-    is_elv = False
+    elv_exists = True
     for rec in data:
-        if 'elv' in rec.keys():
-            is_elv = True
-    if is_elv:
+        if 'elv' not in rec.keys():
+            elv_exists = False
+    if elv_exists:
         data_flds += elv_flds
 
     # Set up data storage
@@ -184,9 +200,24 @@ def convert_fitacf_data(date, in_fname, radar_info):
    
     # Run through each beam record and store 
     for rec in data:
+        time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
         # slist is the list of range gates with backscatter
         if 'slist' not in rec.keys():
+            print('Could not find slist in record {recordTime} - skipping'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S')))
+            #if rec['time.hr'] == 0 and rec['time.mt'] < 3:
+            #    breakpoint()
             continue
+
+        # Can't deal with returns outside of FOV
+        if rec['slist'].max() >= fov.slantRCenter.shape[1]:
+            print('slist out of range - skipping record')
+            emailSubject   = '"Slist Out Of Range"'
+            emailBody      = 'While converting {fitacfFile} to netCDF, {fitacfFile} was found to have a max slist of {maxSList}'.format(fitacfFile = in_fname, maxSList = rec['slist'].max())
+            emailAddresses = 'jordan.wiker@jhuapl.edu'
+            os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = emailBody, sub = emailSubject, addr = emailAddresses))
+            continue
+            #TODO: make a better fix for these weird rangegate requests, and keep records of how often/which radars do it
+
         fov_data = {}
         time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
         one_obj = np.ones(len(rec['slist'])) 
@@ -213,7 +244,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
     el = 15.
     brng = np.zeros(beam_off.shape)
     for ind, beam_off_elzero in enumerate(beam_off):
-        brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) +radar_info['boresight']
+        brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) + radar_info['boresight']
 
     hdr = {
         'lat': radar_info['glat'],
@@ -237,9 +268,8 @@ def add_months(sourcedate, months):
     day = min(sourcedate.day, calendar.monthrange(year,month)[1])
     return dt.datetime(year, month, day, sourcedate.hour, sourcedate.minute, sourcedate.second)
 
-
 def def_vars():
-    # netCDF writer expects a series of variable definitions - here they are
+     # netCDF writer expects a series of variable definitions - here they are
     stdin_int = {'units': 'none', 'type': 'u1', 'dims': 'npts'} 
     stdin_int2 = {'units': 'none', 'type': 'u2', 'dims': 'npts'} 
     stdin_flt = {'type': 'f4', 'dims': 'npts'} 
@@ -300,6 +330,7 @@ def raw_to_fit(
     run_dir = './run/',
     in_dir='/project/superdarn/data/rawacf/%Y/%m/',
     out_dir='/project/superdarn/alex/fitacf/%Y/%m/',
+    make_fit_version=2.5,
     clobber=False,
 ):
 
@@ -333,13 +364,13 @@ def raw_to_fit(
                 else:
                     print('skipping')
                     continue
-            status = proc_radar(radar, in_fname_fmt, fit_fname, run_dir)
+            status = proc_radar(radar, in_fname_fmt, fit_fname, make_fit_version, run_dir)
         time += dt.timedelta(days=1)
 
 
 
-def proc_radar(radar, in_fname_fmt, out_fname, run_dir):
-
+def proc_radar(radar, in_fname_fmt, out_fname, make_fit_version, run_dir):
+    # TODO: Print make_fit version into the netCDF that is created
     # Clean up the run directory
     os.makedirs(run_dir, exist_ok=True)
     os.chdir(run_dir)
@@ -362,7 +393,7 @@ def proc_radar(radar, in_fname_fmt, out_fname, run_dir):
 
         in_fname_t2 = '.'.join(in_fname_t.split('.')[:-1])
         tmp_fname = '.'.join(in_fname_t2.split('.')[:-1]) + '.fitacf'
-        os.system('make_fit %s > %s' % (in_fname_t2, tmp_fname))
+        os.system('make_fit -fitacf-version %1.1f %s > %s' % (make_fit_version, in_fname_t2, tmp_fname))
     os.system('cat *.fitacf > tmp.fitacf')
 
     # Create a single fitACF at output location
@@ -408,23 +439,25 @@ if __name__ == '__main__':
         'python3 raw_to_nc.py 2014,4,23 2014,4,24 ' + \
         '/project/superdarn/data/rawacf/%Y/%m/  ' + \
         '/project/superdarn/data/fitacf/%Y/%m/  ' + \
-        '/project/superdarn/data/netcdf/%Y/%m/'
+        '/project/superdarn/data/netcdf/%Y/%m/ 2.5'
 
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    if len(args) == 6:
+    if len(args) == 7:
 
         in_dir = args[3]
         fit_dir = args[4]
         out_dir = args[5]
-    elif len(args) == 5:
+        make_fit_version = args[6]
+    elif len(args) == 6:
         in_dir = None
         fit_dir = args[3]
         out_dir = args[4]
+        make_fit_version = args[5]
     run_dir = './run/run_%s' % get_random_string(4) 
 
     
-    main(stime, etime, in_dir, fit_dir, out_dir)
+    main(stime, etime, in_dir, fit_dir, out_dir, make_fit_version)
 
 
 

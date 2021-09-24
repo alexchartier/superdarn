@@ -11,7 +11,7 @@ import datetime as dt
 import os
 import glob
 # import bz2
-from sd_utils import get_random_string, get_radr_list, id_beam_north, id_hdw_params_t
+from sd_utils import get_random_string, get_radar_list, id_beam_north, id_hdw_params_t
 import sys
 import pdb
 

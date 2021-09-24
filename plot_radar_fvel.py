@@ -20,7 +20,7 @@ import filter_radar_data
 import nc_utils
 import glob
 import datetime as dt
-from run_meteorproc import get_radar_params, id_hdw_params_t
+from sd_utils import get_radar_params, id_hdw_params_t
 import sys
 import pdb
 

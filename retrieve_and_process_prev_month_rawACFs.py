@@ -25,7 +25,7 @@ def main():
     #     os.environ['RSTPATH'] = '/project/superdarn/software/rst'
 
     startDate, endDate = get_first_and_last_days_of_prev_month()
-    download_rawacfs(dirs['basServer'], dirs['basRawacf'],dirs['rawacf'],dirs['netcdf'],startDate)
+    download_rawacfs(dirs, startDate)
     convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, dirs)
 
 def download_rawacfs(dirs, startDate):
@@ -89,8 +89,6 @@ def download_rawacfs(dirs, startDate):
         os.system('rm {ncDir}/bas_rawacfs_copied_{dateSuffix}.txt'.format(ncDir = netcdfDir, dateSuffix = fileNameDateString))
         send_email(emailSubject, emailBody, EMAIL_ADDRESSES)
     
-
-    convert_rawacf_to_fitacf_and_netcdf()
 
 def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, dirs):
 

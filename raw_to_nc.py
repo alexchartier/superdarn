@@ -205,8 +205,6 @@ def convert_fitacf_data(date, in_fname, radar_info, make_fit_version):
         # slist is the list of range gates with backscatter
         if 'slist' not in rec.keys():
             print('Could not find slist in record {recordTime} - skipping'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S')))
-            #if rec['time.hr'] == 0 and rec['time.mt'] < 3:
-            #    breakpoint()
             continue
 
         # Can't deal with returns outside of FOV
@@ -247,6 +245,11 @@ def convert_fitacf_data(date, in_fname, radar_info, make_fit_version):
     for ind, beam_off_elzero in enumerate(beam_off):
         brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) + radar_info['boresight']
 
+    # Load the list of rawacf files used to create the fitacf and netcdf    
+    rawacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.rawacfList.txt'
+    with open(rawacfListFilename, "rb") as fp:
+        rawacf_source_files = pickle.load(fp)
+
     hdr = {
         'lat': radar_info['glat'],
         'lon': radar_info['glon'],
@@ -257,9 +260,9 @@ def convert_fitacf_data(date, in_fname, radar_info, make_fit_version):
         'boresight': radar_info['boresight'],
         'beams': fov.beams,
         'brng_at_15deg_el': brng,
-        'fitacf_version':'{version}'.format(version = make_fit_version)
+        'fitacf_version': make_fit_version,
+        'rawacf_source': rawacf_source_files
     }
-
     return out, hdr
 
 
@@ -299,8 +302,10 @@ def def_vars():
 
 def set_header(rootgrp, header_info) :
     rootgrp.description = header_info['description']
-    rootgrp.source = header_info['source']
+    rootgrp.fitacf_source = header_info['fitacf_source']
+    rootgrp.rawacf_source = header_info['rawacf_source']
     rootgrp.history = header_info['history']
+    rootgrp.fitacf_version = header_info['fitacf_version']
     rootgrp.lat = header_info['lat']
     rootgrp.lon = header_info['lon']
     rootgrp.alt = header_info['alt']
@@ -317,7 +322,7 @@ def def_header_info(in_fname, hdr_vals):
     hdr = {
         **{
         'description': 'Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF v2.5',
-        'source': 'in_fname',
+        'fitacf_source': in_fname,
         'history': 'Created on %s' % dt.datetime.now(),
         }, 
         **hdr_vals,
@@ -388,9 +393,12 @@ def proc_radar(radar, in_fname_fmt, out_fname, make_fit_version, run_dir):
         print('No files in %s' % in_fname_fmt)
         return 1
 
-    # Save the rawACFs used to create the fitACF in order to store that info in the netCDF
-        
+    rawacfFileList = []
     for in_fname in in_fnames:
+        # Get just the rawacf filename without with the path
+        rawacfFile = in_fname.split('/')[-1]
+        rawacfFileList.append(rawacfFile)
+        
         shutil.copy2(in_fname, run_dir)
         in_fname_t = os.path.join(run_dir, os.path.basename(in_fname))
         os.system('bzip2 -d %s' % in_fname_t)
@@ -408,6 +416,16 @@ def proc_radar(radar, in_fname_fmt, out_fname, make_fit_version, run_dir):
     #    if make_fit_version == 3.0:
     #        os.system('fit_speck_removal {fitacfName} > {fitacfName}'.format(fitacfName = out_fname))
         print('file created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
+        
+        # Use the fitACF output filename to create a similar filename for the
+        # list of rawACFs used to create the fitACF
+        #   e.g. 20140424.kod.d.fit -> 20140424.kod.d.rawacfList.txt
+        rawacfListFilename = '.'.join(out_fname.split('.')[:-1]) + '.rawacfList.txt'
+        
+        # Save the list of rawACFs used to create the fitACF
+        with open(rawacfListFilename, "wb") as fp: 
+            pickle.dump(rawacfFileList, fp)
+    
     else:
         print('file %s too small, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
     return 0

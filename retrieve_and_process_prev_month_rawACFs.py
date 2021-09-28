@@ -89,7 +89,6 @@ def download_rawacfs(dirs, startDate):
         os.system('rm {ncDir}/bas_rawacfs_copied_{dateSuffix}.txt'.format(ncDir = netcdfDir, dateSuffix = fileNameDateString))
         send_email(emailSubject, emailBody, EMAIL_ADDRESSES)
     
-
 def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, dirs):
 
     rawacfDir = startDate.strftime(dirs['rawacf'])

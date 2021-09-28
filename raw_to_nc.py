@@ -250,6 +250,10 @@ def convert_fitacf_data(date, in_fname, radar_info, make_fit_version):
     with open(rawacfListFilename, "rb") as fp:
         rawacf_source_files = pickle.load(fp)
 
+    # Once the list of rawacf source files has been loaded, delete the file used to
+    # temporarily store that information
+    os.system('rm {rawacfListFile}'.format(rawacfListFile = rawacfListFilename))
+    
     hdr = {
         'lat': radar_info['glat'],
         'lon': radar_info['glon'],

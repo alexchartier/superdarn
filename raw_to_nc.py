@@ -39,6 +39,8 @@ import radFov
 import subprocess
 import pickle
 
+DELETE_PROCESSED_RAWACFS = True
+SAVE_OUTPUT_TO_LOGFILE = False
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 
 def main(
@@ -52,9 +54,13 @@ def main(
     skip_existing=True,
     fit_ext='*.fit',
 ):
+    
+    # Send the output to a log file
     original_stdout = sys.stdout
-    f = open('/homes/superdarn/logs/rawACF_to_netCDF_logs/rawACF_to_netCDF_%s-%s' % (starttime.strftime("%Y%m%d"), endtime.strftime("%Y%m%d")), 'w')
-    #sys.stdout = f
+    if SAVE_OUTPUT_TO_LOGFILE:
+        f = open('/homes/superdarn/logs/rawACF_to_netCDF_logs/rawACF_to_fitACF_to_netCDF_{startDate}-{endDate}'.format(startDate = starttime.strftime("%Y%m%d"), endDate = endtime.strftime("%Y%m%d")), 'w')
+        sys.stdout = f
+    
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
     hdw_dat_dir = os.path.join(rstpath, 'tables/superdarn/hdw/')
@@ -376,6 +382,9 @@ def raw_to_fit(
                     print('skipping')
                     continue
             status = proc_radar(radar, in_fname_fmt, fit_fname, make_fit_version, run_dir)
+            if status == 0 and DELETE_PROCESSED_RAWACFS:
+                # Remove the rawACF files after they've been converted to fitACF
+                os.system('rm {rawacfs}'.format(rawacfs = in_fname_fmt))
         time += dt.timedelta(days=1)
 
 

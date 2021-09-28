@@ -36,7 +36,8 @@ import numpy as np
 from sd_utils import get_radar_params, id_hdw_params_t, get_random_string
 import pydarn
 import radFov
-import pdb
+import subprocess
+import pickle
 
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 
@@ -371,7 +372,7 @@ def raw_to_fit(
 
 
 def proc_radar(radar, in_fname_fmt, out_fname, make_fit_version, run_dir):
-    # TODO: Print make_fit version into the netCDF that is created
+
     # Clean up the run directory
     os.makedirs(run_dir, exist_ok=True)
     os.chdir(run_dir)
@@ -387,6 +388,8 @@ def proc_radar(radar, in_fname_fmt, out_fname, make_fit_version, run_dir):
         print('No files in %s' % in_fname_fmt)
         return 1
 
+    # Save the rawACFs used to create the fitACF in order to store that info in the netCDF
+        
     for in_fname in in_fnames:
         shutil.copy2(in_fname, run_dir)
         in_fname_t = os.path.join(run_dir, os.path.basename(in_fname))
@@ -402,8 +405,8 @@ def proc_radar(radar, in_fname_fmt, out_fname, make_fit_version, run_dir):
     fn_inf = os.stat('tmp.fitacf')
     if fn_inf.st_size > 1E5:
         shutil.move('tmp.fitacf', out_fname)
-        if make_fit_version == 3.0:
-            os.system('fit_speck_removal {fitacfName} > {fitacfName}'.format(fitacfName = out_fname))
+    #    if make_fit_version == 3.0:
+    #        os.system('fit_speck_removal {fitacfName} > {fitacfName}'.format(fitacfName = out_fname))
         print('file created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
     else:
         print('file %s too small, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))

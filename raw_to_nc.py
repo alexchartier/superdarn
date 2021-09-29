@@ -39,9 +39,10 @@ import radFov
 import subprocess
 import pickle
 
-DELETE_PROCESSED_RAWACFS = True
+DELETE_PROCESSED_RAWACFS = False
 SAVE_OUTPUT_TO_LOGFILE = False
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
+MAKE_FIT_VERSIONS = [2.5, 3.0]
 
 def main(
     starttime=dt.datetime(2005, 12, 1),
@@ -49,7 +50,6 @@ def main(
     in_dir_fmt='/project/superdarn/data/rawacf/%Y/%m/',
     fit_dir_fmt='/project/superdarn/data/fitacf/%Y/%m/',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
-    make_fit_version = 2.5,
     step=1,  # month
     skip_existing=True,
     fit_ext='*.fit',
@@ -69,7 +69,8 @@ def main(
     radar_info = get_radar_params(hdw_dat_dir)
     run_dir = './run/%s' % get_random_string(4)
     if in_dir_fmt:
-        raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt, make_fit_version)
+        for fit_version in MAKE_FIT_VERSIONS:
+            raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt, fit_version)
 
     # Loop over fit files in the monthly directories
     time = starttime
@@ -480,21 +481,18 @@ if __name__ == '__main__':
 
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    if len(args) == 7:
-
+    if len(args) == 6:
         in_dir = args[3]
         fit_dir = args[4]
         out_dir = args[5]
-        make_fit_version = args[6]
-    elif len(args) == 6:
+    elif len(args) == 5:
         in_dir = None
         fit_dir = args[3]
         out_dir = args[4]
-        make_fit_version = args[5]
     run_dir = './run/run_%s' % get_random_string(4) 
 
     
-    main(stime, etime, in_dir, fit_dir, out_dir, make_fit_version)
+    main(stime, etime, in_dir, fit_dir, out_dir)
 
 
 

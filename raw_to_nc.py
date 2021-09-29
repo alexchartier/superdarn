@@ -43,10 +43,11 @@ DELETE_PROCESSED_RAWACFS = False
 SAVE_OUTPUT_TO_LOGFILE = False
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 MAKE_FIT_VERSIONS = [2.5, 3.0]
+MIN_FITACF_FILE_SIZE = 1E5 # bytes
 
 def main(
-    starttime=dt.datetime(2005, 12, 1),
-    endtime=dt.datetime(2020, 1, 1),
+    start_time=dt.datetime(2005, 12, 1),
+    end_time=dt.datetime(2020, 1, 1),
     in_dir_fmt='/project/superdarn/data/rawacf/%Y/%m/',
     fit_dir_fmt='/project/superdarn/data/fitacf/%Y/%m/',
     out_dir_fmt='/project/superdarn/data/netcdf/%Y/%m/',
@@ -58,7 +59,7 @@ def main(
     # Send the output to a log file
     original_stdout = sys.stdout
     if SAVE_OUTPUT_TO_LOGFILE:
-        f = open('/homes/superdarn/logs/rawACF_to_netCDF_logs/rawACF_to_fitACF_to_netCDF_{startDate}-{endDate}'.format(startDate = starttime.strftime("%Y%m%d"), endDate = endtime.strftime("%Y%m%d")), 'w')
+        f = open('/homes/superdarn/logs/rawACF_to_netCDF_logs/rawACF_to_fitACF_to_netCDF_{startDate}-{endDate}'.format(startDate = start_time.strftime("%Y%m%d"), endDate = end_time.strftime("%Y%m%d")), 'w')
         sys.stdout = f
     
     rstpath = os.getenv('RSTPATH')
@@ -69,12 +70,11 @@ def main(
     radar_info = get_radar_params(hdw_dat_dir)
     run_dir = './run/%s' % get_random_string(4)
     if in_dir_fmt:
-        for fit_version in MAKE_FIT_VERSIONS:
-            raw_to_fit(starttime, endtime, run_dir, in_dir_fmt, fit_dir_fmt, fit_version)
+        raw_to_fit(start_time, end_time, run_dir, in_dir_fmt, fit_dir_fmt, MAKE_FIT_VERSIONS)
 
     # Loop over fit files in the monthly directories
-    time = starttime
-    while time <= endtime:
+    time = start_time
+    while time <= end_time:
 
         # Set up directories
         out_dir = time.strftime(out_dir_fmt)
@@ -93,7 +93,7 @@ def main(
         
             # Check the file is big enough to be worth bothering with
             fn_info = os.stat(fit_fn)
-            if fn_info.st_size < 1E5:
+            if fn_info.st_size < MIN_FITACF_FILE_SIZE:
                 print('\n\n%s %1.1f MB\nFile too small - skipping' % (fit_fn, fn_info.st_size / 1E6))
                 continue
             print('\n\nStarting from %s' % fit_fn)
@@ -284,6 +284,7 @@ def add_months(sourcedate, months):
     day = min(sourcedate.day, calendar.monthrange(year,month)[1])
     return dt.datetime(year, month, day, sourcedate.hour, sourcedate.minute, sourcedate.second)
 
+
 def def_vars():
      # netCDF writer expects a series of variable definitions - here they are
     stdin_int = {'units': 'none', 'type': 'u1', 'dims': 'npts'} 
@@ -343,54 +344,62 @@ def def_header_info(in_fname, hdr_vals):
 
 
 def raw_to_fit(
-    starttime = dt.datetime(2016, 1, 1),
-    endtime = dt.datetime(2017, 1, 1),
+    start_time = dt.datetime(2016, 1, 1),
+    end_time = dt.datetime(2017, 1, 1),
     run_dir = './run/',
     in_dir='/project/superdarn/data/rawacf/%Y/%m/',
     out_dir='/project/superdarn/alex/fitacf/%Y/%m/',
-    make_fit_version=2.5,
+    make_fit_versions=[2.5, 3.0],
     clobber=False,
 ):
 
     print('%s\n%s\n%s\n%s\n%s\n' % (
         'Converting files from rawACF to fitACF',
-        'from: %s to %s' % (starttime.strftime('%Y/%m/%d'), endtime.strftime('%Y/%m/%d')),
-        'input e.g.: %s' % starttime.strftime(in_dir),
-        'output e.g.: %s' % starttime.strftime(out_dir),
+        'from: %s to %s' % (start_time.strftime('%Y/%m/%d'), end_time.strftime('%Y/%m/%d')),
+        'input e.g.: %s' % start_time.strftime(in_dir),
+        'output e.g.: %s' % start_time.strftime(out_dir),
         'Run: %s' % run_dir,
     ))
 
     run_dir = os.path.abspath(run_dir)
-    # Loop over time
-    ct = 0
-    time = starttime
-    while time <= endtime:
-        in_dir_t = time.strftime(in_dir)
-        if not os.path.isdir(in_dir_t):
-            time += relativedelta(months=1)
-            print('%s not found - skipping' % in_dir_t)
-            continue
-        radar_list = get_radar_list(in_dir_t)
-        for radar in radar_list:
-            indirn = os.path.join(in_dir, radar)  # for old setup
-            in_fname_fmt = time.strftime(os.path.join(in_dir, '%Y%m%d' + '*%s*.rawacf.bz2' % radar))
-            fit_fname = time.strftime(out_dir + '%Y%m%d.' + '%s.fit' % radar)
-            if os.path.isfile(fit_fname):
-                print("File exists: %s" % fit_fname)
-                if clobber:
-                    print('overwriting')
-                else:
-                    print('skipping')
-                    continue
-            status = proc_radar(radar, in_fname_fmt, fit_fname, make_fit_version, run_dir)
-            if status == 0 and DELETE_PROCESSED_RAWACFS:
-                # Remove the rawACF files after they've been converted to fitACF
-                os.system('rm {rawacfs}'.format(rawacfs = in_fname_fmt))
-        time += dt.timedelta(days=1)
+
+    for fit_version in make_fit_versions:
+        # Loop over time
+        time = start_time
+        while time <= end_time:
+            in_dir_t = time.strftime(in_dir)
+            if not os.path.isdir(in_dir_t):
+                time += relativedelta(months=1)
+                print('%s not found - skipping' % in_dir_t)
+                continue
+            radar_list = get_radar_list(in_dir_t)
+            for radar in radar_list:
+                # indirn = os.path.join(in_dir, radar)  # for old setup
+                in_fname_fmt = time.strftime(os.path.join(in_dir, '%Y%m%d' + '*{radarName}*.rawacf.bz2'.format(radarName = radar)))
+                fit_fname = time.strftime(out_dir + '%Y%m%d.' + '{radarName}.v{fitVer}.fit'.format(radarName = radar, fitVer = fit_version))
+                if os.path.isfile(fit_fname):
+                    print("File exists: %s" % fit_fname)
+                    if clobber:
+                        print('overwriting')
+                    else:
+                        print('skipping')
+                        continue
+                status = proc_radar(in_fname_fmt, fit_fname, fit_version, run_dir)
+
+                # Only delete the rawACFs if:
+                #   - The rawACF -> fitACF conversion succeeded
+                #   - The user set the flag to delete rawACFs
+                #   - All fitACF versions have been created
+                if (status == 0 and 
+                    DELETE_PROCESSED_RAWACFS and 
+                    fit_version == make_fit_versions[-1]):
+                    
+                    os.system('rm {rawacfs}'.format(rawacfs = in_fname_fmt))
+
+            time += dt.timedelta(days=1)
 
 
-
-def proc_radar(radar, in_fname_fmt, out_fname, make_fit_version, run_dir):
+def proc_radar(in_fname_fmt, out_fname, fit_version, run_dir):
 
     # Clean up the run directory
     os.makedirs(run_dir, exist_ok=True)
@@ -419,21 +428,21 @@ def proc_radar(radar, in_fname_fmt, out_fname, make_fit_version, run_dir):
 
         in_fname_t2 = '.'.join(in_fname_t.split('.')[:-1])
         tmp_fname = '.'.join(in_fname_t2.split('.')[:-1]) + '.fitacf'
-        os.system('make_fit -fitacf-version %1.1f %s > %s' % (make_fit_version, in_fname_t2, tmp_fname))
+        os.system('make_fit -fitacf-version %1.1f %s > %s' % (fit_version, in_fname_t2, tmp_fname))
     os.system('cat *.fitacf > tmp.fitacf')
 
     # Create a single fitACF at output location
-    # os.system('make_cfit tmp.fitacf > %s' % out_fname)
     fn_inf = os.stat('tmp.fitacf')
-    if fn_inf.st_size > 1E5:
+    if fn_inf.st_size > MIN_FITACF_FILE_SIZE:
         shutil.move('tmp.fitacf', out_fname)
-    #    if make_fit_version == 3.0:
+    # TODO: get despeckling to work    
+    #    if fit_version == 3.0:
     #        os.system('fit_speck_removal {fitacfName} > {fitacfName}'.format(fitacfName = out_fname))
         print('file created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
         
         # Use the fitACF output filename to create a similar filename for the
         # list of rawACFs used to create the fitACF
-        #   e.g. 20140424.kod.d.fit -> 20140424.kod.d.rawacfList.txt
+        #   e.g. 20140424.kod.d.v3.0.fit -> 20140424.kod.d.v3.0.rawacfList.txt
         rawacfListFilename = '.'.join(out_fname.split('.')[:-1]) + '.rawacfList.txt'
         
         # Save the list of rawACFs used to create the fitACF
@@ -466,7 +475,6 @@ def get_radar_list(in_dir):
             radar_list.append(radarn)
             print(radarn)
     return radar_list
-
 
 
 if __name__ == '__main__':

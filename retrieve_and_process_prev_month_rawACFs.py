@@ -6,7 +6,7 @@ import datetime
 import raw_to_nc
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
-DOWNLOAD_RAWACFS = False
+DOWNLOAD_RAWACFS = True
 MAX_NUM_RSYNC_TRIES = 3
 
 def main():
@@ -14,7 +14,7 @@ def main():
     dirs  = {
         'basServer': 'apl@bslsuperdarnb.nerc-bas.ac.uk',
         'basRawacf': 'apl@bslsuperdarnb.nerc-bas.ac.uk:/sddata/raw/%Y/%m/',        
-        'rawacf': '/homes/superdarn/20140424/',
+        'rawacf': '/project/superdarn/data/rawacf/%Y/%m/',
         'fitacf': '/project/superdarn/data/fitacf/%Y/%m/',
         'netcdf': '/project/superdarn/data/netcdf/%Y/%m/',
         'log': '/homes/superdarn/logs/'
@@ -100,8 +100,8 @@ def get_first_and_last_days_of_prev_month():
         firstDay = lastDay.replace(day=1)
     
 
-        firstDay = datetime.datetime(2014,4,24,0,0)
-        lastDay = datetime.datetime(2014,4,24,0,0)
+     #   firstDay = datetime.datetime(2014,4,24,0,0)
+     #   lastDay = datetime.datetime(2014,4,24,0,0)
         return firstDay, lastDay 
 
 def send_email(subject, body, addresses):

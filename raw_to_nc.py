@@ -39,8 +39,8 @@ import radFov
 import subprocess
 import pickle
 
-DELETE_PROCESSED_RAWACFS = False
-SAVE_OUTPUT_TO_LOGFILE = False
+DELETE_PROCESSED_RAWACFS = True
+SAVE_OUTPUT_TO_LOGFILE = True
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 MAKE_FIT_VERSIONS = [2.5, 3.0]
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
@@ -75,7 +75,6 @@ def main(
     # Loop over fit files in the monthly directories
     time = start_time
     while time <= end_time:
-
         # Set up directories
         out_dir = time.strftime(out_dir_fmt)
         print('Trying to make %s' % out_dir)
@@ -112,7 +111,7 @@ def main(
             radar_code = os.path.basename(fit_fn).split('.')[1]
             radar_info_t = id_hdw_params_t(time, radar_info[radar_code])
 
-            status = fit_to_nc(time, fit_fn, out_fn, radar_info_t, make_fit_version)
+            status = fit_to_nc(time, fit_fn, out_fn, radar_info_t)
 
             if status == MULTIPLE_BEAM_DEFS_ERROR_CODE:
                 print('Failed to convert {fitacfFile} because it had multiple beam definitions'.format(fitacfFile = fit_fn))
@@ -127,9 +126,9 @@ def main(
     sys.stdout = original_stdout
 
 
-def fit_to_nc(date, in_fname, out_fname, radar_info, make_fit_version):
+def fit_to_nc(date, in_fname, out_fname, radar_info):
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
-    out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info, make_fit_version)
+    out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info)
     if out_vars == MULTIPLE_BEAM_DEFS_ERROR_CODE:
         return MULTIPLE_BEAM_DEFS_ERROR_CODE
 
@@ -154,7 +153,7 @@ def fit_to_nc(date, in_fname, out_fname, radar_info, make_fit_version):
     return 0
 
 
-def convert_fitacf_data(date, in_fname, radar_info, make_fit_version):
+def convert_fitacf_data(date, in_fname, radar_info):
     SDarn_read = pydarn.SuperDARNRead(in_fname)
     data = SDarn_read.read_fitacf()
     bmdata = {
@@ -252,6 +251,9 @@ def convert_fitacf_data(date, in_fname, radar_info, make_fit_version):
     for ind, beam_off_elzero in enumerate(beam_off):
         brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) + radar_info['boresight']
 
+    # Pull the fit version out of the fitACF filename
+    fit_version = '.'.join(in_fname.split('.')[-3:-1])
+
     # Load the list of rawacf files used to create the fitacf and netcdf    
     rawacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.rawacfList.txt'
     with open(rawacfListFilename, "rb") as fp:
@@ -271,7 +273,7 @@ def convert_fitacf_data(date, in_fname, radar_info, make_fit_version):
         'boresight': radar_info['boresight'],
         'beams': fov.beams,
         'brng_at_15deg_el': brng,
-        'fitacf_version': make_fit_version,
+        'fitacf_version': fit_version,
         'rawacf_source': rawacf_source_files
     }
     return out, hdr
@@ -393,9 +395,9 @@ def raw_to_fit(
                 if (status == 0 and 
                     DELETE_PROCESSED_RAWACFS and 
                     fit_version == make_fit_versions[-1]):
-                    
+                    print('\nDeleting processed rawACFs: {rawacfs\n}'.format(rawacfs = glob.glob(in_fname_fmt)))
                     os.system('rm {rawacfs}'.format(rawacfs = in_fname_fmt))
-
+                    
             time += dt.timedelta(days=1)
 
 
@@ -448,7 +450,6 @@ def proc_radar(in_fname_fmt, out_fname, fit_version, run_dir):
         # Save the list of rawACFs used to create the fitACF
         with open(rawacfListFilename, "wb") as fp: 
             pickle.dump(rawacfFileList, fp)
-    
     else:
         print('file %s too small, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
     return 0

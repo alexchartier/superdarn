@@ -19,27 +19,32 @@ def main():
         'netcdf': '/project/superdarn/data/netcdf/%Y/%m/',
         'log': '/homes/superdarn/logs/'
     }
-        
+
     startDate, endDate = get_first_and_last_days_of_prev_month()
+    
     if DOWNLOAD_RAWACFS:
         download_rawacfs(dirs, startDate)
     convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, dirs)
 
 def download_rawacfs(dirs, startDate):
     basServer = dirs['basServer']
-    basRawacf = dirs['basRawacf']
+    basRawacf = startDate.strftime(dirs['basRawacf'])
     rawacfDir = startDate.strftime(dirs['rawacf'])
     netcdfDir = startDate.strftime(dirs['netcdf'])
     logsDir = dirs['log']
 
+    os.makedirs(rawacfDir, exist_ok=True)    
+    os.makedirs(netcdfDir, exist_ok=True)
+    os.makedirs(logsDir, exist_ok=True)
+
     dateString = startDate.strftime('%Y/%m')
     fileNameDateString = startDate.strftime('%Y_%m')
-    rsyncLogFilename = logsDir + '/BAS_rsync_logs/{datePrefix}_BAS_rsync.out'.format(datePrefix = fileNameDateString)
-
+    rsyncLogFilename = logsDir + 'BAS_rsync_logs/{datePrefix}_BAS_rsync.out'.format(datePrefix = fileNameDateString)
+ 
     # Save a list of all rawACF files on BAS for the given month and store it in the netcdf directory
-    os.system('ssh {bas} ls /sddata/raw/{date} > {ncDir}/bas_rawacfs_{dateSuffix}.txt'.format(bas = basServer, date = dateString, ncDir = netcdfDir, dateSuffix = fileNameDateString))
+    os.system('ssh {bas} ls /sddata/raw/{date} > {ncDir}bas_rawacfs_{dateSuffix}.txt'.format(bas = basServer, date = dateString, ncDir = netcdfDir, dateSuffix = fileNameDateString))
     # Remove the first line (hashes filename)
-    os.system('sed -i \'1d\' {ncDir}/bas_rawacfs_{dateSuffix}.txt'.format(ncDir = netcdfDir, dateSuffix = fileNameDateString))
+    os.system('sed -i \'1d\' {ncDir}bas_rawacfs_{dateSuffix}.txt'.format(ncDir = netcdfDir, dateSuffix = fileNameDateString))
     
     # Copy all rawACF files from BAS for the given month
     # rawacfDir = '/project/superdarn/data/rawacf/%s' % dateString
@@ -48,13 +53,13 @@ def download_rawacfs(dirs, startDate):
     numTries = 0
     rsyncSuccess = False
     while numTries < MAX_NUM_RSYNC_TRIES:
-        os.system('nohup rsync -rv {basRaw} {rawDir} >& {logFile}'.format(basRaw = basRawacf, rawDir = rawacfDir, logfile = rsyncLogFilename))
+        os.system('nohup rsync -rv {basRaw} {rawDir} >& {logFile}'.format(basRaw = basRawacf, rawDir = rawacfDir, logFile = rsyncLogFilename))
     
         # Check that all files were copied
-        os.system('ls {rawDir} > {ncDir}/bas_rawacfs_copied_{dateSuffix}.txt'.format(rawDir = rawacfDir, ncDir = netcdfDir, dateSuffix = fileNameDateString))
+        os.system('ls {rawDir} > {ncDir}bas_rawacfs_copied_{dateSuffix}.txt'.format(rawDir = rawacfDir, ncDir = netcdfDir, dateSuffix = fileNameDateString))
     
-        basList = "{ncDir}/bas_rawacfs_{dateSuffix}.txt".format(ncDir = netcdfDir, dateSuffix = fileNameDateString)
-        aplList = "{ncDir}/bas_rawacfs_copied_{dateSuffix}.txt".format(ncDir = netcdfDir, dateSuffix = fileNameDateString)
+        basList = "{ncDir}bas_rawacfs_{dateSuffix}.txt".format(ncDir = netcdfDir, dateSuffix = fileNameDateString)
+        aplList = "{ncDir}bas_rawacfs_copied_{dateSuffix}.txt".format(ncDir = netcdfDir, dateSuffix = fileNameDateString)
     
         # Compare the list of files on BAS to the list of copied files at APL
         result = filecmp.cmp(basList, aplList, shallow=False)
@@ -77,7 +82,7 @@ def download_rawacfs(dirs, startDate):
     # Send a notification email saying the rsync succeeded
     emailSubject = '"{date} BAS rawACF Data Successfully Copied"'.format(date = dateString)
     emailBody    = '"{date} rawACF files from BAS have been copied. Starting conversion to netCDF."'.format(date = dateString)  
-    os.system('rm {ncDir}/bas_rawacfs_copied_{dateSuffix}.txt'.format(ncDir = netcdfDir, dateSuffix = fileNameDateString))
+    os.system('rm {ncDir}bas_rawacfs_copied_{dateSuffix}.txt'.format(ncDir = netcdfDir, dateSuffix = fileNameDateString))
     send_email(emailSubject, emailBody, EMAIL_ADDRESSES)
     
 def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, dirs):
@@ -85,6 +90,8 @@ def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, dirs):
     rawacfDir = startDate.strftime(dirs['rawacf'])
     fitacfDir = startDate.strftime(dirs['fitacf'])
     netcdfDir = startDate.strftime(dirs['netcdf'])
+
+    os.makedirs(fitacfDir, exist_ok=True)
 
     raw_to_nc.main(startDate, endDate, rawacfDir,fitacfDir,netcdfDir)
 

@@ -395,7 +395,7 @@ def raw_to_fit(
                 if (status == 0 and 
                     DELETE_PROCESSED_RAWACFS and 
                     fit_version == make_fit_versions[-1]):
-                    print('\nDeleting processed rawACFs: {rawacfs\n}'.format(rawacfs = glob.glob(in_fname_fmt)))
+                    print('Deleting processed rawACFs: {rawacfs}'.format(rawacfs = glob.glob(in_fname_fmt)))
                     os.system('rm {rawacfs}'.format(rawacfs = in_fname_fmt))
                     
             time += dt.timedelta(days=1)

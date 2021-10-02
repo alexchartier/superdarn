@@ -82,7 +82,6 @@ def main(
         os.makedirs(out_dir, exist_ok=True)
 
         # Loop over the files
-        #fit_fn_fmt = time.strftime(os.path.join(fit_dir_fmt, '%Y%m%d'))
         fit_fn_fmt = time.strftime(fit_dir_fmt)
         temp = f'fit_fn_fmt: {fit_fn_fmt}'
         print(temp)
@@ -156,6 +155,7 @@ def fit_to_nc(date, in_fname, out_fname, radar_info):
 
 def convert_fitacf_data(date, in_fname, radar_info):
     conversionLogfile = FIT_NET_LOG_DIR + in_fname.split('/')[:-1] + '_to_nc.log'
+    rawacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.rawacfList.txt'
 
     SDarn_read = pydarn.SuperDARNRead(in_fname)
     data = SDarn_read.read_fitacf()
@@ -177,6 +177,9 @@ def convert_fitacf_data(date, in_fname, radar_info):
             logText = 'While converting {fitacfFullFile} to netCDF, {fitacfFile} was found to have {numBeamDefs} beam definitions - skipping file conversion.\n'.format(fitacfFullFile = in_fname, fitacfFile = in_fname.split('/')[:-1], numBeamDefs = len(val))
             with open(conversionLogfile, "a+") as fp: 
                 fp.write(logText)
+
+            # Remove the list of rawACFs used to create the fitACF
+            os.system('rm {rawacfListFile}'.format(rawacfListFile = rawacfListFilename))
 
             return MULTIPLE_BEAM_DEFS_ERROR_CODE, MULTIPLE_BEAM_DEFS_ERROR_CODE
         bmdata[k] = int(val)
@@ -261,7 +264,6 @@ def convert_fitacf_data(date, in_fname, radar_info):
     fit_version = '.'.join(in_fname.split('.')[-3:-1])
 
     # Load the list of rawacf files used to create the fitacf and netcdf    
-    rawacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.rawacfList.txt'
     with open(rawacfListFilename, "rb") as fp:
         rawacf_source_files = pickle.load(fp)
 
@@ -450,7 +452,6 @@ def proc_radar(in_fname_fmt, out_fname, fit_version, run_dir):
         
         # Use the fitACF output filename to create a similar filename for the
         # list of rawACFs used to create the fitACF
-        #   e.g. 20140424.kod.d.v3.0.fit -> 20140424.kod.d.v3.0.rawacfList.txt
         rawacfListFilename = '.'.join(out_fname.split('.')[:-1]) + '.rawacfList.txt'
         
         # Save the list of rawACFs used to create the fitACF

@@ -39,11 +39,12 @@ import radFov
 import subprocess
 import pickle
 
-DELETE_PROCESSED_RAWACFS = True
+DELETE_PROCESSED_RAWACFS = False
 SAVE_OUTPUT_TO_LOGFILE = True
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 MAKE_FIT_VERSIONS = [2.5, 3.0]
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
+FIT_NET_LOG_DIR = '/homes/superdarn/logs/rawACF_to_netCDF_logs/fitACF_to_netCDF_logs/'
 
 def main(
     start_time=dt.datetime(2005, 12, 1),
@@ -59,7 +60,7 @@ def main(
     # Send the output to a log file
     original_stdout = sys.stdout
     if SAVE_OUTPUT_TO_LOGFILE:
-        f = open('/homes/superdarn/logs/rawACF_to_netCDF_logs/rawACF_to_fitACF_to_netCDF_{startDate}-{endDate}'.format(startDate = start_time.strftime("%Y%m%d"), endDate = end_time.strftime("%Y%m%d")), 'w')
+        f = open('/homes/superdarn/logs/rawACF_to_netCDF_logs/raw_to_fit_to_net_{startDate}-{endDate}'.format(startDate = start_time.strftime("%Y%m%d"), endDate = end_time.strftime("%Y%m%d")), 'w')
         sys.stdout = f
     
     rstpath = os.getenv('RSTPATH')
@@ -154,6 +155,8 @@ def fit_to_nc(date, in_fname, out_fname, radar_info):
 
 
 def convert_fitacf_data(date, in_fname, radar_info):
+    conversionLogfile = FIT_NET_LOG_DIR + in_fname.split('/')[:-1] + '_to_nc.log'
+
     SDarn_read = pydarn.SuperDARNRead(in_fname)
     data = SDarn_read.read_fitacf()
     bmdata = {
@@ -169,11 +172,12 @@ def convert_fitacf_data(date, in_fname, radar_info):
     
     for k, v in bmdata.items():
         val = np.unique(v)
-        if len(val) > 1:
-            emailSubject   = '"Multiple Beam Definitions"'
-            emailBody      = 'While converting {fitacfFile} to netCDF, {fitacfFile} was found to have {numBeamDefs} beam definitions.'.format(fitacfFile = in_fname, numBeamDefs = len(val))
-            emailAddresses = 'jordan.wiker@jhuapl.edu'
-            os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = emailBody, sub = emailSubject, addr = emailAddresses))       
+        if len(val) > 1:        
+            # Log the multiple beams
+            logText = 'While converting {fitacfFullFile} to netCDF, {fitacfFile} was found to have {numBeamDefs} beam definitions - skipping file conversion.\n'.format(fitacfFullFile = in_fname, fitacfFile = in_fname.split('/')[:-1], numBeamDefs = len(val))
+            with open(conversionLogfile, "a+") as fp: 
+                fp.write(logText)
+
             return MULTIPLE_BEAM_DEFS_ERROR_CODE, MULTIPLE_BEAM_DEFS_ERROR_CODE
         bmdata[k] = int(val)
 
@@ -210,20 +214,22 @@ def convert_fitacf_data(date, in_fname, radar_info):
         time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
         # slist is the list of range gates with backscatter
         if 'slist' not in rec.keys():
-            print('Could not find slist in record {recordTime} - skipping'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S')))
+            logText = 'Could not find slist in record {recordTime} - skipping'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'))
+            with open(conversionLogfile, "a+") as fp: 
+                fp.write(logText)
+
             continue
 
         # Can't deal with returns outside of FOV
         if rec['slist'].max() >= fov.slantRCenter.shape[1]:
-            print('slist out of range - skipping record')
-            emailSubject   = '"Slist Out Of Range"'
-            emailBody      = 'While converting {fitacfFile} to netCDF, {fitacfFile} was found to have a max slist of {maxSList}'.format(fitacfFile = in_fname, maxSList = rec['slist'].max())
-            emailAddresses = 'jordan.wiker@jhuapl.edu'
-            os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = emailBody, sub = emailSubject, addr = emailAddresses))
-            continue
-            #TODO: make a better fix for these weird rangegate requests, and keep records of how often/which radars do it
+            
+            # Log returns outside of FOV
+            logText = 'Record {recordTime} found to have a max slist of {maxSList} - skipping record'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'), maxSList = rec['slist'].max())
+            with open(conversionLogfile, "a+") as fp: 
+                fp.write(logText)
 
-        fov_data = {}
+            continue
+
         time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
         one_obj = np.ones(len(rec['slist'])) 
         mjd = jdutil.jd_to_mjd(jdutil.datetime_to_jd(time))

@@ -49,11 +49,12 @@ def download_rawacfs(basRawDir, rawDir, netDir, startDate):
 
     # Make sure the BAS server is reachable
     if not BASServerConnected():
-        # Send email saying after a day of trying, BAS couldn't be reached    
+        # Send email if BAS couldn't be reached  
         emailSubject = '"Unable to reach BAS"'
         emailBody    = 'Unable to reach BAS after trying for {hours} hours.'.format(hours = RETRY * DELAY / 3600)
         send_email(emailSubject, emailBody, EMAIL_ADDRESSES)
         sys.exit('{message}'.format(message = emailBody))
+
     dateString = startDate.strftime('%Y/%m')
     fileNameDateString = startDate.strftime('%Y_%m')
     rsyncLogFilename = LOG_DIR + 'BAS_rsync_logs/{datePrefix}_BAS_rsync.out'.format(datePrefix = fileNameDateString)
@@ -85,8 +86,9 @@ def download_rawacfs(basRawDir, rawDir, netDir, startDate):
         
         numTries += 1
     
-    # If the rsync did not succeed, send a notification email and end the script
+    # Confirm that the rsync succeeded
     if not rsyncSuccess:
+        # Send an email and end the script if rsync didn't succeed
         emailSubject = '"Unsuccessful attempt to copy {date} BAS rawACF Data"'.format(date = dateString)
         emailBody    = '"Tried to copy {date} rawACFs from BAS {num} times, but did not succeed. \nSee {logfile} for more details."'.format(date = dateString, num = MAX_NUM_RSYNC_TRIES, logfile = rsyncLogFilename)
         send_email(emailSubject, emailBody, EMAIL_ADDRESSES)

@@ -4,13 +4,20 @@ import os
 import shutil
 import datetime
 import raw_to_nc
+import socket
+import time
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 DOWNLOAD_RAWACFS = True
+
+DELAY = 1800 # 30 minutes
+RETRY = 17   # Try to connect every 30 minutes for a day
+TIMEOUT = 10 # seconds
+
 MAX_NUM_RSYNC_TRIES = 3
 
 # Directories
-BAS_SERVER = 'apl@bslsuperdarnb.nerc-bas.ac.uk'
+BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
 BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m/'        
 RAWACF_DIR_FMT = '/project/superdarn/data/rawacf/%Y/%m/'
 FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m/'
@@ -40,19 +47,26 @@ def main():
 
 def download_rawacfs(basRawDir, rawDir, netDir, startDate):
 
+    # Make sure the BAS server is reachable
+    if not BASServerConnected():
+        # Send email saying after a day of trying, BAS couldn't be reached    
+        emailSubject = '"Unable to reach BAS"'
+        emailBody    = 'Unable to reach BAS after trying for {hours} hours.'.format(hours = RETRY * DELAY / 3600)
+        send_email(emailSubject, emailBody, EMAIL_ADDRESSES)
+        sys.exit('{message}'.format(message = emailBody))
     dateString = startDate.strftime('%Y/%m')
     fileNameDateString = startDate.strftime('%Y_%m')
     rsyncLogFilename = LOG_DIR + 'BAS_rsync_logs/{datePrefix}_BAS_rsync.out'.format(datePrefix = fileNameDateString)
  
     # Save a list of all rawACF files on BAS for the given month and store it in the netcdf directory
-    os.system('ssh {bas} ls /sddata/raw/{date} > {ncDir}bas_rawacfs_{dateSuffix}.txt'.format(bas = BAS_SERVER, date = dateString, ncDir = netDir, dateSuffix = fileNameDateString))
+    os.system('ssh apl@{bas} ls /sddata/raw/{date} > {ncDir}bas_rawacfs_{dateSuffix}.txt'.format(bas = BAS_SERVER, date = dateString, ncDir = netDir, dateSuffix = fileNameDateString))
     # Remove the first line (hashes filename)
     os.system('sed -i \'1d\' {ncDir}bas_rawacfs_{dateSuffix}.txt'.format(ncDir = netDir, dateSuffix = fileNameDateString))
     
     numTries = 0
     rsyncSuccess = False
     while numTries < MAX_NUM_RSYNC_TRIES:
-        os.system('nohup rsync -rv {bas}:{basRaw} {aplRaw} >& {logFile}'.format(bas = BAS_SERVER, basRaw = basRawDir, aplRaw = rawDir, logFile = rsyncLogFilename))
+        os.system('nohup rsync -rv apl@{bas}:{basRaw} {aplRaw} >& {logFile}'.format(bas = BAS_SERVER, basRaw = basRawDir, aplRaw = rawDir, logFile = rsyncLogFilename))
     
         # Check that all files were copied
         os.system('ls {aplRaw} > {ncDir}bas_rawacfs_copied_{dateSuffix}.txt'.format(aplRaw = rawDir, ncDir = netDir, dateSuffix = fileNameDateString))
@@ -84,6 +98,30 @@ def download_rawacfs(basRawDir, rawDir, netDir, startDate):
     os.system('rm {ncDir}bas_rawacfs_copied_{dateSuffix}.txt'.format(ncDir = netDir, dateSuffix = fileNameDateString))
     send_email(emailSubject, emailBody, EMAIL_ADDRESSES)
     
+
+def BASServerConnected():
+    BASup = False
+    for i in range(RETRY):
+        if isOpen(BAS_SERVER, 22):
+            BASup = True
+            break
+        else:
+            time.sleep(DELAY)
+    return BASup
+
+
+def isOpen(server, port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(TIMEOUT)
+    try:
+        s.connect((server, int(port)))
+        s.shutdown(socket.SHUT_RDWR)
+        return True
+    except:
+        return False
+    finally:
+        s.close()
+
 def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir):
 
     raw_to_nc.main(startDate, endDate, rawDir,fitDir,netDir)
@@ -112,8 +150,8 @@ def get_first_and_last_days_of_prev_month():
         firstDay = lastDay.replace(day=1)
     
 
-     #   firstDay = datetime.datetime(2014,4,24,0,0)
-     #   lastDay = datetime.datetime(2014,4,24,0,0)
+       # firstDay = datetime.datetime(2021,8,1,0,0)
+       # lastDay = datetime.datetime(2021,8,22,0,0)
         return firstDay, lastDay 
 
 def send_email(subject, body, addresses):

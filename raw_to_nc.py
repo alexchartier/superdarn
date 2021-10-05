@@ -39,7 +39,7 @@ import radFov
 import subprocess
 import pickle
 
-DELETE_PROCESSED_RAWACFS = False
+DELETE_PROCESSED_RAWACFS = True
 SAVE_OUTPUT_TO_LOGFILE = True
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 MAKE_FIT_VERSIONS = [2.5, 3.0]
@@ -154,7 +154,9 @@ def fit_to_nc(date, in_fname, out_fname, radar_info):
 
 
 def convert_fitacf_data(date, in_fname, radar_info):
-    conversionLogfile = FIT_NET_LOG_DIR + in_fname.split('/')[:-1] + '_to_nc.log'
+    day = in_fname.split('.')[0].split('/')[-1] +  '/'
+    conversionLogDir = FIT_NET_LOG_DIR + day
+    conversionLogfile = conversionLogDir + in_fname.split('/')[-1] + '_to_nc.log'
     rawacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.rawacfList.txt'
 
     SDarn_read = pydarn.SuperDARNRead(in_fname)
@@ -173,6 +175,8 @@ def convert_fitacf_data(date, in_fname, radar_info):
     for k, v in bmdata.items():
         val = np.unique(v)
         if len(val) > 1:        
+            os.makedirs(conversionLogDir, exist_ok=True)
+
             # Log the multiple beams
             logText = 'While converting {fitacfFullFile} to netCDF, {fitacfFile} was found to have {numBeamDefs} beam definitions - skipping file conversion.\n'.format(fitacfFullFile = in_fname, fitacfFile = in_fname.split('/')[:-1], numBeamDefs = len(val))
             with open(conversionLogfile, "a+") as fp: 
@@ -217,7 +221,8 @@ def convert_fitacf_data(date, in_fname, radar_info):
         time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
         # slist is the list of range gates with backscatter
         if 'slist' not in rec.keys():
-            logText = 'Could not find slist in record {recordTime} - skipping'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'))
+            os.makedirs(conversionLogDir, exist_ok=True)
+            logText = 'Could not find slist in record {recordTime} - skipping\n'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'))
             with open(conversionLogfile, "a+") as fp: 
                 fp.write(logText)
 
@@ -225,9 +230,10 @@ def convert_fitacf_data(date, in_fname, radar_info):
 
         # Can't deal with returns outside of FOV
         if rec['slist'].max() >= fov.slantRCenter.shape[1]:
-            
+            os.makedirs(conversionLogDir, exist_ok=True)
+
             # Log returns outside of FOV
-            logText = 'Record {recordTime} found to have a max slist of {maxSList} - skipping record'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'), maxSList = rec['slist'].max())
+            logText = 'Record {recordTime} found to have a max slist of {maxSList} - skipping record/n'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'), maxSList = rec['slist'].max())
             with open(conversionLogfile, "a+") as fp: 
                 fp.write(logText)
 

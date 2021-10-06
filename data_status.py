@@ -31,7 +31,7 @@ DAT_END_DATE = dt.datetime(2005,12,31)
 BAS_START_DATE = dt.datetime(2006,1,1)
 BAS_END_DATE = dt.datetime.now()
 
-BAS_FILE_LIST_DIR = '/homes/superdarn/BAS_files/'
+BAS_FILE_LIST_DIR = '/homes/superdarn/BAS_files'
 BAS_SERVER = helper.BAS_SERVER
 BAS_RAWACF_DIR_FMT = helper.BAS_RAWACF_DIR_FMT
 BAS_DAT_DIR_FMT = helper.BAS_DAT_DIR_FMT 
@@ -91,15 +91,13 @@ def getBasFileList():
     radarList = helper.get_radar_list()
     os.makedirs(BAS_FILE_LIST_DIR, exist_ok=True)
 
-    year = BAS_START_DATE.strftime('%Y')
-    endYear = BAS_END_DATE.strftime('%Y')
-    getBasFileList()    
-
+    year = BAS_START_DATE.year#strftime('%Y')
+    endYear = BAS_END_DATE.year#strftime('%Y')
     while year <= endYear:
         filename = '{dir}/{yr}_basRawFiles.txt'.format(dir = BAS_FILE_LIST_DIR, yr = year)
 
         # Get a list of all rawACF files on BAS for the given year and put them in a file
-        os.system('ssh apl@{bas} ls -R /sddata/raw/{yr}/ > {fname}'.format(bas = helper.BAS_SERVER, fname = filename))
+        os.system('ssh apl@{bas} ls -R /sddata/raw/{yr}/ > {fname}'.format(bas = helper.BAS_SERVER, yr = year, fname = filename))
 
         # Go through the file line by line and add each line to the appropriate daily text file
         with open(filename) as mainFileList:
@@ -107,12 +105,11 @@ def getBasFileList():
             for line in lines:
                 rawFilename = line.strip()
                 extension = rawFilename.split('.')[-1]
-                if not extension == '.bz2':
+                if not extension == 'bz2':
                     # This line isn't a rawACF filename
-                    breakpoint()
                     continue
-
-                dayFileList = '{day}.txt'.format(day = rawFilename.split('.')[0])
+                
+                dayFileList = '{dir}/{day}_basRawFiles.txt'.format(dir = BAS_FILE_LIST_DIR, day = rawFilename.split('.')[0])
                 with open(dayFileList, "a+") as fp: 
                     fp.write(rawFilename + '\n')
 

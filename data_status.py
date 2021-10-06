@@ -29,7 +29,7 @@ TIMEOUT = 10 # seconds
 
 DAT_START_DATE = dt.datetime(1993,9,29)
 DAT_END_DATE = dt.datetime(2005,12,31)
-BAS_START_DATE = dt.datetime(2017,7,21)
+BAS_START_DATE = dt.datetime(2021,7,21)
 BAS_END_DATE = dt.datetime.now()
 
 BAS_FILE_LIST_DIR = '/homes/superdarn/BAS_files'
@@ -45,8 +45,9 @@ def main():
     while date <= BAS_END_DATE:
         day = date.strftime('%Y%m%d')
         print('Comparing data on {d}\n'.format(d = day))
+        breakpoint()
         for radar in radarList:
-            breakpoint()
+            print(radar)
             basDataExists = bas_data(date, radar)
             aplDataExists = apl_data(date, radar)
             update_data_status(date, radar, basDataExists, aplDataExists)        
@@ -64,8 +65,14 @@ def update_data_status(date, radar, bas, apl):
     resultBinary = '0b' + ''.join(['1' if source else '0' for source in sources])
     result = int(resultBinary, 2)
 
-    
-    print(result)
+    if result == 0:
+        print('None')
+    elif result == 1:
+        print('BAS') 
+    elif result == 2:
+        print('APL')
+    elif result == 3:
+        print('BAS & APL')
 
     # Store result for date in json file
 

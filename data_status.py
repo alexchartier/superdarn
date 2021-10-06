@@ -39,12 +39,14 @@ BAS_DAT_DIR_FMT = helper.BAS_DAT_DIR_FMT
 
 def main():
     radarList = helper.get_radar_list()
-    getBasFileList()
+    #getBasFileList()
 
     date = BAS_START_DATE
     while date <= BAS_END_DATE:
-        print('Comparing data on {day}\n'.format(date = date))
+        day = date.strftime('%Y%m%d')
+        print('Comparing data on {d}\n'.format(d = day))
         for radar in radarList:
+            breakpoint()
             basDataExists = bas_data(date, radar)
             aplDataExists = apl_data(date, radar)
             update_data_status(date, radar, basDataExists, aplDataExists)        
@@ -66,22 +68,17 @@ def update_data_status(date, radar, bas, apl):
     # Store result for date in json file
 
 def bas_data(date, radar):
-    
-
-    numBasFiles = len(glob.glob('/project/superdarn/data/netcdf/2021/07/*20210721**mcm*'))
-
-    
-    dateString = date.strftime('%Y%m%d')
-    os.system('ssh apl@{bas} ls'.format())
-
-    os.system('ssh apl@{bas} ls /sddata/raw/{date} > {ncDir}bas_rawacfs_{dateSuffix}.txt'.format(bas = BAS_SERVER, date = dateString, ncDir = netDir, dateSuffix = fileNameDateString))
-
-    os.system("rsync -avhe ssh --include '*/' --include '%s*' --exclude '*' %s %s" % (dateString, tdirs['bas'], tdirs['rawacf']))
+    day = date.strftime('%Y%m%d')
+    numBASFiles = len(glob.glob('{dir}/*{d}**{r}*'.format(dir = BAS_FILE_LIST_DIR, d = day, r = radar)))
+    return numBASFiles > 0
 
 
 
 def apl_data(date, radar):
-    print()
+    day = date.strftime('%Y%m%d')
+    netDir = date.strftime(helper.NETCDF_DIR_FMT)
+    numAPLFiles = len(glob.glob('{dir}*{d}**{r}*'.format(dir = netDir, d = day, r = radar)))
+    return numAPLFiles > 0
 
 def getBasFileList():
 

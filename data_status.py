@@ -22,6 +22,7 @@ import os
 import time
 import helper
 import glob
+import json
 
 DELAY = 300 # 5 minutes
 RETRY = 12 # Try to connect for an hour
@@ -31,32 +32,42 @@ DAT_START_DATE = dt.datetime(1993,9,29)
 DAT_END_DATE = dt.datetime(2005,12,31)
 BAS_START_DATE = dt.datetime(2021,7,21)
 BAS_END_DATE = dt.datetime.now()
+BAS_END_DATE = dt.datetime(2021,7,22)
 
-BAS_FILE_LIST_DIR = '/homes/superdarn/BAS_files'
+BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
+DATA_STATUS_DIR = '/project/superdarn/data/data_status'
 BAS_SERVER = helper.BAS_SERVER
 BAS_RAWACF_DIR_FMT = helper.BAS_RAWACF_DIR_FMT
 BAS_DAT_DIR_FMT = helper.BAS_DAT_DIR_FMT 
 
 def main():
     radarList = helper.get_radar_list()
-    #getBasFileList()
 
     date = BAS_START_DATE
+    data = {}
     while date <= BAS_END_DATE:
         day = date.strftime('%Y%m%d')
+        data[day] = []
         print('Comparing data on {d}\n'.format(d = day))
-        breakpoint()
         for radar in radarList:
-            print(radar)
             basDataExists = bas_data(date, radar)
             aplDataExists = apl_data(date, radar)
-            update_data_status(date, radar, basDataExists, aplDataExists)        
-                
+            result = get_result(basDataExists, aplDataExists)        
+ 
+            data[day].append({
+                'radar': radar,
+                'result': result
+            })
+                        
         date += dt.timedelta(days=1)
 
+    with open('{dir}/data_status.txt', 'w') as outfile:
+        json.dump(data, outfile)
     os.system('rm -rf {bas_dir}'.format(BAS_FILE_LIST_DIR))
+    
 
-def update_data_status(date, radar, bas, apl):
+def get_result(bas, apl):
+    # Get a numerical result as follows:
     # 0: No data exists
     # 1: Data exists only on BAS
     # 2: Data exists only at APL
@@ -64,17 +75,7 @@ def update_data_status(date, radar, bas, apl):
     sources = [apl, bas]
     resultBinary = '0b' + ''.join(['1' if source else '0' for source in sources])
     result = int(resultBinary, 2)
-
-    if result == 0:
-        print('None')
-    elif result == 1:
-        print('BAS') 
-    elif result == 2:
-        print('APL')
-    elif result == 3:
-        print('BAS & APL')
-
-    # Store result for date in json file
+    return result
 
 def bas_data(date, radar):
     day = date.strftime('%Y%m%d')

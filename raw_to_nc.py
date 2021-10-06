@@ -39,11 +39,12 @@ import radFov
 import pickle
 
 DELETE_PROCESSED_RAWACFS = False
-SAVE_OUTPUT_TO_LOGFILE = True
+SAVE_OUTPUT_TO_LOGFILE = False
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 MAKE_FIT_VERSIONS = [2.5, 3.0]
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
 FIT_NET_LOG_DIR = '/homes/superdarn/logs/rawACF_to_netCDF_logs/fitACF_to_netCDF_logs/'
+EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
 def main(
     start_time=dt.datetime(2005, 12, 1),
@@ -120,7 +121,14 @@ def main(
                 continue
 
             print('Wrote output to %s' % out_fn)
-            
+        
+        month = time.strftime('%Y%m')
+        multiBeamLogDir = FIT_NET_LOG_DIR + month
+        multiBeamFile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
+        if os.path.exists(multiBeamFile):
+            subject = '"Multiple Beam Definitions Found - {date}"'.format(date = time.strftime('%Y/%m'))
+            body = 'Files with multiple beam definitions have been found. See details in {file}'.format(file = multiBeamFile)
+     
         time = add_months(time, step)  # time += dt.timedelta(months=1) doesn't exist
     sys.stdout = original_stdout
 
@@ -153,18 +161,19 @@ def fit_to_nc(date, in_fname, out_fname, radar_info):
 
 
 def convert_fitacf_data(date, in_fname, radar_info):
-    day = in_fname.split('.')[0].split('/')[-1] +  '/'
-    month = day[:-2]
-
+    day = in_fname.split('.')[0].split('/')[-1]
+    month = day[:-2] 
+    
     # Keep track of fitACF files that have multiple beam definitions in a
     # monthly log file
     multiBeamLogDir = FIT_NET_LOG_DIR + month
-    multiBeamLogfile = multiBeamLogDir + month + 'multi_beam_defs.log'
+    multiBeamLogfile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
 
     # Store conversion info like returns outside FOV, missing slist, etc 
     # for each conversion
-    conversionLogDir = multiBeamLogDir + day
-    conversionLogfile = conversionLogDir + in_fname.split('/')[-1] + '_to_nc.log'
+    conversionLogDir = '{dir}/{d}'.format(dir = multiBeamLogDir, d = day)
+    fName = '.'.join(in_fname.split('/')[-1]).split('.')[1:]
+    conversionLogfile = '{dir}/{fit}_to_nc_{m}.log'.format(dir = conversionLogDir, fit = fName, m = month)
 
     # Define the name of the file holding the list of rawACFs used to 
     # create the fitACF
@@ -187,19 +196,20 @@ def convert_fitacf_data(date, in_fname, radar_info):
         val = np.unique(v)
         if len(val) > 1:        
             os.makedirs(conversionLogDir, exist_ok=True)
-            os.makedirs(multiBeamLogfile, exist_ok=True)
-
+            os.makedirs(multiBeamLogDir, exist_ok=True)
+            
             # Log the multiple beams error in the monthly mutli beam def log
-            logText = 'While converting {fitacfFullFile} to netCDF, {fitacfFile} was found to have {numBeamDefs} beam definitions - skipping file conversion.\n'.format(fitacfFullFile = in_fname, fitacfFile = in_fname.split('/')[:-1], numBeamDefs = len(val))
+            logText = '{fitacfFullFile} has {numBeamDefs} beam definitions - skipping file conversion.\n'.format(fitacfFullFile = in_fname, numBeamDefs = len(val))
+            
             with open(multiBeamLogfile, "a+") as fp: 
                 fp.write(logText)
 
-            # Log the multiple beams error in this fitACFs conversion log
-            logText = 'While converting {fitacfFullFile} to netCDF, {fitacfFile} was found to have {numBeamDefs} beam definitions - skipping file conversion.\n'.format(fitacfFullFile = in_fname, fitacfFile = in_fname.split('/')[:-1], numBeamDefs = len(val))
+            # Log the multiple beams error in this fitACF's conversion log
             with open(conversionLogfile, "a+") as fp: 
                 fp.write(logText)
 
             return MULTIPLE_BEAM_DEFS_ERROR_CODE, MULTIPLE_BEAM_DEFS_ERROR_CODE
+        
         bmdata[k] = int(val)
 
     # Define FOV

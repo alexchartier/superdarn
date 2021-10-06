@@ -29,7 +29,7 @@ TIMEOUT = 10 # seconds
 
 DAT_START_DATE = dt.datetime(1993,9,29)
 DAT_END_DATE = dt.datetime(2005,12,31)
-BAS_START_DATE = dt.datetime(2006,1,1)
+BAS_START_DATE = dt.datetime(2017,7,21)
 BAS_END_DATE = dt.datetime.now()
 
 BAS_FILE_LIST_DIR = '/homes/superdarn/BAS_files'
@@ -60,7 +60,9 @@ def update_data_status(date, radar, bas, apl):
     # 1: Data exists only on BAS
     # 2: Data exists only at APL
     # 3: Data exists at both BAS and APL
-    result = bas + apl
+    sources = [apl, bas]
+    resultBinary = '0b' + ''.join(['1' if source else '0' for source in sources])
+    result = int(resultBinary, 2)
 
     
     print(result)

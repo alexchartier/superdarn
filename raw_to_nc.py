@@ -37,6 +37,7 @@ from sd_utils import get_radar_params, id_hdw_params_t, get_random_string
 import pydarn
 import radFov
 import pickle
+import helper
 
 DELETE_PROCESSED_RAWACFS = False
 SAVE_OUTPUT_TO_LOGFILE = False
@@ -44,7 +45,6 @@ MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 MAKE_FIT_VERSIONS = [2.5, 3.0]
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
 FIT_NET_LOG_DIR = '/homes/superdarn/logs/rawACF_to_netCDF_logs/fitACF_to_netCDF_logs/'
-EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
 def main(
     start_time=dt.datetime(2005, 12, 1),
@@ -128,7 +128,8 @@ def main(
         if os.path.exists(multiBeamFile):
             subject = '"Multiple Beam Definitions Found - {date}"'.format(date = time.strftime('%Y/%m'))
             body = 'Files with multiple beam definitions have been found. See details in {file}'.format(file = multiBeamFile)
-     
+            helper.send_email(subject, body)
+
         time = add_months(time, step)  # time += dt.timedelta(months=1) doesn't exist
     sys.stdout = original_stdout
 

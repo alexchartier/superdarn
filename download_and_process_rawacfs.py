@@ -6,8 +6,8 @@ import datetime
 import raw_to_nc
 import socket
 import time
+import helper
 
-EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 DOWNLOAD_RAWACFS = False
 
 DELAY = 1800 # 30 minutes
@@ -17,12 +17,12 @@ TIMEOUT = 10 # seconds
 MAX_NUM_RSYNC_TRIES = 3
 
 # Directories
-BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
-BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m/'        
-RAWACF_DIR_FMT = '/project/superdarn/data/rawacf/%Y/%m/'
-FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m/'
-NETCDF_DIR_FMT = '/project/superdarn/data/netcdf/%Y/%m/'
-LOG_DIR = '/homes/superdarn/logs/'
+BAS_SERVER = helper.BAS_SERVER
+BAS_RAWACF_DIR_FMT = helper.BAS_RAWACF_DIR_FMT        
+RAWACF_DIR_FMT = helper.RAWACF_DIR_FMT
+FITACF_DIR_FMT = helper.FITACF_DIR_FMT
+NETCDF_DIR_FMT = helper.NETCDF_DIR_FMT
+LOG_DIR = helper.LOG_DIR
 
 def main():
 
@@ -52,7 +52,7 @@ def download_rawacfs(basRawDir, rawDir, netDir, startDate):
         # Send email if BAS couldn't be reached  
         emailSubject = '"Unable to reach BAS"'
         emailBody    = 'Unable to reach BAS after trying for {hours} hours.'.format(hours = RETRY * DELAY / 3600)
-        send_email(emailSubject, emailBody, EMAIL_ADDRESSES)
+        helper.send_email(emailSubject, emailBody)
         sys.exit('{message}'.format(message = emailBody))
 
     dateString = startDate.strftime('%Y/%m')
@@ -91,14 +91,14 @@ def download_rawacfs(basRawDir, rawDir, netDir, startDate):
         # Send an email and end the script if rsync didn't succeed
         emailSubject = '"Unsuccessful attempt to copy {date} BAS rawACF Data"'.format(date = dateString)
         emailBody    = '"Tried to copy {date} rawACFs from BAS {num} times, but did not succeed. \nSee {logfile} for more details."'.format(date = dateString, num = MAX_NUM_RSYNC_TRIES, logfile = rsyncLogFilename)
-        send_email(emailSubject, emailBody, EMAIL_ADDRESSES)
+        helper.send_email(emailSubject, emailBody)
         sys.exit('{message}'.format(message = emailBody))
         
     # Send a notification email saying the rsync succeeded
     emailSubject = '"{date} BAS rawACF Data Successfully Downloaded"'.format(date = dateString)
     emailBody    = '"{date} rawACF files from BAS have been downloaded. Starting conversion to fitACF and netCDF."'.format(date = dateString)  
     os.system('rm {ncDir}bas_rawacfs_copied_{dateSuffix}.txt'.format(ncDir = netDir, dateSuffix = fileNameDateString))
-    send_email(emailSubject, emailBody, EMAIL_ADDRESSES)
+    helper.send_email(emailSubject, emailBody)
     
 
 def BASServerConnected():
@@ -132,7 +132,7 @@ def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netD
 
     emailSubject = '"{date} rawACF to netCDF Conversion Successful"'.format(date = dateString)
     emailBody    = 'Finished converting {date} rawACF files to fitACF and netCDF'.format(date = dateString)
-    send_email(emailSubject, emailBody, EMAIL_ADDRESSES)
+    helper.send_email(emailSubject, emailBody)
 
 
 def remove_converted_files(rawDir, fitDir):
@@ -155,9 +155,6 @@ def get_first_and_last_days_of_prev_month():
         firstDay = datetime.datetime(2021,7,21,0,0)
         lastDay = datetime.datetime(2021,7,21,0,0)
         return firstDay, lastDay 
-
-def send_email(subject, body, addresses):
-    os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = body, sub = subject, addr = addresses))
 
 if __name__ == '__main__':
     main()

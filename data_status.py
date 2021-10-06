@@ -21,6 +21,7 @@ import sys
 import os
 import time
 import helper
+import glob
 
 DELAY = 300 # 5 minutes
 RETRY = 12 # Try to connect for an hour
@@ -65,14 +66,9 @@ def update_data_status(date, radar, bas, apl):
     # Store result for date in json file
 
 def bas_data(date, radar):
-    # Make sure the BAS server is reachable
-    if not BASServerConnected():
-        # Send email if BAS couldn't be reached  
-        emailSubject = '"Unable to reach BAS"'
-        emailBody    = 'Unable to reach BAS after trying for {hours} hours.'.format(hours = RETRY * DELAY / 3600)
-        helper.send_email(emailSubject, emailBody)
-        sys.exit('{message}'.format(message = emailBody))
     
+
+    numBasFiles = len(glob.glob('/project/superdarn/data/netcdf/2021/07/*20210721**mcm*'))
 
     
     dateString = date.strftime('%Y%m%d')
@@ -88,11 +84,19 @@ def apl_data(date, radar):
     print()
 
 def getBasFileList():
-    radarList = helper.get_radar_list()
+
+    # Make sure the BAS server is reachable
+    if not BASServerConnected():
+        # Send email if BAS couldn't be reached  
+        emailSubject = '"Unable to reach BAS"'
+        emailBody    = 'Unable to reach BAS after trying for {hours} hours.'.format(hours = RETRY * DELAY / 3600)
+        helper.send_email(emailSubject, emailBody)
+        sys.exit('{message}'.format(message = emailBody))
+
     os.makedirs(BAS_FILE_LIST_DIR, exist_ok=True)
 
-    year = BAS_START_DATE.year#strftime('%Y')
-    endYear = BAS_END_DATE.year#strftime('%Y')
+    year = BAS_START_DATE.year
+    endYear = BAS_END_DATE.year
     while year <= endYear:
         filename = '{dir}/{yr}_basRawFiles.txt'.format(dir = BAS_FILE_LIST_DIR, yr = year)
 
@@ -109,8 +113,12 @@ def getBasFileList():
                     # This line isn't a rawACF filename
                     continue
                 
-                dayFileList = '{dir}/{day}_basRawFiles.txt'.format(dir = BAS_FILE_LIST_DIR, day = rawFilename.split('.')[0])
-                with open(dayFileList, "a+") as fp: 
+                day = rawFilename.split('.')[0]
+                # dayDir = '{dir}/{d}'.format(dir = BAS_FILE_LIST_DIR, d = day)
+                # os.makedirs(dayDir, exist_ok=True)
+                radar = rawFilename.split('.')[3]
+                radarFileList = '{dir}/{d}_{r}.txt'.format(dir = BAS_FILE_LIST_DIR, d = day, r = radar)
+                with open(radarFileList, "a+") as fp: 
                     fp.write(rawFilename + '\n')
 
         year += 1

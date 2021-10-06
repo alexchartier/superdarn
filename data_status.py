@@ -26,17 +26,22 @@ DELAY = 300 # 5 minutes
 RETRY = 12 # Try to connect for an hour
 TIMEOUT = 10 # seconds
 
-START_DATE = dt.datetime(1993,9,29)
-END_DATE = dt.datetime.now()
+DAT_START_DATE = dt.datetime(1993,9,29)
+DAT_END_DATE = dt.datetime(2005,12,31)
+BAS_START_DATE = dt.datetime(2006,1,1)
+BAS_END_DATE = dt.datetime.now()
 
-BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
-BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m/' 
-BAS_DAT_DIR_FMT = '/sddata/dat/%Y/%m/' 
+BAS_FILE_LIST_DIR = '/homes/superdarn/BAS_files/'
+BAS_SERVER = helper.BAS_SERVER
+BAS_RAWACF_DIR_FMT = helper.BAS_RAWACF_DIR_FMT
+BAS_DAT_DIR_FMT = helper.BAS_DAT_DIR_FMT 
 
 def main():
-    date = START_DATE
     radarList = helper.get_radar_list()
-    while date <= END_DATE:
+    getBasFileList()
+
+    date = BAS_START_DATE
+    while date <= BAS_END_DATE:
         print('Comparing data on {day}\n'.format(date = date))
         for radar in radarList:
             basDataExists = bas_data(date, radar)
@@ -44,6 +49,8 @@ def main():
             update_data_status(date, radar, basDataExists, aplDataExists)        
                 
         date += dt.timedelta(days=1)
+
+    os.system('rm -rf {bas_dir}'.format(BAS_FILE_LIST_DIR))
 
 def update_data_status(date, radar, bas, apl):
     # 0: No data exists
@@ -66,6 +73,8 @@ def bas_data(date, radar):
         helper.send_email(emailSubject, emailBody)
         sys.exit('{message}'.format(message = emailBody))
     
+
+    
     dateString = date.strftime('%Y%m%d')
     os.system('ssh apl@{bas} ls'.format())
 
@@ -76,8 +85,38 @@ def bas_data(date, radar):
 
 
 def apl_data(date, radar):
+    print()
 
+def getBasFileList():
+    radarList = helper.get_radar_list()
+    os.makedirs(BAS_FILE_LIST_DIR, exist_ok=True)
 
+    year = BAS_START_DATE.strftime('%Y')
+    endYear = BAS_END_DATE.strftime('%Y')
+    getBasFileList()    
+
+    while year <= endYear:
+        filename = '{dir}/{yr}_basRawFiles.txt'.format(dir = BAS_FILE_LIST_DIR, yr = year)
+
+        # Get a list of all rawACF files on BAS for the given year and put them in a file
+        os.system('ssh apl@{bas} ls -R /sddata/raw/{yr}/ > {fname}'.format(bas = helper.BAS_SERVER, fname = filename))
+
+        # Go through the file line by line and add each line to the appropriate daily text file
+        with open(filename) as mainFileList:
+            lines = mainFileList.readlines()        
+            for line in lines:
+                rawFilename = line.strip()
+                extension = rawFilename.split('.')[-1]
+                if not extension == '.bz2':
+                    # This line isn't a rawACF filename
+                    breakpoint()
+                    continue
+
+                dayFileList = '{day}.txt'.format(day = rawFilename.split('.')[0])
+                with open(dayFileList, "a+") as fp: 
+                    fp.write(rawFilename + '\n')
+
+        year += 1
 
 def BASServerConnected():
     BASup = False

@@ -8,7 +8,7 @@ import socket
 import time
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
-DOWNLOAD_RAWACFS = True
+DOWNLOAD_RAWACFS = False
 
 DELAY = 1800 # 30 minutes
 RETRY = 17   # Try to connect every 30 minutes for a day
@@ -152,8 +152,8 @@ def get_first_and_last_days_of_prev_month():
         firstDay = lastDay.replace(day=1)
     
 
-       # firstDay = datetime.datetime(2021,8,1,0,0)
-       # lastDay = datetime.datetime(2021,8,22,0,0)
+        firstDay = datetime.datetime(2021,7,21,0,0)
+        lastDay = datetime.datetime(2021,7,21,0,0)
         return firstDay, lastDay 
 
 def send_email(subject, body, addresses):

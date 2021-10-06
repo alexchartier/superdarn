@@ -8,7 +8,8 @@ EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
 # Directories
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
-BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m/'        
+BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m/'   
+BAS_DAT_DIR_FMT = '/sddata/dat/%Y/%m/'
 RAWACF_DIR_FMT = '/project/superdarn/data/rawacf/%Y/%m/'
 FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m/'
 NETCDF_DIR_FMT = '/project/superdarn/data/netcdf/%Y/%m/'

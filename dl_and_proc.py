@@ -36,32 +36,7 @@ def dl_one_day(dirs, time):
 
 def get_times():
     return [
-        dt.datetime(2015, 9, 19),
-        dt.datetime(2015, 10, 16),
-        dt.datetime(2015, 10, 22),
-        dt.datetime(2015, 11, 1),
-        dt.datetime(2015, 11, 12),
-        dt.datetime(2015, 12, 6),
-        dt.datetime(2015, 12, 8),
-        dt.datetime(2015, 12, 9),
-        dt.datetime(2015, 12, 14),
-        dt.datetime(2016, 1, 7),
-        dt.datetime(2016, 1, 10),
-        dt.datetime(2016, 2, 7),
-        dt.datetime(2016, 10, 22),
-        dt.datetime(2016, 11, 2),
-        dt.datetime(2016, 11, 6),
-        dt.datetime(2016, 11, 12),
-        dt.datetime(2016, 11, 13),
-        dt.datetime(2016, 11, 18),
-        dt.datetime(2016, 11, 23),
-        dt.datetime(2016, 12, 11),
-        dt.datetime(2016, 12, 19),
-        dt.datetime(2017, 1, 2),
-        dt.datetime(2017, 1, 11),
-        dt.datetime(2017, 1, 20),
-        dt.datetime(2017, 1, 22),
-        dt.datetime(2017, 1, 27),
+        dt.datetime(2012, 10, 8),
     ]
 
 

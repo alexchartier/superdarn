@@ -60,7 +60,7 @@ def main(
     # Send the output to a log file
     original_stdout = sys.stdout
     if SAVE_OUTPUT_TO_LOGFILE:
-        f = open('/homes/superdarn/logs/rawACF_to_netCDF_logs/raw_to_fit_to_net_{startDate}-{endDate}'.format(startDate = start_time.strftime("%Y%m%d"), endDate = end_time.strftime("%Y%m%d")), 'w')
+        f = open('/homes/superdarn/logs/rawACF_to_netCDF_logs/raw_to_fit_to_net_{startDate}-{endDate}.log'.format(startDate = start_time.strftime("%Y%m%d"), endDate = end_time.strftime("%Y%m%d")), 'w')
         sys.stdout = f
     
     rstpath = os.getenv('RSTPATH')

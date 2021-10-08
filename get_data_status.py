@@ -28,11 +28,12 @@ DELAY = 300 # 5 minutes
 RETRY = 12 # Try to connect for an hour
 TIMEOUT = 10 # seconds
 
+SAVE_OUTPUT_TO_LOGFILE = False
+
 DAT_START_DATE = dt.datetime(1993,9,29)
 DAT_END_DATE = dt.datetime(2005,12,31)
-BAS_START_DATE = dt.datetime(2021,7,21)
+BAS_START_DATE = dt.datetime(2006,1,1)
 BAS_END_DATE = dt.datetime.now()
-BAS_END_DATE = dt.datetime(2021,7,22)
 
 BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
 DATA_STATUS_DIR = '/project/superdarn/data/data_status'
@@ -41,14 +42,24 @@ BAS_RAWACF_DIR_FMT = helper.BAS_RAWACF_DIR_FMT
 BAS_DAT_DIR_FMT = helper.BAS_DAT_DIR_FMT 
 
 def main():
+    # Send the output to a log file
+    original_stdout = sys.stdout
+    if SAVE_OUTPUT_TO_LOGFILE:
+        os.makedirs('{dir}data_status_check/'.format(dir = helper.LOG_DIR), exist_ok=True)
+        f = open('{dir}data_status_check/data_status_check_{date}.log'.format(dir = helper.LOG_DIR, date = BAS_END_DATE.strftime("%Y%m%d")), 'w+')
+        sys.stdout = f
+    
+#    getBasFileList()
     radarList = helper.get_radar_list()
+
+    # TODO: Add DAT file check
 
     date = BAS_START_DATE
     data = {}
     while date <= BAS_END_DATE:
         day = date.strftime('%Y%m%d')
         data[day] = []
-        print('Comparing data on {d}\n'.format(d = day))
+        print('Comparing data between BAS and APL on {d}'.format(d = day))
         for radar in radarList:
             basDataExists = bas_data(date, radar)
             aplDataExists = apl_data(date, radar)
@@ -61,13 +72,16 @@ def main():
                         
         date += dt.timedelta(days=1)
 
-    with open('{dir}/data_status.txt', 'w') as outfile:
+    with open('{dir}/data_status_{d}.txt'.format(dir = DATA_STATUS_DIR, d = BAS_END_DATE.strftime('%Y%m%d')), 'w') as outfile:
         json.dump(data, outfile)
-    os.system('rm -rf {bas_dir}'.format(BAS_FILE_LIST_DIR))
+    # os.system('rm -rf {bas_dir}'.format(bas_dir = BAS_FILE_LIST_DIR))
+    
+    # Reset the output
+    sys.stdout = original_stdout
     
 
 def get_result(bas, apl):
-    # Get a numerical result as follows:
+    # Get a numerical result based on the BAS and APL values as follows:
     # 0: No data exists
     # 1: Data exists only on BAS
     # 2: Data exists only at APL
@@ -77,11 +91,11 @@ def get_result(bas, apl):
     result = int(resultBinary, 2)
     return result
 
+
 def bas_data(date, radar):
     day = date.strftime('%Y%m%d')
     numBASFiles = len(glob.glob('{dir}/*{d}**{r}*'.format(dir = BAS_FILE_LIST_DIR, d = day, r = radar)))
     return numBASFiles > 0
-
 
 
 def apl_data(date, radar):
@@ -90,8 +104,8 @@ def apl_data(date, radar):
     numAPLFiles = len(glob.glob('{dir}*{d}**{r}*'.format(dir = netDir, d = day, r = radar)))
     return numAPLFiles > 0
 
-def getBasFileList():
 
+def getBasFileList():
     # Make sure the BAS server is reachable
     if not BASServerConnected():
         # Send email if BAS couldn't be reached  
@@ -101,6 +115,8 @@ def getBasFileList():
         sys.exit('{message}'.format(message = emailBody))
 
     os.makedirs(BAS_FILE_LIST_DIR, exist_ok=True)
+
+    # TODO: Get BAS DAT files
 
     year = BAS_START_DATE.year
     endYear = BAS_END_DATE.year
@@ -121,8 +137,7 @@ def getBasFileList():
                     continue
                 
                 day = rawFilename.split('.')[0]
-                # dayDir = '{dir}/{d}'.format(dir = BAS_FILE_LIST_DIR, d = day)
-                # os.makedirs(dayDir, exist_ok=True)
+                print(day)
                 radar = rawFilename.split('.')[3]
                 radarFileList = '{dir}/{d}_{r}.txt'.format(dir = BAS_FILE_LIST_DIR, d = day, r = radar)
                 with open(radarFileList, "a+") as fp: 

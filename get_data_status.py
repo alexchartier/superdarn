@@ -28,7 +28,7 @@ DELAY = 300 # 5 minutes
 RETRY = 12 # Try to connect for an hour
 TIMEOUT = 10 # seconds
 
-SAVE_OUTPUT_TO_LOGFILE = False
+REMOVE_BAS_FILE_LIST = True
 
 DAT_START_DATE = dt.datetime(1993,9,29)
 DAT_END_DATE = dt.datetime(2005,12,31)
@@ -42,14 +42,12 @@ BAS_RAWACF_DIR_FMT = helper.BAS_RAWACF_DIR_FMT
 BAS_DAT_DIR_FMT = helper.BAS_DAT_DIR_FMT 
 
 def main():
-    # Send the output to a log file
-    original_stdout = sys.stdout
-    if SAVE_OUTPUT_TO_LOGFILE:
-        os.makedirs('{dir}data_status_check/'.format(dir = helper.LOG_DIR), exist_ok=True)
-        f = open('{dir}data_status_check/data_status_check_{date}.log'.format(dir = helper.LOG_DIR, date = BAS_END_DATE.strftime("%Y%m%d")), 'w+')
-        sys.stdout = f
-    
-#    getBasFileList()
+
+    emailSubject = '"Starting Data Check"'
+    emailBody    = 'Starting BAS vs APL data check'
+    helper.send_email(emailSubject, emailBody)
+
+    getBasFileList()
     radarList = helper.get_radar_list()
 
     # TODO: Add DAT file check
@@ -72,12 +70,16 @@ def main():
                         
         date += dt.timedelta(days=1)
 
-    with open('{dir}/data_status_{d}.txt'.format(dir = DATA_STATUS_DIR, d = BAS_END_DATE.strftime('%Y%m%d')), 'w') as outfile:
+    outputFile = '{dir}/data_status_{date}.txt'.format(dir = DATA_STATUS_DIR, date = BAS_END_DATE.strftime('%Y%m%d'))
+    with open(outputFile, 'w') as outfile:
         json.dump(data, outfile)
-    # os.system('rm -rf {bas_dir}'.format(bas_dir = BAS_FILE_LIST_DIR))
     
-    # Reset the output
-    sys.stdout = original_stdout
+    emailSubject = '"Data Status Check Complete"'
+    emailBody    = 'Finished checking BAS data vs APL data - new JSON file created:\n{0}'.format(outputFile)
+    helper.send_email(emailSubject, emailBody)
+
+    if REMOVE_BAS_FILE_LIST:
+        os.system('rm -rf {bas_dir}'.format(bas_dir = BAS_FILE_LIST_DIR))
     
 
 def get_result(bas, apl):
@@ -121,11 +123,11 @@ def getBasFileList():
     year = BAS_START_DATE.year
     endYear = BAS_END_DATE.year
     while year <= endYear:
+        print('\nGetting BAS data for {0}\n'.format(year))
         filename = '{dir}/{yr}_basRawFiles.txt'.format(dir = BAS_FILE_LIST_DIR, yr = year)
 
         # Get a list of all rawACF files on BAS for the given year and put them in a file
         os.system('ssh apl@{bas} ls -R /sddata/raw/{yr}/ > {fname}'.format(bas = helper.BAS_SERVER, yr = year, fname = filename))
-
         # Go through the file line by line and add each line to the appropriate daily text file
         with open(filename) as mainFileList:
             lines = mainFileList.readlines()        
@@ -137,7 +139,7 @@ def getBasFileList():
                     continue
                 
                 day = rawFilename.split('.')[0]
-                print(day)
+                print('Updating {0} file'.format(day))
                 radar = rawFilename.split('.')[3]
                 radarFileList = '{dir}/{d}_{r}.txt'.format(dir = BAS_FILE_LIST_DIR, d = day, r = radar)
                 with open(radarFileList, "a+") as fp: 

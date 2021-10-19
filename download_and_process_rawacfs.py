@@ -25,9 +25,9 @@ FITACF_DIR_FMT = helper.FITACF_DIR_FMT
 NETCDF_DIR_FMT = helper.NETCDF_DIR_FMT
 LOG_DIR = helper.LOG_DIR
 
-def main():
+def main(date):
     startTime = time.time()
-    startDate, endDate = get_first_and_last_days_of_prev_month()
+    startDate, endDate = get_first_and_last_days_of_prev_month(date)
 
     basRawDir = startDate.strftime(BAS_RAWACF_DIR_FMT)
     rawDir = startDate.strftime(RAWACF_DIR_FMT)
@@ -155,15 +155,17 @@ def remove_converted_files(rawDir, fitDir):
         shutil.rmtree(rawDir)
 
 
-def get_first_and_last_days_of_prev_month():
-        now = datetime.datetime.now()
-        lastDay = now.replace(day=1) - datetime.timedelta(days=1)
+def get_first_and_last_days_of_prev_month(date):
+        lastDay = date.replace(day=1) - datetime.timedelta(days=1)
         firstDay = lastDay.replace(day=1)
-    
-
-       # firstDay = datetime.datetime(2021,10,1,0,0)
-       # lastDay = datetime.datetime(2021,10,1,0,0)
         return firstDay, lastDay 
 
 if __name__ == '__main__':
-    main()
+    args = sys.argv
+
+    if len(args) < 1:
+        date = datetime.datetime.now()
+    else:
+        date = args[0]
+    
+    main(date)

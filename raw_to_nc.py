@@ -173,8 +173,8 @@ def convert_fitacf_data(date, in_fname, radar_info):
     # Store conversion info like returns outside FOV, missing slist, etc 
     # for each conversion
     conversionLogDir = '{dir}/{d}'.format(dir = multiBeamLogDir, d = day)
-    fName = '.'.join(in_fname.split('/')[-1]).split('.')[1:]
-    conversionLogfile = '{dir}/{fit}_to_nc_{m}.log'.format(dir = conversionLogDir, fit = fName, m = month)
+    fName = in_fname.split('/')[-1]
+    conversionLogfile = '{dir}/{fit}_to_nc.log'.format(dir = conversionLogDir, fit = fName)
 
     # Define the name of the file holding the list of rawACFs used to 
     # create the fitACF

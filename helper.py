@@ -25,3 +25,12 @@ def get_radar_list():
     'rkn', 'sas', 'sch', 'sto', 'wal','bpk','dce','fir','hal','ker',
     'mcm','san','sps','sye','sys','tig','unw','zho']
     return radarList
+
+def getTimeString(time):
+    day = time // (24 * 3600)
+    time = time % (24 * 3600)
+    hour = time // 3600
+    time %= 3600
+    minute = time // 60
+
+    return '%d day(s), %d hour(s), %d minute(s)' % (day, hour, minute)

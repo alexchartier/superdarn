@@ -42,7 +42,7 @@ BAS_RAWACF_DIR_FMT = helper.BAS_RAWACF_DIR_FMT
 BAS_DAT_DIR_FMT = helper.BAS_DAT_DIR_FMT 
 
 def main():
-
+    startTime = time.time()
     emailSubject = '"Starting Data Check"'
     emailBody    = 'Starting BAS vs APL data check'
     helper.send_email(emailSubject, emailBody)
@@ -74,8 +74,9 @@ def main():
     with open(outputFile, 'w') as outfile:
         json.dump(data, outfile)
     
+    totalTime = getTimeString(time.time() - startTime)
     emailSubject = '"Data Status Check Complete"'
-    emailBody    = 'Finished checking BAS data vs APL data - new JSON file created:\n{0}'.format(outputFile)
+    emailBody    = 'Finished checking BAS data vs APL data.\nTotal time: {0}\nNew JSON file created:\n{1}'.format(totalTime, outputFile)
     helper.send_email(emailSubject, emailBody)
 
     if REMOVE_BAS_FILE_LIST:
@@ -169,6 +170,16 @@ def isOpen(server, port):
         return False
     finally:
         s.close()
+
+def getTimeString(time):
+    day = time // (24 * 3600)
+    time = time % (24 * 3600)
+    hour = time // 3600
+    time %= 3600
+    minute = time // 60
+
+    return '%d day(s), %d hour(s), %d minute(s)' % (day, hour, minute)
+
 
 if __name__ == '__main__':
     main()

@@ -8,7 +8,8 @@ import socket
 import time
 import helper
 
-DOWNLOAD_RAWACFS = False
+DOWNLOAD_RAWACFS = True
+DELETE_FITACFS_V2_5 = True
 
 DELAY = 1800 # 30 minutes
 RETRY = 17   # Try to connect every 30 minutes for a day
@@ -25,7 +26,7 @@ NETCDF_DIR_FMT = helper.NETCDF_DIR_FMT
 LOG_DIR = helper.LOG_DIR
 
 def main():
-
+    startTime = time.time()
     startDate, endDate = get_first_and_last_days_of_prev_month()
 
     basRawDir = startDate.strftime(BAS_RAWACF_DIR_FMT)
@@ -36,13 +37,18 @@ def main():
     os.makedirs(rawDir, exist_ok=True)    
     os.makedirs(fitDir, exist_ok=True)
     os.makedirs(netDir, exist_ok=True)
-    
+
     if DOWNLOAD_RAWACFS:
         download_rawacfs(basRawDir, rawDir, netDir, startDate)
 
     convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir)
 
     remove_converted_files(rawDir, fitDir)
+
+    totalTime = helper.getTimeString(time.time() - startTime)
+    emailSubject = '"RawACF Download and Conversion Complete"'
+    emailBody    = 'Finished downloading and converting {month} RawACF data\nTotal time: {time}'.format(month = startDate.strftime('%Y/%m'), time = totalTime)
+    helper.send_email(emailSubject, emailBody)
 
 
 def download_rawacfs(basRawDir, rawDir, netDir, startDate):
@@ -57,7 +63,10 @@ def download_rawacfs(basRawDir, rawDir, netDir, startDate):
 
     dateString = startDate.strftime('%Y/%m')
     fileNameDateString = startDate.strftime('%Y_%m')
-    rsyncLogFilename = LOG_DIR + 'BAS_rsync_logs/{datePrefix}_BAS_rsync.out'.format(datePrefix = fileNameDateString)
+    print('Downloading {m} rawACFs'.format(m = dateString))
+    rsyncLogDir = LOG_DIR + 'BAS_rsync_logs/{yr}'.format(yr = startDate.strftime('%Y'))
+    os.makedirs(rsyncLogDir, exist_ok=True)
+    rsyncLogFilename = '{dir}/BAS_rsync_{month}.out'.format(dir = rsyncLogDir, month = fileNameDateString)
  
     # Save a list of all rawACF files on BAS for the given month and store it in the netcdf directory
     os.system('ssh apl@{bas} ls /sddata/raw/{date} > {ncDir}bas_rawacfs_{dateSuffix}.txt'.format(bas = BAS_SERVER, date = dateString, ncDir = netDir, dateSuffix = fileNameDateString))
@@ -136,8 +145,8 @@ def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netD
 
 
 def remove_converted_files(rawDir, fitDir):
-    
-    os.system('rm {fitacfDir}*v2.5*'.format(fitacfDir = fitDir))
+    if DELETE_FITACFS_V2_5:
+        os.system('rm {fitacfDir}*v2.5*'.format(fitacfDir = fitDir))
 
     # All rawACFs should have been deleted after the conversion to
     # fitACF was completed. Make sure the rawACF directory is empty,
@@ -152,8 +161,8 @@ def get_first_and_last_days_of_prev_month():
         firstDay = lastDay.replace(day=1)
     
 
-        firstDay = datetime.datetime(2021,7,21,0,0)
-        lastDay = datetime.datetime(2021,7,21,0,0)
+       # firstDay = datetime.datetime(2021,10,1,0,0)
+       # lastDay = datetime.datetime(2021,10,1,0,0)
         return firstDay, lastDay 
 
 if __name__ == '__main__':

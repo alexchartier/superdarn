@@ -16,8 +16,8 @@ import os
 import helper
 import download_and_process_rawacfs
 
-START_DATE = dt.datetime(2019,2, 1)#dt.datetime.now()
-END_DATE = dt.datetime(2018,10, 1)
+START_DATE = dt.datetime(2009,1, 1)#dt.datetime.now()
+END_DATE = dt.datetime(2008,12, 1)
 # END_DATE = dt.datetime(2006,8, 1) # Earlier than this there's a mix of dat and raw, or only dat
 
 LOG_DIR = '{0}rawACF_to_netCDF_logs'.format(helper.LOG_DIR)
@@ -26,10 +26,10 @@ def main():
     date = START_DATE
     while date >= END_DATE:
         logDir = '{0}/{1}'.format(LOG_DIR, date.strftime('%Y'))
-        logFile = '{0}/download_and_process_{1}'.format(logDir, date.strftime('%Y%m'))
+        logFile = '{0}/download_and_process_{1}.log'.format(logDir, date.strftime('%Y%m'))
         os.makedirs(logDir, exist_ok=True)
 
-        emailSubject = '"Downloading and Processing {0} Data"'.format(date.strftime('%Y%m'))
+        emailSubject = '"PROCESS ALL STARTING"'
         emailBody    = 'Starting to download and process {0} data'.format(date.strftime('%Y%m'))
         helper.send_email(emailSubject, emailBody)
 
@@ -41,7 +41,7 @@ def main():
 
         sys.stdout = original_stdout 
 
-        emailSubject = '"Finished Downloading and Processing {0} Data"'.format(date.strftime('%Y%m'))
+        emailSubject = '"PROCESS ALL COMPLETE"'
         emailBody    = 'Finished downloading and processing {0} data'.format(date.strftime('%Y%m'))
         helper.send_email(emailSubject, emailBody)
 

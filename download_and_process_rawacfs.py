@@ -47,7 +47,7 @@ def main(date):
 
     totalTime = helper.getTimeString(time.time() - startTime)
     emailSubject = '"RawACF Download and Conversion Complete"'
-    emailBody    = 'Finished downloading and converting {month} RawACF data\nTotal time: {time}'.format(month = startDate.strftime('%Y/%m'), time = totalTime)
+    emailBody    = '"Finished downloading and converting {month} RawACF data\nTotal time: {time}"'.format(month = startDate.strftime('%Y/%m'), time = totalTime)
     helper.send_email(emailSubject, emailBody)
 
 

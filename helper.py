@@ -33,4 +33,8 @@ def getTimeString(time):
     time %= 3600
     minute = time // 60
 
-    return '%d day(s), %d hour(s), %d minute(s)' % (day, hour, minute)
+    dayString = 'day' if int(day) == 1 else 'days'
+    hourString = 'hour' if int(hour) == 1 else 'hours'
+    minuteString = 'minute' if int(minute) == 1 else 'minutes'
+
+    return '%d %s, %d %s, %d %s' % (day, dayString, hour, hourString, minute, minuteString)

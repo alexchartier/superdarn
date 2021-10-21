@@ -6,6 +6,7 @@ import datetime
 import raw_to_nc
 import socket
 import time
+from dateutil.relativedelta import relativedelta
 import helper
 
 DOWNLOAD_RAWACFS = True
@@ -27,7 +28,7 @@ LOG_DIR = helper.LOG_DIR
 
 def main(date):
     startTime = time.time()
-    startDate, endDate = get_first_and_last_days_of_prev_month(date)
+    startDate, endDate = get_first_and_last_days_of_month(date)
 
     basRawDir = startDate.strftime(BAS_RAWACF_DIR_FMT)
     rawDir = startDate.strftime(RAWACF_DIR_FMT)
@@ -155,16 +156,18 @@ def remove_converted_files(rawDir, fitDir):
         shutil.rmtree(rawDir)
 
 
-def get_first_and_last_days_of_prev_month(date):
-        lastDay = date.replace(day=1) - datetime.timedelta(days=1)
-        firstDay = lastDay.replace(day=1)
-        return firstDay, lastDay 
+def get_first_and_last_days_of_month(date):
+    firstDayOfMonth = date.replace(day=1)
+    lastDayOfMonth = (firstDayOfMonth + relativedelta(months=1)) - datetime.timedelta(days=1)
+    return firstDayOfMonth, lastDayOfMonth 
 
 if __name__ == '__main__':
     args = sys.argv
 
     if len(args) < 1:
-        date = datetime.datetime.now()
+        # If no date was passed in, process the previous month
+        today = datetime.datetime.now()
+        date = today - relativedelta(months=1)
     else:
         date = args[0]
     

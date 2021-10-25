@@ -39,12 +39,11 @@ import radFov
 import pickle
 import helper
 
-DELETE_PROCESSED_RAWACFS = False
+DELETE_PROCESSED_RAWACFS = True
 SAVE_OUTPUT_TO_LOGFILE = False
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 MAKE_FIT_VERSIONS = [2.5, 3.0]
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
-FIT_NET_LOG_DIR = '/homes/superdarn/logs/rawACF_to_netCDF_logs/fitACF_to_netCDF_logs/'
 
 def main(
     start_time=dt.datetime(2005, 12, 1),
@@ -123,7 +122,7 @@ def main(
             print('Wrote output to %s' % out_fn)
         
         month = time.strftime('%Y%m')
-        multiBeamLogDir = FIT_NET_LOG_DIR + month
+        multiBeamLogDir = time.strftime(helper.FIT_NET_LOG_DIR) + month
         multiBeamFile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
         if os.path.exists(multiBeamFile):
             subject = '"Multiple Beam Definitions Found - {date}"'.format(date = time.strftime('%Y/%m'))
@@ -167,7 +166,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
     
     # Keep track of fitACF files that have multiple beam definitions in a
     # monthly log file
-    multiBeamLogDir = FIT_NET_LOG_DIR + month
+    multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + month
     multiBeamLogfile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
 
     # Store conversion info like returns outside FOV, missing slist, etc 

@@ -77,3 +77,29 @@ def get_random_string(length):
     letters = string.ascii_lowercase
     result_str = ''.join(random.choice(letters) for i in range(length))
     return result_str
+
+
+def get_radar_list(in_dir):
+    print('Calculating list of radars')
+    assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
+    flist = glob.glob(os.path.join(in_dir, '*.bz2'))
+
+    if len(flist) == 0:
+        print('No files in %s' % in_dir)
+    radar_list = []
+
+    for f in flist:
+        items = f.split('.')
+        if len(items) == 6:
+            radarn = items[3]
+        elif len(items) == 7:
+            radarn = '.'.join(items[3:5])
+        else:
+            raise ValueError('filename does not match expectations: %s' % f)
+        if radarn not in radar_list:
+            radar_list.append(radarn)
+            print(radarn)
+    return radar_list
+
+
+

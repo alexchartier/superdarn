@@ -33,13 +33,13 @@ import datetime as dt
 from dateutil.relativedelta import relativedelta
 import calendar
 import numpy as np
-from sd_utils import get_radar_params, id_hdw_params_t, get_random_string
+from sd_utils import get_radar_params, id_hdw_params_t, get_random_string, get_radar_list
 import pydarn
 import radFov
 import pickle
 import helper
 
-DELETE_PROCESSED_RAWACFS = True
+DELETE_PROCESSED_RAWACFS = False
 SAVE_OUTPUT_TO_LOGFILE = False
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 MAKE_FIT_VERSIONS = [2.5, 3.0]
@@ -151,7 +151,7 @@ def fit_to_nc(date, in_fname, out_fname, radar_info):
         for k, v in dim_defs.items():
             nc.createDimension(k, size=v)
         for k, v in out_vars.items():
-            defs= var_defs[k]
+            defs = var_defs[k]
             var = nc.createVariable(k, defs['type'], defs['dims'])
             var[:] = v
             var.units = defs['units']
@@ -331,7 +331,7 @@ def def_vars():
     stdin_int2 = {'units': 'none', 'type': 'u2', 'dims': 'npts'} 
     stdin_flt = {'type': 'f4', 'dims': 'npts'} 
     stdin_dbl = {'type': 'f8', 'dims': 'npts'} 
-    vars = {
+    var_defs = {
         'mjd': dict({'units': 'days', 'long_name': 'Modified Julian Date'}, **stdin_dbl),
         'beam': dict({'long_name': 'Beam #'}, **stdin_int),
         'range': dict({'units': 'km','long_name': 'Slant range'}, **stdin_int2),
@@ -349,7 +349,7 @@ def def_vars():
         'cp': dict({'units': 'none','long_name': 'Control program ID'}, **stdin_int2),
     }   
 
-    return vars
+    return var_defs
 
 
 def set_header(rootgrp, header_info) :
@@ -474,10 +474,18 @@ def proc_radar(in_fname_fmt, out_fname, fit_version, run_dir):
     # Create a single fitACF at output location
     fn_inf = os.stat('tmp.fitacf')
     if fn_inf.st_size > MIN_FITACF_FILE_SIZE:
-        shutil.move('tmp.fitacf', out_fname)
-    # TODO: get despeckling to work    
-    #    if fit_version == 3.0:
-    #        os.system('fit_speck_removal {fitacfName} > {fitacfName}'.format(fitacfName = out_fname))
+        if fit_version == 2.5:
+            shutil.move('tmp.fitacf', out_fname)
+        elif fit_version == 3.0:
+        # Apply despeckling to v3.0 fitACFs   
+            #path = '/'.join(out_fname.split('/')[:-1]) + '/'
+            #fname = '.'.join(out_fname.split('/')[-1].split('.')[:-1]) + '.despeckled.fit'
+            #despeckled_out_fname = path + fname
+            os.system('fit_speck_removal tmp.fitacf > {0}'.format(out_fname))
+            fn_inf = os.stat(out_fname)
+        else:
+            raise ValueError('fit version must be 2.5 of 3.0 - {0} fit version specified'.format(fit_version))
+        
         print('file created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
         
         # Use the fitACF output filename to create a similar filename for the
@@ -490,29 +498,6 @@ def proc_radar(in_fname_fmt, out_fname, fit_version, run_dir):
     else:
         print('file %s too small, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
     return 0
-
-
-def get_radar_list(in_dir):
-    print('Calculating list of radars')
-    assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
-    flist = glob.glob(os.path.join(in_dir, '*.bz2'))
-
-    if len(flist) == 0:
-        print('No files in %s' % in_dir)
-    radar_list = []
-
-    for f in flist:
-        items = f.split('.')
-        if len(items) == 6:
-            radarn = items[3]
-        elif len(items) == 7:
-            radarn = '.'.join(items[3:5])
-        else:
-            raise ValueError('filename does not match expectations: %s' % f)
-        if radarn not in radar_list:
-            radar_list.append(radarn)
-            print(radarn)
-    return radar_list
 
 
 if __name__ == '__main__':

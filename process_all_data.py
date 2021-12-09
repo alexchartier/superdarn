@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 """
 
@@ -10,14 +9,14 @@ __email__ = "jordan.wiker@jhuapl.edu"
 __status__ = "Development"
 
 import datetime as dt 
-from dateutil.relativedelta import relativedelta
 import sys
+from dateutil.relativedelta import relativedelta
 import os
 import helper
 import download_and_process_rawacfs
 
-START_DATE = dt.datetime(2009,1, 1)#dt.datetime.now()
-END_DATE = dt.datetime(2008,12, 1)
+START_DATE = dt.datetime(2020, 12, 1)
+END_DATE = dt.datetime(2020, 7, 1)
 # END_DATE = dt.datetime(2006,8, 1) # Earlier than this there's a mix of dat and raw, or only dat
 
 LOG_DIR = '{0}rawACF_to_netCDF_logs'.format(helper.LOG_DIR)
@@ -34,8 +33,8 @@ def main():
         helper.send_email(emailSubject, emailBody)
 
         original_stdout = sys.stdout
-        f = open(logFile, 'w')
-        sys.stdout = f
+#        f = open(logFile, 'w')
+#        sys.stdout = f
 
         download_and_process_rawacfs.main(date)
 

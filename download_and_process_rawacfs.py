@@ -3,14 +3,15 @@ import filecmp
 import os
 import shutil
 import datetime
-import raw_to_nc
 import socket
 import time
 from dateutil.relativedelta import relativedelta
 import helper
+import raw_to_nc
 
 DOWNLOAD_RAWACFS = True
 DELETE_FITACFS_V2_5 = True
+PROCESS_JME_RAWACFS = True
 
 DELAY = 1800 # 30 minutes
 RETRY = 17   # Try to connect every 30 minutes for a day
@@ -110,6 +111,12 @@ def download_rawacfs(basRawDir, rawDir, netDir, startDate):
     os.system('rm {ncDir}bas_rawacfs_copied_{dateSuffix}.txt'.format(ncDir = netDir, dateSuffix = fileNameDateString))
     helper.send_email(emailSubject, emailBody)
     
+    # JME rawacf files lead to segmentation faults during make_fit, so skip them until we determine the root cause
+    if not PROCESS_JME_RAWACFS:
+        os.system('rm {0}*jme*'.format(rawDir))    
+        emailSubject = '"JME rawACFs Deleted"'
+        emailBody    = '"{date} JME rawACF files deleted"'.format(date = dateString)  
+        helper.send_email(emailSubject, emailBody)
 
 def BASServerConnected():
     BASup = False
@@ -137,7 +144,8 @@ def isOpen(server, port):
 def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir):
 
     raw_to_nc.main(startDate, endDate, rawDir,fitDir,netDir)
-
+    
+#    os.system('python3 raw_to_nc {0} {1} {2} {3} {4}'.format(startDate, endDate, rawDir,fitDir,netDir))
     dateString = startDate.strftime('%Y/%m')
 
     emailSubject = '"{date} rawACF to netCDF Conversion Successful"'.format(date = dateString)
@@ -147,12 +155,12 @@ def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netD
 
 def remove_converted_files(rawDir, fitDir):
     if DELETE_FITACFS_V2_5:
-        os.system('rm {fitacfDir}*v2.5*'.format(fitacfDir = fitDir))
+        os.system('rm {0}*v2.5*'.format(fitDir))
 
     # All rawACFs should have been deleted after the conversion to
-    # fitACF was completed. Make sure the rawACF directory is empty,
-    # then delete the directory.
-    if len(os.listdir(rawDir)) == 0:
+    # fitACF was completed. Make sure the rawACF directory is empty
+    # except for the YYYYMM.hashes file, then delete the directory.
+    if len(os.listdir(rawDir)) == 1:
         shutil.rmtree(rawDir)
 
 
@@ -163,8 +171,8 @@ def get_first_and_last_days_of_month(date):
 
 if __name__ == '__main__':
     args = sys.argv
-
-    if len(args) < 1:
+    
+    if len(args) < 2:
         # If no date was passed in, process the previous month
         today = datetime.datetime.now()
         date = today - relativedelta(months=1)

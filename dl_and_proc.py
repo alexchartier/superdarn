@@ -36,7 +36,7 @@ def dl_one_day(dirs, time):
 
 def get_times():
     return [
-        dt.datetime(2012, 10, 8),
+        dt.datetime(2014, 4, 24),
     ]
 
 

@@ -15,7 +15,7 @@ import os
 import helper
 import download_and_process_rawacfs
 
-START_DATE = dt.datetime(2020, 12, 1)
+START_DATE = dt.datetime(2020, 7, 1)
 END_DATE = dt.datetime(2020, 7, 1)
 # END_DATE = dt.datetime(2006,8, 1) # Earlier than this there's a mix of dat and raw, or only dat
 

@@ -1,15 +1,14 @@
 import numpy as np
 import datetime as dt
 import os
+import sys
 import glob
 from collections import defaultdict
 from dateutil.relativedelta import relativedelta
 import netCDF4
 
 def convert_winds(
-    startTime, endTime,
-    indir='/project/superdarn/data/meteorwind/%Y/%m/',
-    outdir='/project/superdarn/data/meteorwindnc/%Y/%m/',
+    startTime, endTime, indir, outdir,
 ):
 
     month = startTime
@@ -141,8 +140,15 @@ def read_winds(wind_fn):
 
 
 if __name__ == '__main__':
-    startTime = dt.datetime(2019, 12, 1)
-    endTime = dt.datetime(2020, 6, 1)
-    convert_winds(
-        startTime, endTime,
-    )
+    args = sys.argv
+    assert len(args) == 5, 'Should have 5x args, e.g.:\n' + \
+        'python3 meteorproc_to_nc.py ' + \
+        '2005,1,1 2020,1,1  ' + \
+        '/project/superdarn/alex/meteorwind/%Y/%m/ ' + \
+        '/project/superdarn/alex/meteorwindnc/%Y/%m/'
+
+    startTime = dt.datetime.strptime(args[1], '%Y,%m,%d')
+    endTime = dt.datetime.strptime(args[2], '%Y,%m,%d')
+    indir = args[3]
+    outdir = args[4]
+    convert_winds(startTime, endTime, indir, outdir)

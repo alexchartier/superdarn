@@ -9,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 import helper
 import raw_to_nc
 
-DOWNLOAD_RAWACFS = True
+DOWNLOAD_RAWACFS = False
 DELETE_FITACFS_V2_5 = True
 PROCESS_JME_RAWACFS = True
 

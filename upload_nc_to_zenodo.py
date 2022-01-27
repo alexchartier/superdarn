@@ -15,7 +15,6 @@ import sys, os
 import requests
 import datetime as dt
 from dateutil.relativedelta import relativedelta
-import argparse
 import helper
 import json
 import glob
@@ -33,27 +32,39 @@ chartierORCID = '0000-0002-4215-031X'
 aplAffiliation = 'JHU/APL'
 keywords = 'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, netcdf, aeronomy, cedar, gem, radar, OTHR'
 
-SANDBOX = True
+DEPOSIT_URL = 'https://zenodo.org/api/deposit/depositions'
+SANDBOX_DEPOSIT_URL = 'https://sandbox.zenodo.org/api/deposit/depositions'
+SANDBOX = False
 
-# TODO: Add non-sandbox Zenodo token, and confirm deposit:write is enabled
-ZENODO_TOKEN = '9FWXXWi1NYeEo6c7zarVtOEOzUkPwiwgVNJ6FD2Wyzecf3PNrs1HKKnrDjYS'
+ZENODO_TOKEN = 'RT4wr3kTsZkEgwWC4r99VTytmGqzULUzloRqn8nVirg2e5nGBYxw4Ohy5FUf'
 ZENODO_SANDBOX_TOKEN = '9FWXXWi1NYeEo6c7zarVtOEOzUkPwiwgVNJ6FD2Wyzecf3PNrs1HKKnrDjYS'
 
 def main(date):
-    accessToken = ZENODO_SANDBOX_TOKEN if SANDBOX else ZENODO_TOKEN
-    uploadDir = date.strftime(helper.NETCDF_DIR_FMT)
-    upload_to_zenodo(accessToken, uploadDir)
+    startTime = time.time()
+    emailSubject = '"Starting Zenodo Upload"'
+    emailBody = '"Starting to upload {0} netCDF files to Zenodo"'.format(date.strftime('%Y-%m'))
+    helper.send_email(emailSubject, emailBody)
+
+    upload_to_zenodo(SANDBOX, date)
+
+    totalTime = helper.getTimeString(time.time() - startTime)
+    emailSubject = '"Finished Zenodo Upload"'
+    emailBody = '"Finished uploading {0} netCDF files\nTotal time: {1}"'.format(date.strftime('%Y-%m'), totalTime)
+    helper.send_email(emailSubject, emailBody)
     
 
-def upload_to_zenodo(accessToken, uploadDir):
-    # TODO: Remove this dir
-    uploadDir = '/Users/wikerjr1/Desktop/zenodotest/'
+def upload_to_zenodo(sandbox, date):
+  
+    accessToken = ZENODO_SANDBOX_TOKEN if sandbox else ZENODO_TOKEN
+    depositURL = SANDBOX_DEPOSIT_URL if sandbox else DEPOSIT_URL
+
+    uploadDir = date.strftime(helper.NETCDF_DIR_FMT)
     fileList = glob.glob(os.path.join(uploadDir, '*.nc'))
 
     headers = {"Content-Type": "application/json"}
 
     params = {'access_token': accessToken}
-    r = requests.post('https://sandbox.zenodo.org/api/deposit/depositions',
+    r = requests.post(depositURL,
                    params=params,
                    json={},
                    # Headers are not necessary here since "requests" automatically
@@ -91,9 +102,9 @@ def upload_to_zenodo(accessToken, uploadDir):
     
     data = {
         'metadata': {
-            'title': 'Test Upload',
+            'title': 'SuperDARN data in netCDF format ({0})'.format(date.strftime('%Y-%m')),
             'upload_type': 'dataset',
-            'description': 'Test upload',
+            'description': '<p>{0} SuperDARN radar data in netCDF format. These files were produced using versions 2.5 and 3.0 of the public FitACF algorithm, using the AACGM v2 coordinate system. Cite this dataset if using our data in a publication.</p><p>The RST is available here:&nbsp;https://github.com/SuperDARN/rst</p>'.format(date.strftime('%Y-%m')),
             'creators': [
                 {
                     'orcid': chartierORCID, 
@@ -103,74 +114,46 @@ def upload_to_zenodo(accessToken, uploadDir):
                 {
                     'orcid': chartierORCID,
                     'affiliation': aplAffiliation,
-                    'name': 'Wiker, Jordan'
+                    'name': 'Wiker, Jordan R.'
+                },
+                {
+                  "affiliation": aplAffiliation, 
+                  "name": "Barnes, Robin J."
+                }, 
+                {
+                  "affiliation": "STR", 
+                  "name": "Miller, Ethan S."
+                }, 
+                {
+                  "affiliation": "NOAA", 
+                  "name": "Talaat, Elsayed R."
+                }, 
+                {
+                  "affiliation": "Virginia Tech", 
+                  "name": "Ruohoniemi, J. Mike"
+                }, 
+                {
+                  "affiliation": "Virginia Tech", 
+                  "name": "Greenwald, Raymond A."
                 }
             ],
             'keywords': [
                 'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, cfit, aeronomy, cedar, gem, radar'
             ],
-            "communities": [
+            'communities': [
                 {
-                    "identifier": "spacephysics"
-                } 
-                # {
-                #     "id": "superdarn"
-                # }
-            ], 
+                    'identifier': 'spacephysics'
+                }, 
+                {
+                    'identifier': 'superdarn'
+                }
+            ],
+            'version': '1.0'
         }
     }
 
-    r = requests.put('https://sandbox.zenodo.org/api/deposit/depositions/%s' % deposition_id,
+    r = requests.put(depositURL + '/%s' % deposition_id,
     params={'access_token': accessToken}, data=json.dumps(data), headers=headers)
-
-
-# def _build_arg_parser(Parser, *args):
-#     scriptname = os.path.basename(sys.argv[0])
-
-#     formatter = argparse.RawDescriptionHelpFormatter(scriptname)
-#     width = formatter._width
-
-#     title = "zenodo_uploader"
-#     copyright = "Copyright (c) 2022 JHU/APL"
-#     shortdesc = "Upload SuperDARN netCDF files to Zenodo"
-#     desc = "\n".join(
-#         (
-#             "*" * width,
-#             "*{0:^{1}}*".format(title, width - 2),
-#             "*{0:^{1}}*".format(copyright, width - 2),
-#             "*{0:^{1}}*".format("", width - 2),
-#             "*{0:^{1}}*".format(shortdesc, width - 2),
-#             "*" * width,
-#         )
-#     )
-
-#     usage = (
-#         "%s [sandbox] [-d YYYY-m-d]" % scriptname
-#     )
-
-#     # parse options
-#     parser = Parser(
-#         description=desc,
-#         usage=usage,
-#         prefix_chars="-+",
-#         formatter_class=argparse.RawDescriptionHelpFormatter,
-#     )
-
-#     parser.add_argument(
-#         "--sandbox",
-#         action="store_true",
-#         help="""Upload to the APL Sandbox Zenodo account""",
-#     )
-
-#     parser.add_argument(
-#         "-d",
-#         "--date",
-#         dest="date",
-#         default=None,
-#         help="""Month to upload - format: 'YYYY-m-d'""",
-#     )
-
-#     return parser
 
 
 if __name__ == '__main__':
@@ -184,34 +167,4 @@ if __name__ == '__main__':
         date = args[1]
     
     main(date)
-
-# if __name__ == '__main__':
-#     parser = _build_arg_parser(argparse.ArgumentParser)
-#     args = parser.parse_args()
-    
-#     sandbox = False
-#     today = dt.datetime.now()
-#     date = today - relativedelta(months=1)
-
-#     if args.sandbox:
-#         sandbox = True
-
-#     if args.date:
-#         components = args.date.split('-')
-#         year = int(components[0])
-#         month = int(components[1])
-#         day = int(components[2])
-#         date = dt.datetime(year, month, day)
-#     else:
-#         print('No date provided - uploading {0} netCDFs to Zenodo'.format(date.strftime("%Y/%m")))
-    
-#     main(date, sandbox)
-
-
-
-
-
-
-
-
 

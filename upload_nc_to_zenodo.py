@@ -18,6 +18,7 @@ from dateutil.relativedelta import relativedelta
 import helper
 import json
 import glob
+import time
     
 __author__ = "Jordan Wiker"
 __copyright__ = "Copyright 2022, JHUAPL"
@@ -40,6 +41,7 @@ ZENODO_TOKEN = 'SUPERDARN_ZENODO_TOKEN_REMOVED'
 ZENODO_SANDBOX_TOKEN = 'SUPERDARN_ZENODO_SANDBOX_TOKEN_REMOVED'
 
 def main(date):
+
     startTime = time.time()
     emailSubject = '"Starting Zenodo Upload"'
     emailBody = '"Starting to upload {0} netCDF files to Zenodo"'.format(date.strftime('%Y-%m'))
@@ -62,7 +64,6 @@ def upload_to_zenodo(sandbox, date):
     fileList = glob.glob(os.path.join(uploadDir, '*.nc'))
 
     headers = {"Content-Type": "application/json"}
-
     params = {'access_token': accessToken}
     r = requests.post(depositURL,
                    params=params,
@@ -162,7 +163,10 @@ if __name__ == '__main__':
     if len(args) < 2:
         # If no date was passed in, process the previous month
         today = dt.datetime.now()
+    
         date = today - relativedelta(months=1)
+        # TODO: Remove this date
+        date = dt.datetime(2021, 1, 1)
     else:
         date = args[1]
     

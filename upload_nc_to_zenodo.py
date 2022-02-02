@@ -61,7 +61,14 @@ def upload_to_zenodo(sandbox, date):
     depositURL = SANDBOX_DEPOSIT_URL if sandbox else DEPOSIT_URL
 
     uploadDir = date.strftime(helper.NETCDF_DIR_FMT)
-    fileList = glob.glob(os.path.join(uploadDir, '*.nc'))
+    
+    # TODO: Update this once 2019 data is allowed to be released publically
+    if date.year > 2018:
+        fileList = glob.glob(os.path.join(uploadDir, '*wal**.nc'))
+        walString = 'Wallops '
+    else:
+        fileList = glob.glob(os.path.join(uploadDir, '*.nc'))
+        walString = ''    
 
     headers = {"Content-Type": "application/json"}
     params = {'access_token': accessToken}
@@ -88,24 +95,11 @@ def upload_to_zenodo(sandbox, date):
                 params=params,
             )
     
-    # data = {
-    #     'metadata': {
-    #         'title': 'My first upload',
-    #         'upload_type': 'dataset',
-    #         'description': 'This is my first upload',
-    #         'creators': [{'name': 'Wiker, Jordan','affiliation': 'JHUAPL'}],
-    #         'communities': [{"id": "superdarn"}]
-    #         }
-    #     }
-
-    # r = requests.put('https://sandbox.zenodo.org/api/deposit/depositions/%s' % deposition_id, params={'access_token': accessToken}, data=json.dumps(data), headers=headers)
-    
-    
     data = {
         'metadata': {
-            'title': 'SuperDARN data in netCDF format ({0})'.format(date.strftime('%Y-%m')),
+            'title': '{0}SuperDARN data in netCDF format ({1})'.format(walString, date.strftime('%Y-%b')),
             'upload_type': 'dataset',
-            'description': '<p>{0} SuperDARN radar data in netCDF format. These files were produced using versions 2.5 and 3.0 of the public FitACF algorithm, using the AACGM v2 coordinate system. Cite this dataset if using our data in a publication.</p><p>The RST is available here:&nbsp;https://github.com/SuperDARN/rst</p>'.format(date.strftime('%Y-%m')),
+            'description': '<p>{0} {1}SuperDARN radar data in netCDF format. These files were produced using versions 2.5 and 3.0 of the public FitACF algorithm, using the AACGM v2 coordinate system. Cite this dataset if using our data in a publication.</p><p>The RST is available here:&nbsp;https://github.com/SuperDARN/rst</p>'.format(date.strftime('%Y-%b'), walString),
             'creators': [
                 {
                     'orcid': chartierORCID, 
@@ -116,26 +110,6 @@ def upload_to_zenodo(sandbox, date):
                     'orcid': chartierORCID,
                     'affiliation': aplAffiliation,
                     'name': 'Wiker, Jordan R.'
-                },
-                {
-                  "affiliation": aplAffiliation, 
-                  "name": "Barnes, Robin J."
-                }, 
-                {
-                  "affiliation": "STR", 
-                  "name": "Miller, Ethan S."
-                }, 
-                {
-                  "affiliation": "NOAA", 
-                  "name": "Talaat, Elsayed R."
-                }, 
-                {
-                  "affiliation": "Virginia Tech", 
-                  "name": "Ruohoniemi, J. Mike"
-                }, 
-                {
-                  "affiliation": "Virginia Tech", 
-                  "name": "Greenwald, Raymond A."
                 }
             ],
             'keywords': [
@@ -149,7 +123,9 @@ def upload_to_zenodo(sandbox, date):
                     'identifier': 'superdarn'
                 }
             ],
-            'version': '1.0'
+            'version': '1.0',
+            # TODO: remove this for data after 2018
+            'related_identifiers' : [{'relation': 'isSourceOf', 'identifier':helper.getDOI(date.year)}]
         }
     }
 
@@ -166,7 +142,7 @@ if __name__ == '__main__':
     
         date = today - relativedelta(months=1)
         # TODO: Remove this date
-        date = dt.datetime(2021, 1, 1)
+        date = dt.datetime(2018, 12, 1)
     else:
         date = args[1]
     

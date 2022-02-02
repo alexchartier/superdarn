@@ -99,7 +99,7 @@ def upload_to_zenodo(sandbox, date):
         'metadata': {
             'title': '{0}SuperDARN data in netCDF format ({1})'.format(walString, date.strftime('%Y-%b')),
             'upload_type': 'dataset',
-            'description': '<p>{0} {1}SuperDARN radar data in netCDF format. These files were produced using versions 2.5 and 3.0 of the public FitACF algorithm, using the AACGM v2 coordinate system. Cite this dataset if using our data in a publication.</p><p>The RST is available here:&nbsp;https://github.com/SuperDARN/rst</p>'.format(date.strftime('%Y-%b'), walString),
+            'description': '<p>{0} {1}SuperDARN radar data in netCDF format. These files were produced using versions 2.5 and 3.0 of the public FitACF algorithm, using the AACGM v2 coordinate system. Cite this dataset if using our data in a publication.</p><p>The RST is available here:&nbsp;https://github.com/SuperDARN/rst</p><p>The research enabled by SuperDARN is due to the efforts of teams of scientists and engineers working in many countries to build and operate radars, process data and provide access, develop and improve data products, and assist users in interpretation. Users of SuperDARN data and data products are asked to acknowledge this support in presentations and publications. A brief statement on how to acknowledge use of SuperDARN data is provided below.<p>Users are also asked to consult with a SuperDARN PI prior to submission of work intended for publication. A listing of radars and PIs with contact information can be found here: (http://vt.superdarn.org/tiki-index.php?page=Radar+Overview)</p><p>Recommended form of acknowledgement for the use of SuperDARN data:</p><p>‘The authors acknowledge the use of SuperDARN data. SuperDARN is a collection of radars funded by national scientific funding agencies of Australia, Canada, China, France, Italy, Japan, Norway, South Africa, United Kingdom and the United States of America.’</p>'.format(date.strftime('%Y-%b'), walString),
             'creators': [
                 {
                     'orcid': chartierORCID, 
@@ -123,9 +123,9 @@ def upload_to_zenodo(sandbox, date):
                     'identifier': 'superdarn'
                 }
             ],
-            'version': '1.0',
             # TODO: remove this for data after 2018
-            'related_identifiers' : [{'relation': 'isSourceOf', 'identifier':helper.getDOI(date.year)}]
+            'related_identifiers' : [{'relation': 'isSourceOf', 'identifier':helper.getDOI(date.year)}],
+            'version': '1.0',
         }
     }
 

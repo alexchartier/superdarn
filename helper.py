@@ -39,3 +39,36 @@ def getTimeString(time):
     minuteString = 'minute' if int(minute) == 1 else 'minutes'
 
     return '%d %s, %d %s, %d %s' % (day, dayString, hour, hourString, minute, minuteString)
+
+
+def getDOI(year):
+    DOIs = {
+        1993: 'https://doi.org/10.20383/102.0471',
+        1994: 'https://doi.org/10.20383/102.0470',
+        1995: 'https://doi.org/10.20383/102.0469',
+        1996: 'https://doi.org/10.20383/102.0468',
+        1997: 'https://doi.org/10.20383/102.0467',
+        1998: 'https://doi.org/10.20383/102.0466',
+        1999: 'https://doi.org/10.20383/102.0465',
+        2000: 'https://doi.org/10.20383/102.0464',
+        2001: 'https://doi.org/10.20383/102.0463',
+        2002: 'https://doi.org/10.20383/102.0462',
+        2003: 'https://doi.org/10.20383/102.0461',
+        2004: 'https://doi.org/10.20383/102.0460',
+        2005: 'https://doi.org/10.20383/102.0457',
+        2006: 'https://doi.org/10.20383/102.0456',
+        2007: 'https://doi.org/10.20383/102.0455',
+        2008: 'https://doi.org/10.20383/102.0454',
+        2009: 'https://doi.org/10.20383/102.0453',
+        2010: 'https://doi.org/10.20383/102.0452',
+        2011: 'https://doi.org/10.20383/102.0451',
+        2012: 'https://doi.org/10.20383/102.0450',
+        2013: 'https://doi.org/10.20383/102.0449',
+        2014: 'https://doi.org/10.20383/102.0448',
+        2015: 'https://doi.org/10.20383/102.0447',
+        2016: 'https://doi.org/10.20383/102.0446',
+        2017: 'https://doi.org/10.20383/101.0289',
+        2018: 'https://doi.org/10.20383/101.0290'
+    }
+
+    return DOIs[year]

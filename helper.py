@@ -13,7 +13,7 @@ BAS_DAT_DIR_FMT = '/sddata/dat/%Y/%m/'
 RAWACF_DIR_FMT = '/project/superdarn/data/rawacf/%Y/%m/'
 FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m/'
 NETCDF_DIR_FMT = '/project/superdarn/data/netcdf/%Y/%m/'
-LOG_DIR = '/homes/superdarn/logs/'
+LOG_DIR = '/project/superdarn/logs/'
 FIT_NET_LOG_DIR = '/homes/superdarn/logs/rawACF_to_netCDF_logs/%Y/fitACF_to_netCDF_logs/'
 
 def send_email(subject, body, addresses = EMAIL_ADDRESSES):

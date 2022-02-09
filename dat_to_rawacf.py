@@ -14,6 +14,7 @@ import nc_utils
 from sd_utils import get_random_string
 import os
 import glob
+import helper
 import bz2
 
 __author__ = "Jordan Wiker"
@@ -59,7 +60,7 @@ def main(
 
         for radar in radar_list:
             in_fname_format = time.strftime(os.path.join(in_dir, '%Y%m%d%H' + '*%s*.dat.bz2' % radar))
-            three_letter_radar = get_three_letter_radar_id(radar)
+            three_letter_radar = helper.get_three_letter_radar_id(radar)
             out_fname = time.strftime(out_dir + '%Y%m%d%H.' + '%s.rawacf' % three_letter_radar)
             out_compressed_fname = out_fname + ".bz2"
             
@@ -152,37 +153,6 @@ def get_single_letter_radar_list(in_dir):
             i += 1
     print('\n')
     return radar_list
-
-def get_three_letter_radar_id(radar_letter):
-    """Convert a single-letter radar ID to a three-letter ID"""
-
-    # Original dat file naming format was YYYYMMDDHHS.dat
-    # (year, month, day, hour, station identifier). We switched to three-letter
-    # identifiers as the number of radar sites grew
-    radar_ids = {
-        "g": "gbr",
-        "s": "sch",
-        "k": "kap",
-        "h": "hal",
-        "t": "sas",
-        "b": "pgr",
-        "a": "kod",
-        "w": "sto",
-        "e": "pyk",
-        "f": "han",
-        "d": "san",
-        "j": "sys",
-        "n": "sye",
-        "r": "tig",
-        "p": "ker",
-        "c": "ksr",
-        "u": "unw",
-        "m": "mcm",
-        "q": "fir" 
-    }
-
-    return radar_ids[radar_letter]
-
 
 
 if __name__ == '__main__':

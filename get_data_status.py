@@ -97,7 +97,14 @@ def get_result(bas, apl):
 
 def bas_data(date, radar):
     day = date.strftime('%Y%m%d')
+
+    # Check BAS for rawACFs and DATs
     numBASFiles = len(glob.glob('{dir}/*{d}**{r}*'.format(dir = BAS_FILE_LIST_DIR, d = day, r = radar)))
+    #numBasFiles = 
+
+    # Check Globus for rawACFs and DATs
+    #numGlobusFiles = 
+    
     return numBASFiles > 0
 
 
@@ -119,7 +126,10 @@ def getBasFileList():
 
     os.makedirs(BAS_FILE_LIST_DIR, exist_ok=True)
 
-    # TODO: Get BAS DAT files
+    # TODO: Get BAS DAT files and Globus raw and dat files
+    # globus login
+    # globus ls 'c02cb494-1515-11e9-9f9f-0a06afd4a22e:/chroot/sddata/dat/2006'
+    # globus ls 'c02cb494-1515-11e9-9f9f-0a06afd4a22e:/chroot/sddata/raw/2005'
 
     year = BAS_START_DATE.year
     endYear = BAS_END_DATE.year

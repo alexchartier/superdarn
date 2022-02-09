@@ -8,8 +8,9 @@ import time
 from dateutil.relativedelta import relativedelta
 import helper
 import raw_to_nc
+import subprocess
 
-DOWNLOAD_RAWACFS = True
+DOWNLOAD_SOURCE_FILES = True
 DELETE_FITACFS_V2_5 = True
 PROCESS_JME_RAWACFS = True
 
@@ -31,7 +32,6 @@ def main(date):
     startTime = time.time()
     startDate, endDate = get_first_and_last_days_of_month(date)
 
-    basRawDir = startDate.strftime(BAS_RAWACF_DIR_FMT)
     rawDir = startDate.strftime(RAWACF_DIR_FMT)
     fitDir = startDate.strftime(FITACF_DIR_FMT)
     netDir = startDate.strftime(NETCDF_DIR_FMT)
@@ -40,8 +40,8 @@ def main(date):
     os.makedirs(fitDir, exist_ok=True)
     os.makedirs(netDir, exist_ok=True)
 
-    if DOWNLOAD_RAWACFS:
-        download_rawacfs(basRawDir, rawDir, netDir, startDate)
+    if DOWNLOAD_SOURCE_FILES:
+        download_source_files(rawDir, netDir, startDate)
 
     convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir)
 
@@ -53,7 +53,28 @@ def main(date):
     helper.send_email(emailSubject, emailBody)
 
 
-def download_rawacfs(basRawDir, rawDir, netDir, startDate):
+def download_source_files(rawDir, netDir, startDate):
+    rawDir = startDate.strftime(RAWACF_DIR_FMT)
+    netDir = startDate.strftime(NETCDF_DIR_FMT)
+
+    download_files_from_globus(rawDir, netDir, startDate)
+
+
+def download_files_from_globus(rawDir, netDir, date):
+    # Start Globus Connect Personal and establish connection
+    # Also allow access to /project/superdarn/data/
+    subprocess.call('{0} -start -restrict-paths \'rw~/,rw/project/superdarn/data\''.format(helper.GLOBUS_PATH), shell=True)
+
+    # Initiate the transfer from Globus to APL
+    subprocess.call('nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} {2}'.format(date.year, date.month, rawDir), shell=True)
+
+    # Stop Globus Connect Personal
+    subprocess.call('{0} -stop'.format(helper.GLOBUS_PATH), shell=True)
+
+
+def download_files_from_bas(rawDir, netDir, startDate):
+
+    basRawDir = startDate.strftime(BAS_RAWACF_DIR_FMT)
 
     # Make sure the BAS server is reachable
     if not BASServerConnected():
@@ -118,6 +139,7 @@ def download_rawacfs(basRawDir, rawDir, netDir, startDate):
         emailBody    = '"{date} JME rawACF files deleted"'.format(date = dateString)  
         helper.send_email(emailSubject, emailBody)
 
+
 def BASServerConnected():
     BASup = False
     for i in range(RETRY):
@@ -141,11 +163,10 @@ def isOpen(server, port):
     finally:
         s.close()
 
+
 def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir):
 
     raw_to_nc.main(startDate, endDate, rawDir,fitDir,netDir)
-    
-#    os.system('python3 raw_to_nc {0} {1} {2} {3} {4}'.format(startDate, endDate, rawDir,fitDir,netDir))
     dateString = startDate.strftime('%Y/%m')
 
     emailSubject = '"{date} rawACF to netCDF Conversion Successful"'.format(date = dateString)
@@ -168,6 +189,7 @@ def get_first_and_last_days_of_month(date):
     firstDayOfMonth = date.replace(day=1)
     lastDayOfMonth = (firstDayOfMonth + relativedelta(months=1)) - datetime.timedelta(days=1)
     return firstDayOfMonth, lastDayOfMonth 
+
 
 if __name__ == '__main__':
     args = sys.argv

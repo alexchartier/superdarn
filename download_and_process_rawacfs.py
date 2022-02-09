@@ -32,7 +32,7 @@ def main(date):
     startTime = time.time()
     startDate, endDate = get_first_and_last_days_of_month(date)
 
-    rawDir = startDate.strftime(RAWACF_DIR_FMT)
+    rawDir = startDate.strftime(RAWACF_DIR_FMT) + '/'
     fitDir = startDate.strftime(FITACF_DIR_FMT)
     netDir = startDate.strftime(NETCDF_DIR_FMT)
 
@@ -70,6 +70,10 @@ def download_files_from_globus(rawDir, netDir, date):
 
     # Stop Globus Connect Personal
     subprocess.call('{0} -stop'.format(helper.GLOBUS_PATH), shell=True)
+
+    emailSubject = '"{0} rawACF Data Successfully Downloaded"'.format(date.strftime('%Y/%m'))
+    emailBody    = '"{0} rawACF source files have been downloaded. Starting conversion to fitACF and netCDF."'.format(date.strftime('%Y/%m'))
+    helper.send_email(emailSubject, emailBody)
 
 
 def download_files_from_bas(rawDir, netDir, startDate):

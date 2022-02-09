@@ -13,6 +13,8 @@ LATEST_PUBLIC_DATA = 2018
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
 BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m/'   
 BAS_DAT_DIR_FMT = '/sddata/dat/%Y/%m/'
+GLOBUS_RAWACF_DIR_FMT = '/chroot/sddata/dat/%Y/%m/'
+GLOBUS_DAT_DIR_FMT = '/chroot/sddata/dat/%Y/%m/'
 RAWACF_DIR_FMT = '/project/superdarn/data/rawacf/%Y/%m/'
 FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m/'
 NETCDF_DIR_FMT = '/project/superdarn/data/netcdf/%Y/%m/'
@@ -20,6 +22,13 @@ LOG_DIR = '/project/superdarn/logs/'
 FIT_NET_LOG_DIR = '/homes/superdarn/logs/rawACF_to_netCDF_logs/%Y/fitACF_to_netCDF_logs/'
 GLOBUS_PATH = '/homes/superdarn/globusconnectpersonal-3.1.6/globusconnectpersonal'
 
+DEPOSIT_URL = 'https://zenodo.org/api/deposit/depositions'
+SANDBOX_DEPOSIT_URL = 'https://sandbox.zenodo.org/api/deposit/depositions'
+
+ZENODO_TOKEN = 'RT4wr3kTsZkEgwWC4r99VTytmGqzULUzloRqn8nVirg2e5nGBYxw4Ohy5FUf'
+ZENODO_SANDBOX_TOKEN = '9FWXXWi1NYeEo6c7zarVtOEOzUkPwiwgVNJ6FD2Wyzecf3PNrs1HKKnrDjYS'
+
+GLOBUS_SUPERDARN_ENDPOINT = 'c02cb494-1515-11e9-9f9f-0a06afd4a22e'
 
 def send_email(subject, body, addresses = EMAIL_ADDRESSES):
     os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = body, sub = subject, addr = addresses))
@@ -47,6 +56,8 @@ def getTimeString(time):
 
 
 def getDOI(year):
+    """Get the DOI for a given year of SuperDARN data stored on FRDR"""
+
     DOIs = {
         1993: 'https://doi.org/10.20383/102.0471',
         1994: 'https://doi.org/10.20383/102.0470',
@@ -77,3 +88,33 @@ def getDOI(year):
     }
 
     return DOIs[year]
+
+def get_three_letter_radar_id(radar_letter):
+    """Convert a single-letter radar ID to a three-letter ID"""
+
+    # Original dat file naming format was YYYYMMDDHHS.dat
+    # (year, month, day, hour, station identifier). We switched to three-letter
+    # identifiers as the number of radar sites grew
+    radar_ids = {
+        "g": "gbr",
+        "s": "sch",
+        "k": "kap",
+        "h": "hal",
+        "t": "sas",
+        "b": "pgr",
+        "a": "kod",
+        "w": "sto",
+        "e": "pyk",
+        "f": "han",
+        "d": "san",
+        "j": "sys",
+        "n": "sye",
+        "r": "tig",
+        "p": "ker",
+        "c": "ksr",
+        "u": "unw",
+        "m": "mcm",
+        "q": "fir" 
+    }
+
+    return radar_ids[radar_letter]

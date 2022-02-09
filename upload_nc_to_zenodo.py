@@ -63,29 +63,28 @@ def upload_to_zenodo(sandbox, date):
     uploadDir = date.strftime(helper.NETCDF_DIR_FMT)
     
     # TODO: Update this once 2019 data is allowed to be released publically
-    if date.year > 2018:
+    if date.year > helper.LATEST_PUBLIC_DATA:
         fileList = glob.glob(os.path.join(uploadDir, '*wal**.nc'))
-        walString = 'Wallops '
     else:
         fileList = glob.glob(os.path.join(uploadDir, '*.nc'))
-        walString = ''    
 
     headers = {"Content-Type": "application/json"}
     params = {'access_token': accessToken}
     r = requests.post(depositURL,
                    params=params,
                    json={},
-                   # Headers are not necessary here since "requests" automatically
-                   # adds "Content-Type: application/json", because we're using
-                   # the "json=" keyword argument
-                   # headers=headers,
                    headers=headers)
 
     bucket_url = r.json()["links"]["bucket"]
     deposition_id = r.json()['id']
 
+    if len(fileList) == 0:
+        print('No files to upload in {0{}}'.format(uploadDir))
+        return 1
+    else:
+        print('Uploading {0} {1} files to Zenodo'.format(len(fileList)), date.strftime('%Y-%m'))
+
     # The target URL is a combination of the bucket link with the desired filename
-    # seperated by a slash.
     for file in fileList:
         filename = file.split('/')[-1]
         with open(file, "rb") as fp:
@@ -95,39 +94,71 @@ def upload_to_zenodo(sandbox, date):
                 params=params,
             )
     
-    data = {
-        'metadata': {
-            'title': '{0}SuperDARN data in netCDF format ({1})'.format(walString, date.strftime('%Y-%b')),
-            'upload_type': 'dataset',
-            'description': '<p>{0} {1}SuperDARN radar data in netCDF format. These files were produced using versions 2.5 and 3.0 of the public FitACF algorithm, using the AACGM v2 coordinate system. Cite this dataset if using our data in a publication.</p><p>The RST is available here:&nbsp;https://github.com/SuperDARN/rst</p><p>The research enabled by SuperDARN is due to the efforts of teams of scientists and engineers working in many countries to build and operate radars, process data and provide access, develop and improve data products, and assist users in interpretation. Users of SuperDARN data and data products are asked to acknowledge this support in presentations and publications. A brief statement on how to acknowledge use of SuperDARN data is provided below.<p>Users are also asked to consult with a SuperDARN PI prior to submission of work intended for publication. A listing of radars and PIs with contact information can be found here: (<a href="http://vt.superdarn.org/tiki-index.php?page=Radar+Overview">SuperDARN Radar Overview</a>)</p><p><strong>Recommended form of acknowledgement for the use of SuperDARN data:</strong></p><p>‘The authors acknowledge the use of SuperDARN data. SuperDARN is a collection of radars funded by national scientific funding agencies of Australia, Canada, China, France, Italy, Japan, Norway, South Africa, United Kingdom and the United States of America.’</p>'.format(date.strftime('%Y-%b'), walString),
-            'creators': [
-                {
-                    'orcid': chartierORCID, 
-                    'affiliation': aplAffiliation, 
-                    'name': 'Chartier, Alex T.'
-                }, 
-                {
-                    'orcid': chartierORCID,
-                    'affiliation': aplAffiliation,
-                    'name': 'Wiker, Jordan R.'
-                }
-            ],
-            'keywords': [
-                'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, cfit, aeronomy, cedar, gem, radar'
-            ],
-            'communities': [
-                {
-                    'identifier': 'spacephysics'
-                }, 
-                {
-                    'identifier': 'superdarn'
-                }
-            ],
-            # TODO: remove this for data after 2018
-            #'related_identifiers' : [{'relation': 'isSourceOf', 'identifier':helper.getDOI(date.year),'resource_type': 'dataset'}],
-            'version': '1.0',
+    if date.year > helper.LATEST_PUBLIC_DATA:
+        data = {
+            'metadata': {
+                'title': 'Wallops SuperDARN data in netCDF format ({0})'.format(date.strftime('%Y-%b')),
+                'upload_type': 'dataset',
+                'description': '<p>{0} Wallops SuperDARN radar data in netCDF format. These files were produced using versions 2.5 and 3.0 of the public FitACF algorithm, using the AACGM v2 coordinate system. Cite this dataset if using our data in a publication.</p><p>The RST is available here:&nbsp;https://github.com/SuperDARN/rst</p><p>The research enabled by SuperDARN is due to the efforts of teams of scientists and engineers working in many countries to build and operate radars, process data and provide access, develop and improve data products, and assist users in interpretation. Users of SuperDARN data and data products are asked to acknowledge this support in presentations and publications. A brief statement on how to acknowledge use of SuperDARN data is provided below.<p>Users are also asked to consult with a SuperDARN PI prior to submission of work intended for publication. A listing of radars and PIs with contact information can be found here: (<a href="http://vt.superdarn.org/tiki-index.php?page=Radar+Overview">SuperDARN Radar Overview</a>)</p><p><strong>Recommended form of acknowledgement for the use of SuperDARN data:</strong></p><p>‘The authors acknowledge the use of SuperDARN data. SuperDARN is a collection of radars funded by national scientific funding agencies of Australia, Canada, China, France, Italy, Japan, Norway, South Africa, United Kingdom and the United States of America.’</p>'.format(date.strftime('%Y-%b')),
+                'creators': [
+                    {
+                        'orcid': chartierORCID, 
+                        'affiliation': aplAffiliation, 
+                        'name': 'Chartier, Alex T.'
+                    }, 
+                    {
+                        'orcid': chartierORCID,
+                        'affiliation': aplAffiliation,
+                        'name': 'Wiker, Jordan R.'
+                    }
+                ],
+                'keywords': [
+                    'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, cfit, aeronomy, cedar, gem, radar'
+                ],
+                'communities': [
+                    {
+                        'identifier': 'spacephysics'
+                    }, 
+                    {
+                        'identifier': 'superdarn'
+                    }
+                ],
+                'version': '1.0',
+            }
         }
-    }
+    else:
+        data = {
+            'metadata': {
+                'title': 'SuperDARN data in netCDF format ({0})'.format(date.strftime('%Y-%b')),
+                'upload_type': 'dataset',
+                'description': '<p>{0} SuperDARN radar data in netCDF format. These files were produced using versions 2.5 and 3.0 of the public FitACF algorithm, using the AACGM v2 coordinate system. Cite this dataset if using our data in a publication.</p><p>The RST is available here:&nbsp;https://github.com/SuperDARN/rst</p><p>The research enabled by SuperDARN is due to the efforts of teams of scientists and engineers working in many countries to build and operate radars, process data and provide access, develop and improve data products, and assist users in interpretation. Users of SuperDARN data and data products are asked to acknowledge this support in presentations and publications. A brief statement on how to acknowledge use of SuperDARN data is provided below.<p>Users are also asked to consult with a SuperDARN PI prior to submission of work intended for publication. A listing of radars and PIs with contact information can be found here: (<a href="http://vt.superdarn.org/tiki-index.php?page=Radar+Overview">SuperDARN Radar Overview</a>)</p><p><strong>Recommended form of acknowledgement for the use of SuperDARN data:</strong></p><p>‘The authors acknowledge the use of SuperDARN data. SuperDARN is a collection of radars funded by national scientific funding agencies of Australia, Canada, China, France, Italy, Japan, Norway, South Africa, United Kingdom and the United States of America.’</p>'.format(date.strftime('%Y-%b')),
+                'creators': [
+                    {
+                        'orcid': chartierORCID, 
+                        'affiliation': aplAffiliation, 
+                        'name': 'Chartier, Alex T.'
+                    }, 
+                    {
+                        'orcid': chartierORCID,
+                        'affiliation': aplAffiliation,
+                        'name': 'Wiker, Jordan R.'
+                    }
+                ],
+                'keywords': [
+                    'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, cfit, aeronomy, cedar, gem, radar'
+                ],
+                'communities': [
+                    {
+                        'identifier': 'spacephysics'
+                    }, 
+                    {
+                        'identifier': 'superdarn'
+                    }
+                ],
+                'related_identifiers' : [{'relation': 'isSourceOf', 'identifier':helper.getDOI(date.year),'resource_type': 'dataset'}],
+                'version': '1.0',
+            }
+        }
 
     r = requests.put(depositURL + '/%s' % deposition_id,
     params={'access_token': accessToken}, data=json.dumps(data), headers=headers)
@@ -139,10 +170,7 @@ if __name__ == '__main__':
     if len(args) < 2:
         # If no date was passed in, process the previous month
         today = dt.datetime.now()
-    
         date = today - relativedelta(months=1)
-        # TODO: Remove this date
-        # date = dt.datetime(2018, 11, 1)
     else:
         date = args[1]
     

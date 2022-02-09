@@ -6,6 +6,9 @@ import os
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
+# TODO: Update this once 2019 data is allowed to be released publically
+LATEST_PUBLIC_DATA = 2018
+
 # Directories
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
 BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m/'   
@@ -15,6 +18,8 @@ FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m/'
 NETCDF_DIR_FMT = '/project/superdarn/data/netcdf/%Y/%m/'
 LOG_DIR = '/project/superdarn/logs/'
 FIT_NET_LOG_DIR = '/homes/superdarn/logs/rawACF_to_netCDF_logs/%Y/fitACF_to_netCDF_logs/'
+GLOBUS_PATH = '/homes/superdarn/globusconnectpersonal-3.1.6/globusconnectpersonal'
+
 
 def send_email(subject, body, addresses = EMAIL_ADDRESSES):
     os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = body, sub = subject, addr = addresses))

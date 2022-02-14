@@ -29,7 +29,7 @@ TIMEOUT = 10 # seconds
 
 REMOVE_REMOTE_FILE_LIST = False
 
-START_DATE = dt.datetime(1993,1,1)
+START_DATE = dt.datetime(2021,1,1)
 END_DATE = dt.datetime.now()
 
 BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
@@ -48,9 +48,10 @@ def main():
     date = START_DATE
     data = {}
     while date <= END_DATE:
+        currentYear = date.year
         day = date.strftime('%Y%m%d')
         data[day] = []
-        print('Comparing data between Globus and Zenodo on {d}'.format(d = day))
+        print('{0} - Comparing data between Globus and Zenodo on {1}'.format(time.strftime('%Y-%m-%d %H:%M'), day))
         for radar in radarList:
             remoteDataExists = remote_data(date, radar)
             zenodoDataExists = zenodo_data(date, radar)
@@ -62,10 +63,16 @@ def main():
             })
                         
         date += dt.timedelta(days=1)
-
-    outputFile = '{0}/data_status_{1}.txt'.format(DATA_STATUS_DIR, END_DATE.strftime('%Y%m%d'))
-    with open(outputFile, 'w') as outfile:
-        json.dump(data, outfile)
+        if date.year > currentYear:
+            outputFile = '{0}/zenodo_data_status_{1}.txt'.format(DATA_STATUS_DIR, currentYear)
+            with open(outputFile, 'w') as outfile:
+                json.dump(data, outfile)
+            data = {}
+            
+            currentTime = helper.getTimeString(time.time() - startTime)
+            emailSubject = '"Data Status Check Update"'
+            emailBody    = '"Finished checking Globus vs Zenodo data for {0}.\nTotal check runtime: {1}\nNew JSON file created: {2}"'.format(currentYear, currentTime, outputFile)
+            helper.send_email(emailSubject, emailBody)
     
     totalTime = helper.getTimeString(time.time() - startTime)
     emailSubject = '"Data Status Check Complete"'
@@ -103,10 +110,11 @@ def zenodo_data(date, radar):
                         params={'q': '"SuperDARN data in netCDF format ({0})"'.format(month),
                                 'access_token': helper.ZENODO_TOKEN})
 
-    files = response.json()["hits"]["hits"][0].get('files').get('files')
-    files = str(files)
-    if fileStart in files:
-        return True
+    if response.json()["hits"]["hits"]:
+        files = response.json()["hits"]["hits"][0].get('files')
+        files = str(files)
+        if fileStart in files:
+            return True
 
     # for file in files:
     #     filename = file['key']  # E.g. '20200603.wal.v3.0.nc'
@@ -122,7 +130,7 @@ def getRemoteFileList():
 
     year = START_DATE.year
     while year <= END_DATE.year:
-        print('\nGetting Globus data for {0}\n'.format(year))
+        print('\n{0}: Getting Globus data for {1}'.format(time.strftime('%Y-%m-%d %H:%M'), year))
 
         if year >= 2005:
             # Get a list of all rawACF files on Globus for the given year and store them in a file
@@ -133,8 +141,8 @@ def getRemoteFileList():
             # Get a list of all DAT files on Globus for the given year and store them in a file
             filename_dat = '{0}/{1}_GlobusFilesDat.txt'.format(GLOBUS_FILE_LIST_DIR, year)
             os.system('globus ls -r \'{0}:/chroot/sddata/dat/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_dat))
-
-        files  = glob.glob(os.path.join(GLOBUS_FILE_LIST_DIR, '*'))
+        
+        files  = glob.glob(os.path.join(GLOBUS_FILE_LIST_DIR, '*GlobusFiles*'))
         for file in files:
 
             # Go through the file(s) line by line and add each line to the appropriate daily text file
@@ -149,11 +157,11 @@ def getRemoteFileList():
                     
                     # Get the day and the radar for the file
                     if file.split('.')[0][-3:] == 'Raw':
-                        day = filename.split('.')[0]
+                        day = filename.split('.')[0].split('/')[-1]
                         radar = filename.split('.')[3]
                     elif file.split('.')[0][-3:] == 'Dat':
-                        day = filename.split('.')[0][:8]
-                        radar_letter = filename.split('.')[0][10]
+                        day = filename.split('.')[0].split('/')[-1][:8]
+                        radar_letter = filename.split('.')[0].split('/')[-1][10]
                         radar = helper.get_three_letter_radar_id(radar_letter)
                     else:
                         raise ValueError('Filename does not match expectations: {0}'.format(filename))

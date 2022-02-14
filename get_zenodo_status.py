@@ -22,6 +22,7 @@ import helper
 import glob
 import json
 import requests
+import numpy as np
 
 DELAY = 300 # 5 minutes
 RETRY = 12 # Try to connect for an hour
@@ -128,6 +129,9 @@ def getRemoteFileList():
 
     os.makedirs(GLOBUS_FILE_LIST_DIR, exist_ok=True)
 
+    # Create an empty dict to store all radars for each date
+    remoteData = {}
+    
     year = START_DATE.year
     while year <= END_DATE.year:
         print('\n{0}: Getting Globus data for {1}'.format(time.strftime('%Y-%m-%d %H:%M'), year))
@@ -145,7 +149,7 @@ def getRemoteFileList():
         files  = glob.glob(os.path.join(GLOBUS_FILE_LIST_DIR, '*GlobusFiles*'))
         for file in files:
 
-            # Go through the file(s) line by line and add each line to the appropriate daily text file
+            # Go through the file(s) line by line and add each line to the remoteData dict
             with open(file) as mainFileList:
                 lines = mainFileList.readlines()        
                 for line in lines:
@@ -157,20 +161,33 @@ def getRemoteFileList():
                     
                     # Get the day and the radar for the file
                     if file.split('.')[0][-3:] == 'Raw':
-                        day = filename.split('.')[0].split('/')[-1]
+                        dayString = filename.split('.')[0].split('/')[-1]
                         radar = filename.split('.')[3]
                     elif file.split('.')[0][-3:] == 'Dat':
-                        day = filename.split('.')[0].split('/')[-1][:8]
+                        dayString = filename.split('.')[0].split('/')[-1][:8]
                         radar_letter = filename.split('.')[0].split('/')[-1][10]
                         radar = helper.get_three_letter_radar_id(radar_letter)
                     else:
                         raise ValueError('Filename does not match expectations: {0}'.format(filename))
 
-                    radarFileList = '{0}/{1}_{2}.txt'.format(GLOBUS_FILE_LIST_DIR, day, radar)
-                    with open(radarFileList, "a+") as fp: 
-                        fp.write(filename + '\n')
+                    day = int(dayString)
+
+                    # Add the current radar to a new date entry if the day doesn't exist in the dict yet
+                    if day not in remoteData:
+                        remoteData[day] = {radar}
+                        continue
+
+                    # Get the current radar list for the given day, then
+                    # add the radar to the set (if it isn't already in it)
+                    radarList = remoteData[day]
+                    radarList.add(radar)
+                    remoteData[day] = radarList
 
         year += 1
+
+    outputFile = '{0}/globus_data_status.json'.format(DATA_STATUS_DIR)
+    with open(outputFile, 'w') as outfile:
+        json.dump(remoteData, outfile)
 
 if __name__ == '__main__':
     main()

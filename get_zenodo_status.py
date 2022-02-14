@@ -30,7 +30,7 @@ TIMEOUT = 10 # seconds
 
 REMOVE_REMOTE_FILE_LIST = False
 
-START_DATE = dt.datetime(2021,1,1)
+START_DATE = dt.datetime(1992,1,1)
 END_DATE = dt.datetime.now()
 
 BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
@@ -97,9 +97,18 @@ def get_result(globus, zenodo):
 
 
 def remote_data(date, radar):
-    day = date.strftime('%Y%m%d')
-    numRemoteFiles = len(glob.glob('{0}/*{1}**{2}*'.format(GLOBUS_FILE_LIST_DIR, day, radar)))
-    return numRemoteFiles > 0
+    day = int(date.strftime('%Y%m%d'))
+    f = open('{0}/globus_data_status.json'.format(DATA_STATUS_DIR))
+    remoteData = json.load(f)
+
+    # If the date isn't even in the remote data, return false because Globus 
+    # has no data at all for any radars on that date
+    if day not in remoteData:
+        return False
+
+    # If the date is in the remote date, return true if the radar is listed
+    # for that date
+    return radar in remoteData[day]
 
 
 def zenodo_data(date, radar):
@@ -116,11 +125,6 @@ def zenodo_data(date, radar):
         files = str(files)
         if fileStart in files:
             return True
-
-    # for file in files:
-    #     filename = file['key']  # E.g. '20200603.wal.v3.0.nc'
-    #     if day in filename and radar in filename:
-    #         return True
 
     return False
 

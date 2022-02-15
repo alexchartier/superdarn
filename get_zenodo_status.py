@@ -165,27 +165,23 @@ def getRemoteFileList():
                     
                     # Get the day and the radar for the file
                     if file.split('.')[0][-3:] == 'Raw':
-                        dayString = filename.split('.')[0].split('/')[-1]
+                        day = filename.split('.')[0].split('/')[-1]
                         radar = filename.split('.')[3]
                     elif file.split('.')[0][-3:] == 'Dat':
-                        dayString = filename.split('.')[0].split('/')[-1][:8]
+                        day = filename.split('.')[0].split('/')[-1][:8]
                         radar_letter = filename.split('.')[0].split('/')[-1][10]
                         radar = helper.get_three_letter_radar_id(radar_letter)
                     else:
                         raise ValueError('Filename does not match expectations: {0}'.format(filename))
 
-                    day = int(dayString)
-
                     # Add the current radar to a new date entry if the day doesn't exist in the dict yet
                     if day not in remoteData:
-                        remoteData[day] = {radar}
+                        remoteData[day] = [radar]
                         continue
 
                     # Get the current radar list for the given day, then
-                    # add the radar to the set (if it isn't already in it)
-                    radarList = remoteData[day]
-                    radarList.add(radar)
-                    remoteData[day] = radarList
+                    # add the radar to the list
+                    remoteData[day].append(radar)
 
         year += 1
 

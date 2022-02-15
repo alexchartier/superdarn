@@ -30,7 +30,7 @@ TIMEOUT = 10 # seconds
 
 REMOVE_REMOTE_FILE_LIST = False
 
-START_DATE = dt.datetime(1992,1,1)
+START_DATE = dt.datetime(1993,1,1)
 END_DATE = dt.datetime.now()
 
 BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
@@ -132,58 +132,58 @@ def zenodo_data(date, radar):
 def getRemoteFileList():
 
     os.makedirs(GLOBUS_FILE_LIST_DIR, exist_ok=True)
-
-    # Create an empty dict to store all radars for each date
-    remoteData = {}
     
     year = START_DATE.year
     while year <= END_DATE.year:
         print('\n{0}: Getting Globus data for {1}'.format(time.strftime('%Y-%m-%d %H:%M'), year))
 
-        if year >= 2005:
-            # Get a list of all rawACF files on Globus for the given year and store them in a file
-            filename_raw = '{0}/{1}_GlobusFilesRaw.txt'.format(GLOBUS_FILE_LIST_DIR, year)
-            os.system('globus ls -r \'{0}:/chroot/sddata/raw/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_raw))
+        # if year >= 2005:
+        #     # Get a list of all rawACF files on Globus for the given year and store them in a file
+        #     filename_raw = '{0}/{1}_GlobusFilesRaw.txt'.format(GLOBUS_FILE_LIST_DIR, year)
+        #     os.system('globus ls -r \'{0}:/chroot/sddata/raw/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_raw))
 
-        if year <= 2006:
-            # Get a list of all DAT files on Globus for the given year and store them in a file
-            filename_dat = '{0}/{1}_GlobusFilesDat.txt'.format(GLOBUS_FILE_LIST_DIR, year)
-            os.system('globus ls -r \'{0}:/chroot/sddata/dat/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_dat))
+        # if year <= 2006:
+        #     # Get a list of all DAT files on Globus for the given year and store them in a file
+        #     filename_dat = '{0}/{1}_GlobusFilesDat.txt'.format(GLOBUS_FILE_LIST_DIR, year)
+        #     os.system('globus ls -r \'{0}:/chroot/sddata/dat/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_dat))
         
-        files  = glob.glob(os.path.join(GLOBUS_FILE_LIST_DIR, '*GlobusFiles*'))
-        for file in files:
-
-            # Go through the file(s) line by line and add each line to the remoteData dict
-            with open(file) as mainFileList:
-                lines = mainFileList.readlines()        
-                for line in lines:
-                    filename = line.strip()
-                    extension = filename.split('.')[-1]
-                    if not extension == 'bz2':
-                        # This line isn't a rawACF or DAT filename
-                        continue
-                    
-                    # Get the day and the radar for the file
-                    if file.split('.')[0][-3:] == 'Raw':
-                        day = filename.split('.')[0].split('/')[-1]
-                        radar = filename.split('.')[3]
-                    elif file.split('.')[0][-3:] == 'Dat':
-                        day = filename.split('.')[0].split('/')[-1][:8]
-                        radar_letter = filename.split('.')[0].split('/')[-1][10]
-                        radar = helper.get_three_letter_radar_id(radar_letter)
-                    else:
-                        raise ValueError('Filename does not match expectations: {0}'.format(filename))
-
-                    # Add the current radar to a new date entry if the day doesn't exist in the dict yet
-                    if day not in remoteData:
-                        remoteData[day] = [radar]
-                        continue
-
-                    # Get the current radar list for the given day, then
-                    # add the radar to the list
-                    remoteData[day].append(radar)
-
         year += 1
+
+    # Create an empty dict to store all radars for each date
+    remoteData = {}
+    
+    files  = glob.glob(os.path.join(GLOBUS_FILE_LIST_DIR, '*GlobusFiles*'))
+    for file in files:
+
+        # Go through the file(s) line by line and add each line to the remoteData dict
+        with open(file) as mainFileList:
+            lines = mainFileList.readlines()        
+            for line in lines:
+                filename = line.strip()
+                extension = filename.split('.')[-1]
+                if not extension == 'bz2':
+                    # This line isn't a rawACF or DAT filename
+                    continue
+                
+                # Get the day and the radar for the file
+                if file.split('.')[0][-3:] == 'Raw':
+                    day = filename.split('.')[0].split('/')[-1]
+                    radar = filename.split('.')[3]
+                elif file.split('.')[0][-3:] == 'Dat':
+                    day = filename.split('.')[0].split('/')[-1][:8]
+                    radar_letter = filename.split('.')[0].split('/')[-1][10]
+                    radar = helper.get_three_letter_radar_id(radar_letter)
+                else:
+                    raise ValueError('Filename does not match expectations: {0}'.format(filename))
+
+                # Add the current radar to a new date entry if the day doesn't exist in the dict yet
+                if day not in remoteData:
+                    remoteData[day] = [radar]
+                    continue
+
+                # Get the current radar list for the given day, then
+                # add the radar to the list
+                remoteData[day].append(radar)
 
     outputFile = '{0}/globus_data_status.json'.format(DATA_STATUS_DIR)
     with open(outputFile, 'w') as outfile:

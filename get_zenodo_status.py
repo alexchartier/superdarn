@@ -22,7 +22,7 @@ import helper
 import glob
 import json
 import requests
-import numpy as np
+from dateutil.relativedelta import relativedelta
 
 DELAY = 300 # 5 minutes
 RETRY = 12 # Try to connect for an hour
@@ -43,7 +43,9 @@ def main():
     emailBody    = 'Starting Globus vs Zenodo data check'
     helper.send_email(emailSubject, emailBody)
     
-    getRemoteFileList()
+    getGlobusFileList()
+    getZenodoFileList()
+
     radarList = helper.get_radar_list()
 
     date = START_DATE
@@ -54,8 +56,8 @@ def main():
         data[day] = []
         print('{0} - Comparing data between Globus and Zenodo on {1}'.format(time.strftime('%Y-%m-%d %H:%M'), day))
         for radar in radarList:
-            remoteDataExists = remote_data(date, radar)
-            zenodoDataExists = zenodo_data(date, radar)
+            remoteDataExists = getRemoteData(date, radar)
+            zenodoDataExists = getZenodoData(date, radar)
             result = get_result(remoteDataExists, zenodoDataExists)        
  
             data[day].append({
@@ -96,7 +98,7 @@ def get_result(globus, zenodo):
     return result
 
 
-def remote_data(date, radar):
+def getRemoteData(date, radar):
     day = date.strftime('%Y%m%d')
     f = open('{0}/globus_data_status.json'.format(DATA_STATUS_DIR))
     remoteData = json.load(f)
@@ -111,25 +113,50 @@ def remote_data(date, radar):
     return radar in remoteData[day]
 
 
-def zenodo_data(date, radar):
+def getZenodoData(date, radar):
     day = date.strftime('%Y%m%d')
+    f = open('{0}/zenodo_data_status.json'.format(DATA_STATUS_DIR))
+    zenodoData = json.load(f)
     fileStart = '{0}.{1}'.format(day, radar)
 
     month = date.strftime('%Y-%b')
-    response = requests.get('https://zenodo.org/api/records',
+
+    # If the date isn't even in the zenodo data, return false because Zenodo 
+    # has no data at all for any radars on that date
+    if month not in zenodoData:
+        return False
+
+    # If the month is in the zenodo date, return true if the radar is listed
+    # for that date
+    return fileStart in zenodoData[month]
+
+
+def getZenodoFileList():
+    zenodoData = {}
+
+    date = START_DATE
+    while date <= END_DATE:
+        month = date.strftime('%Y-%b')
+        response = requests.get('https://zenodo.org/api/records',
                         params={'q': '"SuperDARN data in netCDF format ({0})"'.format(month),
                                 'access_token': helper.ZENODO_TOKEN})
 
-    if response.json()["hits"]["hits"]:
-        files = response.json()["hits"]["hits"][0].get('files')
-        files = str(files)
-        if fileStart in files:
-            return True
+        if response.json()["hits"]["hits"]:
+            files = response.json()["hits"]["hits"][0].get('files')
+            files = str(files)
+        else:
+            files = ''
 
-    return False
+        zenodoData[month] = files
+
+        date += relativedelta(months=1)
+
+    outputFile = '{0}/zenodo_data_status.json'.format(DATA_STATUS_DIR)
+    with open(outputFile, 'w') as outfile:
+        json.dump(zenodoData, outfile)
 
 
-def getRemoteFileList():
+def getGlobusFileList():
 
     os.makedirs(GLOBUS_FILE_LIST_DIR, exist_ok=True)
     

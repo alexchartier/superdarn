@@ -30,7 +30,7 @@ TIMEOUT = 10 # seconds
 
 REMOVE_REMOTE_FILE_LIST = False
 
-START_DATE = dt.datetime(1993,1,1)
+START_DATE = dt.datetime(1993,9,29)
 END_DATE = dt.datetime.now()
 
 BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
@@ -51,7 +51,6 @@ def main():
     date = START_DATE
     data = {}
     while date <= END_DATE:
-        currentYear = date.year
         day = date.strftime('%Y%m%d')
         data[day] = []
         print('{0} - Comparing data between Globus and Zenodo on {1}'.format(time.strftime('%Y-%m-%d %H:%M'), day))
@@ -66,16 +65,9 @@ def main():
             })
                         
         date += dt.timedelta(days=1)
-        if date.year > currentYear:
-            outputFile = '{0}/zenodo_data_status_{1}.txt'.format(DATA_STATUS_DIR, currentYear)
-            with open(outputFile, 'w') as outfile:
-                json.dump(data, outfile)
-            data = {}
-            
-            currentTime = helper.getTimeString(time.time() - startTime)
-            emailSubject = '"Data Status Check Update"'
-            emailBody    = '"Finished checking Globus vs Zenodo data for {0}.\nTotal check runtime: {1}\nNew JSON file created: {2}"'.format(currentYear, currentTime, outputFile)
-            helper.send_email(emailSubject, emailBody)
+    outputFile = '{0}/{1}_data_status.json'.format(DATA_STATUS_DIR, END_DATE.strftime('%Y%m%d'))
+    with open(outputFile, 'w') as outfile:
+        json.dump(data, outfile)
     
     totalTime = helper.getTimeString(time.time() - startTime)
     emailSubject = '"Data Status Check Complete"'

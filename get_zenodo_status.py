@@ -97,7 +97,7 @@ def get_result(globus, zenodo):
 
 
 def remote_data(date, radar):
-    day = int(date.strftime('%Y%m%d'))
+    day = date.strftime('%Y%m%d')
     f = open('{0}/globus_data_status.json'.format(DATA_STATUS_DIR))
     remoteData = json.load(f)
 
@@ -164,7 +164,7 @@ def getRemoteFileList():
                 if not extension == 'bz2':
                     # This line isn't a rawACF or DAT filename
                     continue
-                
+               
                 # Get the day and the radar for the file
                 if file.split('.')[0][-3:] == 'Raw':
                     day = filename.split('.')[0].split('/')[-1]
@@ -183,7 +183,8 @@ def getRemoteFileList():
 
                 # Get the current radar list for the given day, then
                 # add the radar to the list
-                remoteData[day].append(radar)
+                if radar not in remoteData[day]:
+                    remoteData[day].append(radar)
 
     outputFile = '{0}/globus_data_status.json'.format(DATA_STATUS_DIR)
     with open(outputFile, 'w') as outfile:

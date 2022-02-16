@@ -23,10 +23,13 @@ import glob
 import json
 import requests
 from dateutil.relativedelta import relativedelta
+import sys
 
-DELAY = 300 # 5 minutes
+DELAY = 5 # seconds
 RETRY = 12 # Try to connect for an hour
 TIMEOUT = 10 # seconds
+MIN_FILE_SIZE = 1e4 # bytes
+MAX_NUM_TRIES = 5
 
 REMOVE_REMOTE_FILE_LIST = False
 
@@ -35,6 +38,7 @@ END_DATE = dt.datetime.now()
 
 BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
 GLOBUS_FILE_LIST_DIR = '/project/superdarn/data/data_status/Globus_files'
+ZENODO_FILE_LIST_DIR = '/project/superdarn/data/data_status/Zenodo_files'
 DATA_STATUS_DIR = '/project/superdarn/data/data_status'
 
 def main():
@@ -65,6 +69,7 @@ def main():
             })
                         
         date += dt.timedelta(days=1)
+    
     outputFile = '{0}/{1}_data_status.json'.format(DATA_STATUS_DIR, END_DATE.strftime('%Y%m%d'))
     with open(outputFile, 'w') as outfile:
         json.dump(data, outfile)
@@ -92,7 +97,7 @@ def get_result(globus, zenodo):
 
 def getRemoteData(date, radar):
     day = date.strftime('%Y%m%d')
-    f = open('{0}/globus_data_status.json'.format(DATA_STATUS_DIR))
+    f = open('{0}/globus_data_inventory.json'.format(GLOBUS_FILE_LIST_DIR))
     remoteData = json.load(f)
 
     # If the date isn't even in the remote data, return false because Globus 
@@ -107,7 +112,7 @@ def getRemoteData(date, radar):
 
 def getZenodoData(date, radar):
     day = date.strftime('%Y%m%d')
-    f = open('{0}/zenodo_data_status.json'.format(DATA_STATUS_DIR))
+    f = open('{0}/zenodo_data_inventory.json'.format(ZENODO_FILE_LIST_DIR))
     zenodoData = json.load(f)
     fileStart = '{0}.{1}'.format(day, radar)
 
@@ -124,11 +129,15 @@ def getZenodoData(date, radar):
 
 
 def getZenodoFileList():
+    os.makedirs(ZENODO_FILE_LIST_DIR, exist_ok=True)
+
     zenodoData = {}
 
     date = START_DATE
     while date <= END_DATE:
         month = date.strftime('%Y-%b')
+        print('{0}: Getting Zenodo data for {1}'.format(time.strftime('%Y-%m-%d %H:%M'), month))
+        
         response = requests.get('https://zenodo.org/api/records',
                         params={'q': '"SuperDARN data in netCDF format ({0})"'.format(month),
                                 'access_token': helper.ZENODO_TOKEN})
@@ -143,7 +152,7 @@ def getZenodoFileList():
 
         date += relativedelta(months=1)
 
-    outputFile = '{0}/zenodo_data_status.json'.format(DATA_STATUS_DIR)
+    outputFile = '{0}/zenodo_data_inventory.json'.format(ZENODO_FILE_LIST_DIR)
     with open(outputFile, 'w') as outfile:
         json.dump(zenodoData, outfile)
 
@@ -154,17 +163,44 @@ def getGlobusFileList():
     
     year = START_DATE.year
     while year <= END_DATE.year:
-        print('\n{0}: Getting Globus data for {1}'.format(time.strftime('%Y-%m-%d %H:%M'), year))
 
-        # if year >= 2005:
-        #     # Get a list of all rawACF files on Globus for the given year and store them in a file
-        #     filename_raw = '{0}/{1}_GlobusFilesRaw.txt'.format(GLOBUS_FILE_LIST_DIR, year)
-        #     os.system('globus ls -r \'{0}:/chroot/sddata/raw/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_raw))
+        if year >= 2005:
+            numTries = 1
+            fileSize = 0
+            while fileSize <= MIN_FILE_SIZE:
+                print('{0}: Getting Globus rawACF data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M'), year, numTries))
+                if numTries < MAX_NUM_TRIES:
+                    failedToGrabData(year)
 
-        # if year <= 2006:
-        #     # Get a list of all DAT files on Globus for the given year and store them in a file
-        #     filename_dat = '{0}/{1}_GlobusFilesDat.txt'.format(GLOBUS_FILE_LIST_DIR, year)
-        #     os.system('globus ls -r \'{0}:/chroot/sddata/dat/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_dat))
+                # Get a list of all rawACF files on Globus for the given year and store them in a file
+                filename_raw = '{0}/{1}_GlobusFilesRaw.txt'.format(GLOBUS_FILE_LIST_DIR, year)
+                os.system('globus ls -r \'{0}:/chroot/sddata/raw/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_raw))
+
+                # Check that the file list was actually received and stored
+                fileInfo = os.stat(filename_raw)
+                fileSize = fileInfo.st_size
+                if fileSize < MIN_FILE_SIZE:
+                    time.sleep(DELAY)
+                    numTries += 1
+
+        if year <= 2006:
+            numTries = 1
+            fileSize = 0
+            while fileSize <= MIN_FILE_SIZE:
+                print('{0}: Getting Globus DAT data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M'), year, numTries))
+                if numTries < MAX_NUM_TRIES:
+                    failedToGrabData(year)
+                    
+                # Get a list of all DAT files on Globus for the given year and store them in a file
+                filename_dat = '{0}/{1}_GlobusFilesDat.txt'.format(GLOBUS_FILE_LIST_DIR, year)
+                os.system('globus ls -r \'{0}:/chroot/sddata/dat/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_dat))
+
+                # Check that the file list was actually received and stored
+                fileInfo = os.stat(filename_raw)
+                fileSize = fileInfo.st_size
+                if fileSize < MIN_FILE_SIZE:
+                    time.sleep(DELAY)
+                    numTries += 1
         
         year += 1
 
@@ -205,9 +241,18 @@ def getGlobusFileList():
                 if radar not in remoteData[day]:
                     remoteData[day].append(radar)
 
-    outputFile = '{0}/globus_data_status.json'.format(DATA_STATUS_DIR)
+    outputFile = '{0}/globus_data_inventory.json'.format(GLOBUS_FILE_LIST_DIR)
     with open(outputFile, 'w') as outfile:
         json.dump(remoteData, outfile)
+
+
+def failedToGrabData(year):
+    # Send an email and end the script if rsync didn't succeed
+    emailSubject = '"Unsuccessful attempt to grab {0} Globus  Data"'.format(year)
+    emailBody    = '"Tried to copy {date} from Globus {num} times, but did not succeed. \nSee logfile for more details."'.format(year, MAX_NUM_TRIES)
+    helper.send_email(emailSubject, emailBody)
+    sys.exit('{message}'.format(emailBody))
+
 
 if __name__ == '__main__':
     main()

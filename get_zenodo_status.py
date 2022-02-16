@@ -137,7 +137,7 @@ def getZenodoFileList():
     while date <= END_DATE:
         month = date.strftime('%Y-%b')
         print('{0}: Getting Zenodo data for {1}'.format(time.strftime('%Y-%m-%d %H:%M'), month))
-        
+
         response = requests.get('https://zenodo.org/api/records',
                         params={'q': '"SuperDARN data in netCDF format ({0})"'.format(month),
                                 'access_token': helper.ZENODO_TOKEN})
@@ -160,7 +160,10 @@ def getZenodoFileList():
 def getGlobusFileList():
 
     os.makedirs(GLOBUS_FILE_LIST_DIR, exist_ok=True)
-    
+
+    # Make sure we're logged in and can access the Globus file system
+    os.system('globus login')
+
     year = START_DATE.year
     while year <= END_DATE.year:
 

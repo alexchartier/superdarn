@@ -170,9 +170,9 @@ def getGlobusFileList():
         if year >= 2005:
             numTries = 1
             fileSize = 0
-            while fileSize <= MIN_FILE_SIZE:
+            while fileSize < MIN_FILE_SIZE:
                 print('{0}: Getting Globus rawACF data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M'), year, numTries))
-                if numTries < MAX_NUM_TRIES:
+                if numTries >= MAX_NUM_TRIES:
                     failedToGrabData(year)
 
                 # Get a list of all rawACF files on Globus for the given year and store them in a file
@@ -189,9 +189,9 @@ def getGlobusFileList():
         if year <= 2006:
             numTries = 1
             fileSize = 0
-            while fileSize <= MIN_FILE_SIZE:
+            while fileSize < MIN_FILE_SIZE:
                 print('{0}: Getting Globus DAT data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M'), year, numTries))
-                if numTries < MAX_NUM_TRIES:
+                if numTries >= MAX_NUM_TRIES:
                     failedToGrabData(year)
                     
                 # Get a list of all DAT files on Globus for the given year and store them in a file
@@ -199,7 +199,7 @@ def getGlobusFileList():
                 os.system('globus ls -r \'{0}:/chroot/sddata/dat/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_dat))
 
                 # Check that the file list was actually received and stored
-                fileInfo = os.stat(filename_raw)
+                fileInfo = os.stat(filename_dat)
                 fileSize = fileInfo.st_size
                 if fileSize < MIN_FILE_SIZE:
                     time.sleep(DELAY)
@@ -252,7 +252,7 @@ def getGlobusFileList():
 def failedToGrabData(year):
     # Send an email and end the script if rsync didn't succeed
     emailSubject = '"Unsuccessful attempt to grab {0} Globus  Data"'.format(year)
-    emailBody    = '"Tried to copy {date} from Globus {num} times, but did not succeed. \nSee logfile for more details."'.format(year, MAX_NUM_TRIES)
+    emailBody    = '"Tried to copy {0} from Globus {1} times, but did not succeed. \nSee logfile for more details."'.format(year, MAX_NUM_TRIES)
     helper.send_email(emailSubject, emailBody)
     sys.exit('{message}'.format(emailBody))
 

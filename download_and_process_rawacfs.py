@@ -57,7 +57,7 @@ def download_source_files(rawDir, netDir, startDate):
     rawDir = startDate.strftime(RAWACF_DIR_FMT)
     netDir = startDate.strftime(NETCDF_DIR_FMT)
 
-    download_files_from_globus(rawDir, netDir, startDate)
+    download_files_from_bas(rawDir, netDir, startDate)
 
 
 def download_files_from_globus(rawDir, netDir, date):

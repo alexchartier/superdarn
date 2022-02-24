@@ -82,7 +82,7 @@ def upload_to_zenodo(sandbox, date):
         print('No files to upload in {0{}}'.format(uploadDir))
         return 1
     else:
-        print('Uploading {0} {1} files to Zenodo'.format(len(fileList)), date.strftime('%Y-%m'))
+        print('Uploading {0} {1} files to Zenodo'.format(len(fileList), date.strftime('%Y-%m')))
 
     # The target URL is a combination of the bucket link with the desired filename
     for file in fileList:

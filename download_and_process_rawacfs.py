@@ -63,7 +63,7 @@ def download_source_files(rawDir, netDir, startDate):
 def download_files_from_globus(rawDir, netDir, date):
     # Start Globus Connect Personal and establish connection
     # Also allow access to /project/superdarn/data/
-    subprocess.call('{0} -start -restrict-paths \'rw~/,rw/project/superdarn/data\''.format(helper.GLOBUS_PATH), shell=True)
+    subprocess.call('{0} -start -restrict-paths \'rw~/,rw/project/superdarn/data\' &'.format(helper.GLOBUS_PATH), shell=True)
 
     # Initiate the transfer from Globus to APL
     subprocess.call('nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} {2}'.format(date.year, date.month, rawDir), shell=True)

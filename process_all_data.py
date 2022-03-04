@@ -16,8 +16,8 @@ import helper
 import download_and_process_rawacfs
 import upload_nc_to_zenodo
 
-START_DATE = dt.datetime(2018, 9, 1)
-END_DATE = dt.datetime(2018, 9, 1)
+START_DATE = dt.datetime(2017, 6, 1)
+END_DATE = dt.datetime(2017, 6, 1)
 # END_DATE = dt.datetime(2006,8, 1) # Earlier than this there's a mix of dat and raw, or only dat
 
 LOG_DIR = '{0}rawACF_to_netCDF_logs'.format(helper.LOG_DIR)

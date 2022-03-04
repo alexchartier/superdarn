@@ -19,7 +19,7 @@ RAWACF_DIR_FMT = '/project/superdarn/data/rawacf/%Y/%m'
 FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m/'
 NETCDF_DIR_FMT = '/project/superdarn/data/netcdf/%Y/%m/'
 LOG_DIR = '/project/superdarn/logs/'
-FIT_NET_LOG_DIR = '/homes/superdarn/logs/rawACF_to_netCDF_logs/%Y/fitACF_to_netCDF_logs/'
+FIT_NET_LOG_DIR = '/project/superdarn/logs/rawACF_to_netCDF_logs/%Y/fitACF_to_netCDF_logs/'
 GLOBUS_PATH = '/homes/superdarn/globusconnectpersonal-3.1.6/globusconnectpersonal'
 
 DEPOSIT_URL = 'https://zenodo.org/api/deposit/depositions'

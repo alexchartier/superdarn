@@ -68,7 +68,7 @@ def main(
     
     # Running raw to NC
     radar_info = get_radar_params(hdw_dat_dir)
-    run_dir = './run/%s' % get_random_string(4)
+    run_dir = '/project/superdarn/run/%s' % get_random_string(4)
     if in_dir_fmt:
         raw_to_fit(start_time, end_time, run_dir, in_dir_fmt, fit_dir_fmt, MAKE_FIT_VERSIONS)
 
@@ -386,7 +386,7 @@ def def_header_info(in_fname, hdr_vals):
 def raw_to_fit(
     start_time = dt.datetime(2016, 1, 1),
     end_time = dt.datetime(2017, 1, 1),
-    run_dir = './run/',
+    run_dir = '/project/superdarn/run/',
     in_dir='/project/superdarn/data/rawacf/%Y/%m/',
     out_dir='/project/superdarn/alex/fitacf/%Y/%m/',
     make_fit_versions=[2.5, 3.0],
@@ -520,7 +520,7 @@ if __name__ == '__main__':
         in_dir = None
         fit_dir = args[3]
         out_dir = args[4]
-    run_dir = './run/run_%s' % get_random_string(4) 
+    run_dir = '/project/superdarn/run/run_%s' % get_random_string(4) 
 
     
     main(stime, etime, in_dir, fit_dir, out_dir)

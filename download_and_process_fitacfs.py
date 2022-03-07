@@ -12,8 +12,7 @@ import subprocess
 
 DOWNLOAD_SOURCE_FILES = True
 
-DELETE_FITACFS_V2_5 = True
-DELETE_FITACFS_V3_0 = False
+DELETE_FITACFS = True
 DELETE_DESPECKLED_FITACFS_V3_0 = True
 
 def main(date):
@@ -70,15 +69,9 @@ def convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir):
     helper.send_email(emailSubject, emailBody)
 
 
-def remove_converted_files(rawDir, fitDir):
-    if DELETE_FITACFS_V2_5:
-        os.system('rm {0}*v2.5*'.format(fitDir))
-
-    # All rawACFs should have been deleted after the conversion to
-    # fitACF was completed. Make sure the rawACF directory is empty
-    # except for the YYYYMM.hashes file, then delete the directory.
-    if len(os.listdir(rawDir)) == 1:
-        shutil.rmtree(rawDir)
+def remove_converted_files(fitDir):
+    if DELETE_FITACFS:
+        os.system('rm -rf {0}'.format(fitDir))
 
 
 def get_first_and_last_days_of_month(date):

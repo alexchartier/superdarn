@@ -68,6 +68,12 @@ def upload_to_zenodo(sandbox, date):
     else:
         fileList = glob.glob(os.path.join(uploadDir, '*.nc'))
 
+    if len(fileList) == 0:
+        print('No files to upload in {0}'.format(uploadDir))
+        return 1
+    else:
+        print('Uploading {0} {1} files to Zenodo'.format(len(fileList), date.strftime('%Y-%m')))
+    
     headers = {"Content-Type": "application/json"}
     params = {'access_token': accessToken}
     r = requests.post(depositURL,
@@ -77,12 +83,6 @@ def upload_to_zenodo(sandbox, date):
 
     bucket_url = r.json()["links"]["bucket"]
     deposition_id = r.json()['id']
-
-    if len(fileList) == 0:
-        print('No files to upload in {0{}}'.format(uploadDir))
-        return 1
-    else:
-        print('Uploading {0} {1} files to Zenodo'.format(len(fileList), date.strftime('%Y-%m')))
 
     # The target URL is a combination of the bucket link with the desired filename
     for file in fileList:

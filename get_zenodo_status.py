@@ -25,11 +25,9 @@ import requests
 from dateutil.relativedelta import relativedelta
 import sys
 
-DELAY = 5 # seconds
-RETRY = 12 # Try to connect for an hour
-TIMEOUT = 10 # seconds
+DELAY = 30 # seconds
 MIN_FILE_SIZE = 1e4 # bytes
-MAX_NUM_TRIES = 5
+MAX_NUM_TRIES = 10
 
 REMOVE_REMOTE_FILE_LIST = False
 
@@ -171,39 +169,55 @@ def getGlobusFileList():
             numTries = 1
             fileSize = 0
             while fileSize < MIN_FILE_SIZE:
-                print('{0}: Getting Globus rawACF data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M'), year, numTries))
+                print('{0}: Getting Globus rawACF data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M:%S'), year, numTries))
                 if numTries >= MAX_NUM_TRIES:
                     failedToGrabData(year)
+                    continue
 
                 # Get a list of all rawACF files on Globus for the given year and store them in a file
+                filename_raw_new = '{0}/{1}_GlobusFilesRawNew.txt'.format(GLOBUS_FILE_LIST_DIR, year)
                 filename_raw = '{0}/{1}_GlobusFilesRaw.txt'.format(GLOBUS_FILE_LIST_DIR, year)
-                os.system('globus ls -r \'{0}:/chroot/sddata/raw/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_raw))
+                os.system('globus ls -r \'{0}:/chroot/sddata/raw/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_raw_new))
 
                 # Check that the file list was actually received and stored
-                fileInfo = os.stat(filename_raw)
+                fileInfo = os.stat(filename_raw_new)
                 fileSize = fileInfo.st_size
                 if fileSize < MIN_FILE_SIZE:
                     time.sleep(DELAY)
                     numTries += 1
+                else:
+                    # File is big enough - replace old list file
+                    if os.path.isfile(filename_raw):
+                        print('Overwriting existing {0} rawACF list file'.format(year))
+                        os.remove(filename_raw)
+                    os.rename(filename_raw_new, filename_raw)
 
         if year <= 2006:
             numTries = 1
             fileSize = 0
             while fileSize < MIN_FILE_SIZE:
-                print('{0}: Getting Globus DAT data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M'), year, numTries))
+                print('{0}: Getting Globus DAT data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M:%S'), year, numTries))
                 if numTries >= MAX_NUM_TRIES:
                     failedToGrabData(year)
-                    
+                    continue
+
                 # Get a list of all DAT files on Globus for the given year and store them in a file
+                filename_dat_new = '{0}/{1}_GlobusFilesDatNew.txt'.format(GLOBUS_FILE_LIST_DIR, year)
                 filename_dat = '{0}/{1}_GlobusFilesDat.txt'.format(GLOBUS_FILE_LIST_DIR, year)
-                os.system('globus ls -r \'{0}:/chroot/sddata/dat/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_dat))
+                os.system('globus ls -r \'{0}:/chroot/sddata/dat/{1}\' > {2}'.format(helper.GLOBUS_SUPERDARN_ENDPOINT, year, filename_dat_new))
 
                 # Check that the file list was actually received and stored
-                fileInfo = os.stat(filename_dat)
+                fileInfo = os.stat(filename_dat_new)
                 fileSize = fileInfo.st_size
                 if fileSize < MIN_FILE_SIZE:
                     time.sleep(DELAY)
                     numTries += 1
+                else:
+                    # File is big enough - replace old list file
+                    if os.path.isfile(filename_dat):
+                        print('Overwriting existing {0} DAT list file'.format(year))
+                        os.remove(filename_dat)
+                    os.rename(filename_dat_new, filename_dat)
         
         year += 1
 
@@ -254,7 +268,7 @@ def failedToGrabData(year):
     emailSubject = '"Unsuccessful attempt to grab {0} Globus  Data"'.format(year)
     emailBody    = '"Tried to copy {0} from Globus {1} times, but did not succeed. \nSee logfile for more details."'.format(year, MAX_NUM_TRIES)
     helper.send_email(emailSubject, emailBody)
-    sys.exit('{message}'.format(emailBody))
+    # sys.exit(emailBody)
 
 
 if __name__ == '__main__':

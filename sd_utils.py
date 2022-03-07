@@ -93,6 +93,11 @@ def get_radar_list(in_dir):
         if len(items) == 6:
             radarn = items[3]
         elif len(items) == 7:
+            if 'despeck' in f:
+                radarn = items[3]
+            else:
+                radarn = '.'.join(items[3:5])
+        elif len(items) == 8:
             radarn = '.'.join(items[3:5])
         else:
             raise ValueError('filename does not match expectations: %s' % f)

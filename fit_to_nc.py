@@ -65,7 +65,7 @@ def main(startTime, endTime, fitDir, netDir):
 
         # Loop over the files
         fitFnames = glob.glob(os.path.join(fitDir, FIT_EXT))
-        print('Processing %i %S files in %s on %s' % (len(fitFnames), FIT_EXT, fitDir, time.strftime('%Y/%m')))
+        print('Processing %i %s files in %s on %s' % (len(fitFnames), FIT_EXT, fitDir, time.strftime('%Y/%m')))
         for fit_fn in fitFnames:
         
             # Check the file is big enough to be worth bothering with
@@ -76,7 +76,7 @@ def main(startTime, endTime, fitDir, netDir):
             print('\n\nStarting from %s' % fit_fn)
 
             fn_head = '.'.join(os.path.basename(fit_fn).split('.')[:-1])
-            out_fn = os.path.join(outDir, '%s.nc' % fn_head)
+            out_fn = os.path.join(netDir, '%s.nc' % fn_head)
             if os.path.isfile(out_fn):
                 if SKIP_EXISTING: 
                     print('%s exists - skipping' % out_fn)
@@ -155,7 +155,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
 
     # Define the name of the file holding the list of rawACFs used to 
     # create the fitACF
-    fitacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.fitacfList.txt'
+    #fitacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.fitacfList.txt'
 
     SDarn_read = pydarn.SuperDARNRead(in_fname)
     data = SDarn_read.read_fitacf()
@@ -269,15 +269,18 @@ def convert_fitacf_data(date, in_fname, radar_info):
         brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) + radar_info['boresight']
 
     # Pull the fit version out of the fitACF filename
-    fit_version = '.'.join(in_fname.split('.')[-3:-1])
+    if 'despeckled' in in_fname:
+        fit_version = '.'.join(in_fname.split('.')[-4:-2])
+    else:
+        fit_version = '.'.join(in_fname.split('.')[-3:-1])
 
     # Load the list of rawacf files used to create the fitacf and netcdf    
-    with open(fitacfListFilename, "rb") as fp:
-        rawacf_source_files = pickle.load(fp)
+#    with open(fitacfListFilename, "rb") as fp:
+#        rawacf_source_files = pickle.load(fp)
 
     # Once the list of rawacf source files has been loaded, delete the file used to
     # temporarily store that information
-    os.system('rm {0}'.format(rawacfListFile = fitacfListFilename))
+ #   os.system('rm {0}'.format(rawacfListFile = fitacfListFilename))
     
     hdr = {
         'lat': radar_info['glat'],
@@ -289,8 +292,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
         'boresight': radar_info['boresight'],
         'beams': fov.beams,
         'brng_at_15deg_el': brng,
-        'fitacf_version': fit_version,
-        'rawacf_source': rawacf_source_files
+        'fitacf_version': fit_version
     }
     return out, hdr
 
@@ -333,7 +335,6 @@ def def_vars():
 def set_header(rootgrp, header_info) :
     rootgrp.description = header_info['description']
     rootgrp.fitacf_source = header_info['fitacf_source']
-    rootgrp.rawacf_source = header_info['rawacf_source']
     rootgrp.history = header_info['history']
     rootgrp.fitacf_version = header_info['fitacf_version']
     rootgrp.lat = header_info['lat']

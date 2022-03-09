@@ -44,7 +44,7 @@ MAKE_FIT_VERSIONS = [3.0, 2.5]
 FIT_EXT = '*.fit'
 SKIP_EXISTING = True
 
-def main(startTime, endTime, fitDir, netDir):
+def main(startTime, endTime, fitDir, netDir, fitVersion):
         
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
@@ -54,7 +54,7 @@ def main(startTime, endTime, fitDir, netDir):
     radar_info = get_radar_params(hdw_dat_dir)
     runDir = '/project/superdarn/run/%s' % get_random_string(4)
 
-    combine_fitacfs(startTime, endTime, runDir, fitDir)
+    combine_fitacfs(startTime, endTime, runDir, fitDir, fitVersion)
 
     # Loop over fit files in the monthly directories
     time = startTime
@@ -76,7 +76,7 @@ def main(startTime, endTime, fitDir, netDir):
             print('\n\nStarting from %s' % fit_fn)
 
             fn_head = '.'.join(os.path.basename(fit_fn).split('.')[:-1])
-            out_fn = os.path.join(netDir, '%s.nc' % fn_head)
+            out_fn = os.path.join(netDir, '{0}.nc'.format(fn_head))
             if os.path.isfile(out_fn):
                 if SKIP_EXISTING: 
                     print('%s exists - skipping' % out_fn)
@@ -89,7 +89,7 @@ def main(startTime, endTime, fitDir, netDir):
             radar_code = os.path.basename(fit_fn).split('.')[1]
             radar_info_t = id_hdw_params_t(time, radar_info[radar_code])
 
-            status = fit_to_nc(time, fit_fn, out_fn, radar_info_t)
+            status = fit_to_nc(time, fit_fn, out_fn, radar_info_t, fitVersion)
 
             if status == MULTIPLE_BEAM_DEFS_ERROR_CODE:
                 print('Failed to convert {fitacfFile} because it had multiple beam definitions'.format(fitacfFile = fit_fn))
@@ -111,9 +111,9 @@ def main(startTime, endTime, fitDir, netDir):
         time += relativedelta(months=1)
 
 
-def fit_to_nc(date, in_fname, out_fname, radar_info):
+def fit_to_nc(date, in_fname, out_fname, radar_info, fitVersion):
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
-    out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info)
+    out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info, fitVersion)
     if out_vars == MULTIPLE_BEAM_DEFS_ERROR_CODE:
         return MULTIPLE_BEAM_DEFS_ERROR_CODE
 
@@ -138,7 +138,7 @@ def fit_to_nc(date, in_fname, out_fname, radar_info):
     return 0
 
 
-def convert_fitacf_data(date, in_fname, radar_info):
+def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
     day = in_fname.split('.')[0].split('/')[-1]
     month = day[:-2] 
     
@@ -267,20 +267,6 @@ def convert_fitacf_data(date, in_fname, radar_info):
     brng = np.zeros(beam_off.shape)
     for ind, beam_off_elzero in enumerate(beam_off):
         brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) + radar_info['boresight']
-
-    # Pull the fit version out of the fitACF filename
-    if 'despeckled' in in_fname:
-        fit_version = '.'.join(in_fname.split('.')[-4:-2])
-    else:
-        fit_version = '.'.join(in_fname.split('.')[-3:-1])
-
-    # Load the list of rawacf files used to create the fitacf and netcdf    
-#    with open(fitacfListFilename, "rb") as fp:
-#        rawacf_source_files = pickle.load(fp)
-
-    # Once the list of rawacf source files has been loaded, delete the file used to
-    # temporarily store that information
- #   os.system('rm {0}'.format(rawacfListFile = fitacfListFilename))
     
     hdr = {
         'lat': radar_info['glat'],
@@ -292,7 +278,7 @@ def convert_fitacf_data(date, in_fname, radar_info):
         'boresight': radar_info['boresight'],
         'beams': fov.beams,
         'brng_at_15deg_el': brng,
-        'fitacf_version': fit_version
+        'fitacf_version': fitVersion
     }
     return out, hdr
 
@@ -362,7 +348,7 @@ def def_header_info(in_fname, hdr_vals):
     return hdr
 
 
-def combine_fitacfs(startTime, endTime, runDir, fitDir):
+def combine_fitacfs(startTime, endTime, runDir, fitDir, fitVersion):
 
     print('Combining fitACF files')
     runDir = os.path.abspath(runDir)
@@ -377,27 +363,26 @@ def combine_fitacfs(startTime, endTime, runDir, fitDir):
 
         radar_list = get_radar_list(fitDir)
         for radar in radar_list:
-            for fitVersion in  MAKE_FIT_VERSIONS:
-                if fitVersion == 3.0:
-                    inFilenameFormat = time.strftime(os.path.join(fitDir, '%Y%m%d*{0}*despeck.fitacf.bz2'.format(radar)))            
-                    outputFilename = time.strftime(os.path.join(fitDir, '%Y%m%d.{0}.v{1}.despeckled.fit'.format(radar, fitVersion)))
-                elif fitVersion == 2.5:
-                    inFilenameFormat = time.strftime(os.path.join(fitDir, '%Y%m%d*{0}*fitacf.bz2'.format(radar)))
-                    outputFilename = time.strftime(os.path.join(fitDir, '%Y%m%d.{0}.v{1}.fit'.format(radar, fitVersion)))
-                else:
-                    raise ValueError('Fit version must be 2.5 of 3.0 - {0} fit version specified'.format(fitVersion))
+            inFilenameFormat = time.strftime(os.path.join(fitDir, '%Y%m%d*{0}*fitacf.bz2'.format(radar)))
 
-                if os.path.isfile(outputFilename):
-                    print("File exists: %s\n" % outputFilename)
-                    print('Skipping')
-                    continue
+            if fitVersion == 3.0:
+                outputFilename = time.strftime(os.path.join(fitDir, '%Y%m%d.{0}.v{1}.despeckled.fit'.format(radar, fitVersion)))
+            elif fitVersion == 2.5:
+                outputFilename = time.strftime(os.path.join(fitDir, '%Y%m%d.{0}.v{1}.fit'.format(radar, fitVersion)))
+            else:
+                raise ValueError('Fit version must be 2.5 of 3.0 - {0} fit version specified'.format(fitVersion))
 
-                status = combine_files(inFilenameFormat, outputFilename)
+            if os.path.isfile(outputFilename):
+                print("File exists: %s\n" % outputFilename)
+                print('Skipping')
+                continue
+
+            status = combine_files(inFilenameFormat, outputFilename, fitVersion)
 
         time += dt.timedelta(days=1)
 
 
-def combine_files(inFilenameFormat, outputFilename):
+def combine_files(inFilenameFormat, outputFilename, fitVersion):
 
     # Set up storage directory
     outDir = os.path.dirname(outputFilename)
@@ -416,7 +401,12 @@ def combine_files(inFilenameFormat, outputFilename):
         os.system('bzip2 -d {0}'.format(inputFitacf))
 
     # Combine the unzipped fitACFs for the given day
-    os.system('cat {0} > {1}'.format(unzippedInputFileFormat, outputFilename))
+    os.system('cat {0} > tmp.fitacf'.format(unzippedInputFileFormat))
+    
+    if fitVersion == 2.5:
+            shutil.move('tmp.fitacf', outputFilename)
+    if fitVersion == 3.0:
+        os.system('fit_speck_removal tmp.fitacf > {0}'.format(outputFilename))
 
     # Make sure the combined fitACF is large enough
     fn_inf = os.stat(outputFilename)

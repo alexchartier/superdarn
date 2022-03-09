@@ -10,10 +10,10 @@ import helper
 import fit_to_nc
 import subprocess
 
-DOWNLOAD_SOURCE_FILES = True
+DOWNLOAD_25_SOURCE_FILES = True
+DOWNLOAD_30_SOURCE_FILES = True
 
 DELETE_FITACFS = True
-DELETE_DESPECKLED_FITACFS_V3_0 = True
 
 def main(date):
     # Capture the start time in order to caluclate total processing time
@@ -27,12 +27,21 @@ def main(date):
     os.makedirs(fitDir, exist_ok=True)
     os.makedirs(netDir, exist_ok=True)
 
-    if DOWNLOAD_SOURCE_FILES:
-        download_fitacfs_from_globus(fitDir, netDir, startDate)
+    # fitACF 2.5
+    if DOWNLOAD_25_SOURCE_FILES:
+        download_fitacfs_from_globus(fitDir, startDate, 'fitacf_25')
 
-    convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir)
-
+    convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 2.5)
     remove_converted_files(fitDir)
+
+
+    # fitACF 3.0 (speckled)
+    if DOWNLOAD_30_SOURCE_FILES:
+        download_fitacfs_from_globus(fitDir, startDate, 'fitacf_30')
+
+    convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 3.0)
+    remove_converted_files(fitDir)
+
 
     totalTime = helper.getTimeString(time.time() - startTime)
     emailSubject = '"RawACF Download and Conversion Complete"'
@@ -40,28 +49,25 @@ def main(date):
     helper.send_email(emailSubject, emailBody)
 
 
-def download_fitacfs_from_globus(fitDir, netDir, date):
+def download_fitacfs_from_globus(fitDir, date, pattern):
     # Start Globus Connect Personal and establish connection
     # Also allow access to /project/superdarn/data/
     subprocess.call('{0} -start -restrict-paths \'rw~/,rw/{1}\' &'.format(helper.GLOBUS_PATH, fitDir), shell=True)
 
-    # Initiate the Globus -> APL fitACF 2.5 transfer
-    subprocess.call('nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} -t fitacf_25 {2}'.format(date.year, date.month, fitDir), shell=True)
-
-    # Initiate the Globus -> APL despeckledfitACF 3.0 transfer
-    subprocess.call('nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} -t despeck_fitacf_30 {2}'.format(date.year, date.month, fitDir), shell=True)
+    # Initiate the Globus -> APL transfer
+    subprocess.call('nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} -t {2} {3}'.format(date.year, date.month, pattern, fitDir), shell=True)
 
     # Stop Globus Connect Personal
     subprocess.call('{0} -stop'.format(helper.GLOBUS_PATH), shell=True)
 
-    emailSubject = '"{0} fitACF Data Successfully Downloaded"'.format(date.strftime('%Y/%m'))
-    emailBody    = '"{0} fitACF source files have been downloaded. Starting conversion to netCDF."'.format(date.strftime('%Y/%m'))
+    emailSubject = '"{0} {1} Data Successfully Downloaded"'.format(date.strftime('%Y/%m'), pattern)
+    emailBody    = '"{0} {1} source files have been downloaded. Starting conversion to netCDF."'.format(date.strftime('%Y/%m'), pattern)
     helper.send_email(emailSubject, emailBody)
 
 
-def convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir):
+def convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, fitVersion):
 
-    fit_to_nc.main(startDate, endDate, fitDir, netDir)
+    fit_to_nc.main(startDate, endDate, fitDir, netDir, fitVersion)
 
     dateString = startDate.strftime('%Y/%m')
     emailSubject = '"{date} fitACF to netCDF Conversion Successful"'.format(date = dateString)

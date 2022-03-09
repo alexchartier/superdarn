@@ -8,7 +8,8 @@ import os
 def main():
     dirs  = {
         'bas': 'apl@bslsuperdarnb.nerc-bas.ac.uk:/sddata/raw/%Y/%m/',
-        'rawacf': '/project/superdarn/data/rawacf/%Y/%Y%m%d/',
+        'dat': '/project/superdarn/data/dat/%Y/%m/',
+        'rawacf': '/project/superdarn/data/rawacf/%Y/%m/',
         'fitacf': '/project/superdarn/data/fitacf/%Y/%m/',
         'netcdf': '/project/superdarn/data/netcdf/%Y/%m/',
         'log': 'logs/',
@@ -31,12 +32,12 @@ def dl_one_day(dirs, time):
             os.makedirs(tdirs[key], exist_ok=True)
 
     dateString = time.strftime('%Y%m%d')
-    os.system("rsync -avhe ssh --include '*/' --include '%s*' --exclude '*' %s %s" % (dateString, tdirs['bas'], tdirs['rawacf']))
+    os.system("rsync -avhe ssh --include '*$/' --include '%s*' --exclude '*' %s %s" % (dateString, tdirs['bas'], tdirs['rawacf']))
 
 
 def get_times():
     return [
-        dt.datetime(2014, 4, 24),
+        dt.datetime(2015, 3, 18),
     ]
 
 

@@ -416,7 +416,7 @@ def raw_to_fit(
             for radar in radar_list:
                 # indirn = os.path.join(in_dir, radar)  # for old setup
                 in_fname_fmt = time.strftime(os.path.join(in_dir, '%Y%m%d' + '*{radarName}*.rawacf.bz2'.format(radarName = radar)))
-                fit_fname = time.strftime(out_dir + '%Y%m%d.' + '{radarName}.v{fitVer}.fit'.format(radarName = radar, fitVer = fit_version))
+                fit_fname = time.strftime(out_dir + '/%Y%m%d.' + '{radarName}.v{fitVer}.fit'.format(radarName = radar, fitVer = fit_version))
                 if os.path.isfile(fit_fname):
                     print("File exists: %s" % fit_fname)
                     if clobber:

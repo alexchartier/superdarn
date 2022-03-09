@@ -18,7 +18,7 @@ import download_and_process_rawacfs
 import upload_nc_to_zenodo
 
 START_DATE = dt.datetime(2016, 12, 1)
-END_DATE = dt.datetime(2016, 1, 1)
+END_DATE = dt.datetime(2016, 12, 1)
 
 def main():
     date = START_DATE
@@ -28,6 +28,7 @@ def main():
         helper.send_email(emailSubject, emailBody)
 
         download_and_process_fitacfs.main(date)
+        #download_and_process_rawacfs.main(date)
         upload_nc_to_zenodo.main(date)        
 
         emailSubject = '"PROCESS ALL COMPLETE"'

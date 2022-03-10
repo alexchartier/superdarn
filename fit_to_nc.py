@@ -39,6 +39,7 @@ import pickle
 import helper
 
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
+SHAPE_MISMATCH_ERROR_CODE = 2
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
 MAKE_FIT_VERSIONS = [3.0, 2.5]
 FIT_EXT = '*.fit'
@@ -94,8 +95,8 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
             if status == MULTIPLE_BEAM_DEFS_ERROR_CODE:
                 print('Failed to convert {fitacfFile} because it had multiple beam definitions'.format(fitacfFile = fit_fn))
                 continue
-            elif status == 2:
-                print('Failed to convert {fitacfFile} because it had mismatched dimensions. Moving to {dir}'.format(fitacfFile = fit_fn, dir = time.strftime(helper.PROCESSING_ISSUE_DIR)))
+            elif status == SHAPE_MISMATCH_ERROR_CODE:
+                print('Failed to convert {fitacfFile} because it had mismatched dimensions. Moved fitACF file to {dir}'.format(fitacfFile = fit_fn, dir = time.strftime(helper.PROCESSING_ISSUE_DIR)))
                 continue
             elif status > 0:
                 print('Failed to convert {fitacfFile}'.format(fitacfFile = fit_fn))
@@ -142,7 +143,7 @@ def fit_to_nc(date, in_fname, out_fname, radar_info, fitVersion):
                 moved_out_fn = os.path.join(date.strftime(helper.PROCESSING_ISSUE_DIR), os.path.basename(in_fname))
                 os.makedirs(date.strftime(helper.PROCESSING_ISSUE_DIR), exist_ok=True)
                 shutil.move(in_fname, moved_out_fn)                
-                return 2
+                return SHAPE_MISMATCH_ERROR_CODE
 
             var.units = defs['units']
             var.long_name = defs['long_name']
@@ -151,147 +152,155 @@ def fit_to_nc(date, in_fname, out_fname, radar_info, fitVersion):
 
 
 def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
-    day = in_fname.split('.')[0].split('/')[-1]
-    month = day[:-2] 
-    
-    # Keep track of fitACF files that have multiple beam definitions in a
-    # monthly log file
-    multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + month
-    multiBeamLogfile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
-
-    # Store conversion info like returns outside FOV, missing slist, etc 
-    # for each conversion
-    conversionLogDir = '{dir}/{d}'.format(dir = multiBeamLogDir, d = day)
-    fName = in_fname.split('/')[-1]
-    conversionLogfile = '{dir}/{fit}_to_nc.log'.format(dir = conversionLogDir, fit = fName)
-
-    # Define the name of the file holding the list of rawACFs used to 
-    # create the fitACF
-    #fitacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.fitacfList.txt'
-
-    SDarn_read = pydarn.SuperDARNRead(in_fname)
-    data = SDarn_read.read_fitacf()
-    bmdata = {
-        'rsep': [],
-        'frang': [],
-    }
-    for rec in data:
-        for k, v in bmdata.items():
-            bmdata[k].append(rec[k])
-        if 'slist' in rec.keys():
-            if radar_info['maxrg'] < rec['slist'].max():
-                radar_info['maxrg'] = rec['slist'].max() + 5
-    
-    for k, v in bmdata.items():
-        val = np.unique(v)
-        if len(val) > 1:        
-            os.makedirs(conversionLogDir, exist_ok=True)
-            os.makedirs(multiBeamLogDir, exist_ok=True)
-            
-            # Log the multiple beams error in the monthly mutli beam def log
-            logText = '{fitacfFullFile} has {numBeamDefs} beam definitions - skipping file conversion.\n'.format(fitacfFullFile = in_fname, numBeamDefs = len(val))
-            
-            with open(multiBeamLogfile, "a+") as fp: 
-                fp.write(logText)
-
-            # Log the multiple beams error in this fitACF's conversion log
-            with open(conversionLogfile, "a+") as fp: 
-                fp.write(logText)
-
-            return MULTIPLE_BEAM_DEFS_ERROR_CODE, MULTIPLE_BEAM_DEFS_ERROR_CODE
+    try:
+        day = in_fname.split('.')[0].split('/')[-1]
+        month = day[:-2] 
         
-        bmdata[k] = int(val)
+        # Keep track of fitACF files that have multiple beam definitions in a
+        # monthly log file
+        multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + month
+        multiBeamLogfile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
 
-    # Define FOV
-    fov = radFov.fov(
-        frang=bmdata['frang'], rsep=bmdata['rsep'], site=None, nbeams=int(radar_info['maxbeams']),
-        ngates=int(radar_info['maxrg']), bmsep=radar_info['beamsep'], recrise=radar_info['risetime'], siteLat=radar_info['glat'],
-        siteLon=radar_info['glon'], siteBore=radar_info['boresight'], siteAlt=radar_info['alt'], siteYear=date.year,
-        elevation=None, altitude=300., hop=None, model='IS',
-        coords='geo', date_time=date, coord_alt=0., fov_dir='front',
-    )
+        # Store conversion info like returns outside FOV, missing slist, etc 
+        # for each conversion
+        conversionLogDir = '{dir}/{d}'.format(dir = multiBeamLogDir, d = day)
+        fName = in_fname.split('/')[-1]
+        conversionLogfile = '{dir}/{fit}_to_nc.log'.format(dir = conversionLogDir, fit = fName)
 
-    # Define fields 
-    short_flds = 'tfreq', 'noise.sky', 'cp',
-    fov_flds = 'mjd', 'beam', 'range', 'lat', 'lon', 
-    data_flds = 'p_l', 'v', 'v_e', 'gflg', 
-    elv_flds = 'elv', 'elv_low', 'elv_high',
+        # Define the name of the file holding the list of rawACFs used to 
+        # create the fitACF
+        #fitacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.fitacfList.txt'
 
-    # Figure out if we have elevation information
-    elv_exists = True
-    for rec in data:
-        if 'elv' not in rec.keys():
-            elv_exists = False
-    if elv_exists:
-        data_flds += elv_flds
+        SDarn_read = pydarn.SuperDARNRead(in_fname)
+        data = SDarn_read.read_fitacf()
+        bmdata = {
+            'rsep': [],
+            'frang': [],
+        }
+        for rec in data:
+            for k, v in bmdata.items():
+                bmdata[k].append(rec[k])
+            if 'slist' in rec.keys():
+                if radar_info['maxrg'] < rec['slist'].max():
+                    radar_info['maxrg'] = rec['slist'].max() + 5
+        
+        for k, v in bmdata.items():
+            val = np.unique(v)
+            if len(val) > 1:        
+                os.makedirs(conversionLogDir, exist_ok=True)
+                os.makedirs(multiBeamLogDir, exist_ok=True)
+                
+                # Log the multiple beams error in the monthly mutli beam def log
+                logText = '{fitacfFullFile} has {numBeamDefs} beam definitions - skipping file conversion.\n'.format(fitacfFullFile = in_fname, numBeamDefs = len(val))
+                
+                with open(multiBeamLogfile, "a+") as fp: 
+                    fp.write(logText)
 
-    # Set up data storage
-    out = {}
-    for fld in (fov_flds + data_flds + short_flds):
-        out[fld] = []
-   
-    # Run through each beam record and store 
-    for rec in data:
-        time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
-        # slist is the list of range gates with backscatter
-        if 'slist' not in rec.keys():
-            os.makedirs(conversionLogDir, exist_ok=True)
-            logText = 'Could not find slist in record {recordTime} - skipping\n'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'))
-            with open(conversionLogfile, "a+") as fp: 
-                fp.write(logText)
+                # Log the multiple beams error in this fitACF's conversion log
+                with open(conversionLogfile, "a+") as fp: 
+                    fp.write(logText)
 
-            continue
+                return MULTIPLE_BEAM_DEFS_ERROR_CODE, MULTIPLE_BEAM_DEFS_ERROR_CODE
+            
+            bmdata[k] = int(val)
 
-        # Can't deal with returns outside of FOV
-        if rec['slist'].max() >= fov.slantRCenter.shape[1]:
-            os.makedirs(conversionLogDir, exist_ok=True)
+        # Define FOV
+        fov = radFov.fov(
+            frang=bmdata['frang'], rsep=bmdata['rsep'], site=None, nbeams=int(radar_info['maxbeams']),
+            ngates=int(radar_info['maxrg']), bmsep=radar_info['beamsep'], recrise=radar_info['risetime'], siteLat=radar_info['glat'],
+            siteLon=radar_info['glon'], siteBore=radar_info['boresight'], siteAlt=radar_info['alt'], siteYear=date.year,
+            elevation=None, altitude=300., hop=None, model='IS',
+            coords='geo', date_time=date, coord_alt=0., fov_dir='front',
+        )
 
-            # Log returns outside of FOV
-            logText = 'Record {recordTime} found to have a max slist of {maxSList} - skipping record/n'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'), maxSList = rec['slist'].max())
-            with open(conversionLogfile, "a+") as fp: 
-                fp.write(logText)
+        # Define fields 
+        short_flds = 'tfreq', 'noise.sky', 'cp',
+        fov_flds = 'mjd', 'beam', 'range', 'lat', 'lon', 
+        data_flds = 'p_l', 'v', 'v_e', 'gflg', 
+        elv_flds = 'elv', 'elv_low', 'elv_high',
 
-            continue
+        # Figure out if we have elevation information
+        elv_exists = True
+        for rec in data:
+            if 'elv' not in rec.keys():
+                elv_exists = False
+        if elv_exists:
+            data_flds += elv_flds
 
-        time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
-        one_obj = np.ones(len(rec['slist'])) 
-        mjd = jdutil.jd_to_mjd(jdutil.datetime_to_jd(time))
-        bmnum = one_obj * rec['bmnum']
-        fovi = fov.beams == rec['bmnum']
-        out['mjd'] += (one_obj * mjd).tolist()
-        out['beam'] += bmnum.tolist()
-        out['range'] += fov.slantRCenter[fovi, rec['slist']].tolist()
-        out['lat'] += fov.latCenter[fovi, rec['slist']].tolist()
-        out['lon'] += fov.lonCenter[fovi, rec['slist']].tolist()
-
-        for fld in data_flds:
-            out[fld] += rec[fld].tolist()
-        for fld in short_flds:  # expand out to size
-            out[fld] += (one_obj * rec[fld]).tolist()
-
-    # Convert to numpy arrays 
-    for k, v in out.items():
-        out[k] = np.array(v)
-
-    # Calculate beam azimuths assuming 20 degrees elevation
-    beam_off = radar_info['beamsep'] * (fov.beams - (radar_info['maxbeams'] - 1) / 2.0)
-    el = 15.
-    brng = np.zeros(beam_off.shape)
-    for ind, beam_off_elzero in enumerate(beam_off):
-        brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) + radar_info['boresight']
+        # Set up data storage
+        out = {}
+        for fld in (fov_flds + data_flds + short_flds):
+            out[fld] = []
     
-    hdr = {
-        'lat': radar_info['glat'],
-        'lon': radar_info['glon'],
-        'alt': radar_info['alt'],
-        'rsep': bmdata['rsep'],
-        'maxrg': radar_info['maxrg'],
-        'bmsep': radar_info['beamsep'],
-        'boresight': radar_info['boresight'],
-        'beams': fov.beams,
-        'brng_at_15deg_el': brng,
-        'fitacf_version': fitVersion
-    }
+        # Run through each beam record and store 
+        for rec in data:
+            time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
+            # slist is the list of range gates with backscatter
+            if 'slist' not in rec.keys():
+                os.makedirs(conversionLogDir, exist_ok=True)
+                logText = 'Could not find slist in record {recordTime} - skipping\n'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'))
+                with open(conversionLogfile, "a+") as fp: 
+                    fp.write(logText)
+
+                continue
+
+            # Can't deal with returns outside of FOV
+            if rec['slist'].max() >= fov.slantRCenter.shape[1]:
+                os.makedirs(conversionLogDir, exist_ok=True)
+
+                # Log returns outside of FOV
+                logText = 'Record {recordTime} found to have a max slist of {maxSList} - skipping record/n'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'), maxSList = rec['slist'].max())
+                with open(conversionLogfile, "a+") as fp: 
+                    fp.write(logText)
+
+                continue
+
+            time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
+            one_obj = np.ones(len(rec['slist'])) 
+            mjd = jdutil.jd_to_mjd(jdutil.datetime_to_jd(time))
+            bmnum = one_obj * rec['bmnum']
+            fovi = fov.beams == rec['bmnum']
+            out['mjd'] += (one_obj * mjd).tolist()
+            out['beam'] += bmnum.tolist()
+            out['range'] += fov.slantRCenter[fovi, rec['slist']].tolist()
+            out['lat'] += fov.latCenter[fovi, rec['slist']].tolist()
+            out['lon'] += fov.lonCenter[fovi, rec['slist']].tolist()
+
+            for fld in data_flds:
+                out[fld] += rec[fld].tolist()
+            for fld in short_flds:  # expand out to size
+                out[fld] += (one_obj * rec[fld]).tolist()
+
+        # Convert to numpy arrays 
+        for k, v in out.items():
+            out[k] = np.array(v)
+
+        # Calculate beam azimuths assuming 20 degrees elevation
+        beam_off = radar_info['beamsep'] * (fov.beams - (radar_info['maxbeams'] - 1) / 2.0)
+        el = 15.
+        brng = np.zeros(beam_off.shape)
+        for ind, beam_off_elzero in enumerate(beam_off):
+            brng[ind] = radFov.calcAzOffBore(el, beam_off_elzero, fov_dir=fov.fov_dir) + radar_info['boresight']
+        
+        hdr = {
+            'lat': radar_info['glat'],
+            'lon': radar_info['glon'],
+            'alt': radar_info['alt'],
+            'rsep': bmdata['rsep'],
+            'maxrg': radar_info['maxrg'],
+            'bmsep': radar_info['beamsep'],
+            'boresight': radar_info['boresight'],
+            'beams': fov.beams,
+            'brng_at_15deg_el': brng,
+            'fitacf_version': fitVersion
+        }
+    except Exception as e:
+        print(e)
+        moved_out_fn = os.path.join(date.strftime(helper.PROCESSING_ISSUE_DIR), os.path.basename(in_fname))
+        os.makedirs(date.strftime(helper.PROCESSING_ISSUE_DIR), exist_ok=True)
+        shutil.move(in_fname, moved_out_fn)                
+        return SHAPE_MISMATCH_ERROR_CODE
+
     return out, hdr
 
 

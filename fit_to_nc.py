@@ -94,13 +94,16 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
             if status == MULTIPLE_BEAM_DEFS_ERROR_CODE:
                 print('Failed to convert {fitacfFile} because it had multiple beam definitions'.format(fitacfFile = fit_fn))
                 continue
+            elif status == 2:
+                print('Failed to convert {fitacfFile} because it had mismatched dimensions. Moving to {dir}'.format(fitacfFile = fit_fn, dir = time.strftime(helper.PROCESSING_ISSUE_DIR)))
+                continue
             elif status > 0:
                 print('Failed to convert {fitacfFile}'.format(fitacfFile = fit_fn))
                 continue
 
             print('Wrote output to %s' % out_fn)
         
-        month = time.strftime('%Y%m')
+        month = time.strftime('%m')
         multiBeamLogDir = time.strftime(helper.FIT_NET_LOG_DIR) + month
         multiBeamFile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
         if os.path.exists(multiBeamFile):
@@ -131,7 +134,16 @@ def fit_to_nc(date, in_fname, out_fname, radar_info, fitVersion):
         for k, v in out_vars.items():
             defs = var_defs[k]
             var = nc.createVariable(k, defs['type'], defs['dims'])
-            var[:] = v
+            try:
+                var[:] = v
+            except Exception as e:
+                print(e)
+                os.remove(out_fname)
+                moved_out_fn = os.path.join(date.strftime(helper.PROCESSING_ISSUE_DIR), os.path.basename(in_fname))
+                os.makedirs(date.strftime(helper.PROCESSING_ISSUE_DIR), exist_ok=True)
+                shutil.move(in_fname, moved_out_fn)                
+                return 2
+
             var.units = defs['units']
             var.long_name = defs['long_name']
 
@@ -349,7 +361,7 @@ def def_header_info(in_fname, hdr_vals):
 
 
 def combine_fitacfs(startTime, endTime, runDir, fitDir, fitVersion):
-
+    
     print('Combining fitACF files')
     runDir = os.path.abspath(runDir)
 
@@ -425,20 +437,21 @@ if __name__ == '__main__':
 
     args = sys.argv
 
-    assert len(args) >= 5, 'Should have 4x args, e.g.:\n' + \
+    assert len(args) >= 6, 'Should have 5x args, e.g.:\n' + \
         'python3 fit_to_nc.py 2014,4,23 2014,4,24 ' + \
         '/project/superdarn/data/fitacf/%Y/%m/  ' + \
-        '/project/superdarn/data/netcdf/%Y/%m/'
+        '/project/superdarn/data/netcdf/%Y/%m/ 2.5'
 
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    if len(args) == 5:
+    if len(args) == 6:
         fit_dir = args[3]
         outDir = args[4]
+        fitVersion = args[5]
     runDir = '/project/superdarn/run/run_%s' % get_random_string(4) 
 
     
-    main(stime, etime, fit_dir, outDir)
+    main(stime, etime, fit_dir, outDir, fitVersion)
 
 
 

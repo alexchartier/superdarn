@@ -42,23 +42,25 @@ def main(date):
     convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 3.0)
     remove_converted_files(fitDir)
 
+    os.rmdir(fitDir)
+
 
     totalTime = helper.getTimeString(time.time() - startTime)
     emailSubject = '"RawACF Download and Conversion Complete"'
-    emailBody    = '"Finished downloading and converting {month} RawACF data\nTotal time: {time}"'.format(month = startDate.strftime('%Y/%m'), time = totalTime)
+    emailBody    = '"Finished downloading and converting {month} fitACF data\nTotal time: {time}"'.format(month = startDate.strftime('%Y/%m'), time = totalTime)
     helper.send_email(emailSubject, emailBody)
 
 
 def download_fitacfs_from_globus(fitDir, date, pattern):
     # Start Globus Connect Personal and establish connection
     # Also allow access to /project/superdarn/data/
-    subprocess.call('{0} -start -restrict-paths \'rw~/,rw/{1}\' &'.format(helper.GLOBUS_PATH, fitDir), shell=True)
+    subprocess.call('{0} -start -restrict-paths \'rw~/,rw/project/superdarn/data/fitacf\' &'.format(helper.GLOBUS_PATH), shell=True)
 
     # Initiate the Globus -> APL transfer
     subprocess.call('nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} -t {2} {3}'.format(date.year, date.month, pattern, fitDir), shell=True)
 
     # Stop Globus Connect Personal
-    subprocess.call('{0} -stop'.format(helper.GLOBUS_PATH), shell=True)
+    #subprocess.call('{0} -stop'.format(helper.GLOBUS_PATH), shell=True)
 
     emailSubject = '"{0} {1} Data Successfully Downloaded"'.format(date.strftime('%Y/%m'), pattern)
     emailBody    = '"{0} {1} source files have been downloaded. Starting conversion to netCDF."'.format(date.strftime('%Y/%m'), pattern)
@@ -77,7 +79,7 @@ def convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, fitVersion):
 
 def remove_converted_files(fitDir):
     if DELETE_FITACFS:
-        os.system('rm -rf {0}'.format(fitDir))
+        os.system('rm -rf {0}/*'.format(fitDir))
 
 
 def get_first_and_last_days_of_month(date):

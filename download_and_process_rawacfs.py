@@ -10,7 +10,7 @@ import helper
 import raw_to_nc
 import subprocess
 
-DOWNLOAD_SOURCE_FILES = True
+DOWNLOAD_SOURCE_FILES = False
 DELETE_FITACFS_V2_5 = True
 PROCESS_JME_RAWACFS = True
 

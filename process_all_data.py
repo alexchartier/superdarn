@@ -17,8 +17,8 @@ import download_and_process_fitacfs
 import download_and_process_rawacfs
 import upload_nc_to_zenodo
 
-START_DATE = dt.datetime(2016, 11, 1)
-END_DATE = dt.datetime(2016, 1, 1)
+START_DATE = dt.datetime(2017, 4, 1)
+END_DATE = dt.datetime(2017, 1, 1)
 
 def main():
     date = START_DATE

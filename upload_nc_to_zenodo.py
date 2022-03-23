@@ -107,7 +107,7 @@ def upload_to_zenodo(sandbox, date):
                         'name': 'Chartier, Alex T.'
                     }, 
                     {
-                        'orcid': chartierORCID,
+                        'orcid': wikerORCID,
                         'affiliation': aplAffiliation,
                         'name': 'Wiker, Jordan R.'
                     }
@@ -139,7 +139,7 @@ def upload_to_zenodo(sandbox, date):
                         'name': 'Chartier, Alex T.'
                     }, 
                     {
-                        'orcid': chartierORCID,
+                        'orcid': wikerORCID,
                         'affiliation': aplAffiliation,
                         'name': 'Wiker, Jordan R.'
                     }

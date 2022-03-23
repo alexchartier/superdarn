@@ -169,8 +169,10 @@ def isOpen(server, port):
 
 
 def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir):
-
-    raw_to_nc.main(startDate, endDate, rawDir,fitDir,netDir)
+    from sd_utils import get_random_string
+    runDir = '/project/superdarn/run/%s' % get_random_string(4)
+    raw_to_fit.raw_to_fit(startDate, endDate, runDir, rawDir, fitDir)
+    fit_to_nc.fit_to_nc(startDate, endDate, fitDir, ncDir)
     dateString = startDate.strftime('%Y/%m')
 
     emailSubject = '"{date} rawACF to netCDF Conversion Successful"'.format(date = dateString)
@@ -193,6 +195,8 @@ def get_first_and_last_days_of_month(date):
     firstDayOfMonth = date.replace(day=1)
     lastDayOfMonth = (firstDayOfMonth + relativedelta(months=1)) - datetime.timedelta(days=1)
     return firstDayOfMonth, lastDayOfMonth 
+
+
 
 
 if __name__ == '__main__':

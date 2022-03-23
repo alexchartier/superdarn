@@ -1,5 +1,4 @@
 """
-
 fit_to_nc.py
 
 Turn cfit into netCDF files
@@ -37,15 +36,17 @@ import pydarn
 import radFov
 import pickle
 import helper
+import signal
+import subprocess
 
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 SHAPE_MISMATCH_ERROR_CODE = 2
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
 MAKE_FIT_VERSIONS = [3.0, 2.5]
 FIT_EXT = '*.fit'
-SKIP_EXISTING = True
+SKIP_EXISTING = False
 
-def main(startTime, endTime, fitDir, netDir, fitVersion):
+def main(startTime, endTime, fitDirFmt, netDir, fitVersion):
         
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
@@ -54,18 +55,26 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
     # Running raw to NC
     radar_info = get_radar_params(hdw_dat_dir)
     runDir = '/project/superdarn/run/%s' % get_random_string(4)
-
+   
+    # combine short files together to make daily ones 
+    fitDir = os.path.dirname(fitDirFmt)
     combine_fitacfs(startTime, endTime, runDir, fitDir, fitVersion)
 
     # Loop over fit files in the monthly directories
     time = startTime
     while time <= endTime:
         # Set up directories
+        fitDir = os.path.join(time.strftime(os.path.dirname(fitDirFmt)), os.path.basename(fitDirFmt))
+        netDir = time.strftime(netDir)
         print('Trying to make %s' % netDir)
         os.makedirs(netDir, exist_ok=True)
 
         # Loop over the files
-        fitFnames = glob.glob(os.path.join(fitDir, FIT_EXT))
+        if '*' in fitDir:  # user may have put a wildcard radarname into the path - don't add a '/'
+            fitFnames = glob.glob(fitDir + FIT_EXT)
+        else:  # Most likely just a directory name, join with '/'
+            fitFnames = glob.glob(os.path.join(fitDir, FIT_EXT))
+            
         print('Processing %i %s files in %s on %s' % (len(fitFnames), FIT_EXT, fitDir, time.strftime('%Y/%m')))
         for fit_fn in fitFnames:
         
@@ -118,8 +127,8 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
 def fit_to_nc(date, in_fname, out_fname, radar_info, fitVersion):
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
     out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info, fitVersion)
-    if out_vars == MULTIPLE_BEAM_DEFS_ERROR_CODE:
-        return MULTIPLE_BEAM_DEFS_ERROR_CODE
+    if out_vars == MULTIPLE_BEAM_DEFS_ERROR_CODE or out_vars == SHAPE_MISMATCH_ERROR_CODE:
+        return out_vars
 
     var_defs = def_vars()
     dim_defs = {
@@ -249,7 +258,8 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                 os.makedirs(conversionLogDir, exist_ok=True)
 
                 # Log returns outside of FOV
-                logText = 'Record {recordTime} found to have a max slist of {maxSList} - skipping record/n'.format(recordTime = time.strftime('%Y-%m-%d %H:%M:%S'), maxSList = rec['slist'].max())
+                logText = 'Record {recordTime} found to have a max slist of {maxSList} - skipping record/n'.format(
+                            recordTime = time.strftime('%Y-%m-%d %H:%M:%S'), maxSList = rec['slist'].max())
                 with open(conversionLogfile, "a+") as fp: 
                     fp.write(logText)
 
@@ -299,7 +309,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         moved_out_fn = os.path.join(date.strftime(helper.PROCESSING_ISSUE_DIR), os.path.basename(in_fname))
         os.makedirs(date.strftime(helper.PROCESSING_ISSUE_DIR), exist_ok=True)
         shutil.move(in_fname, moved_out_fn)                
-        return SHAPE_MISMATCH_ERROR_CODE
+        return SHAPE_MISMATCH_ERROR_CODE, SHAPE_MISMATCH_ERROR_CODE
 
     return out, hdr
 
@@ -322,8 +332,8 @@ def def_vars():
         'mjd': dict({'units': 'days', 'long_name': 'Modified Julian Date'}, **stdin_dbl),
         'beam': dict({'long_name': 'Beam #'}, **stdin_int),
         'range': dict({'units': 'km','long_name': 'Slant range'}, **stdin_int2),
-        'lat': dict({'units': 'deg.', 'long_name': 'Latitude'}, **stdin_flt),
-        'lon': dict({'units': 'deg.', 'long_name': 'Longitude'}, **stdin_flt),
+        'lat': dict({'units': 'deg.', 'long_name': 'Geographic Latitude'}, **stdin_flt),
+        'lon': dict({'units': 'deg.', 'long_name': 'Geographic Longitude'}, **stdin_flt),
         'p_l': dict({'units': 'dB', 'long_name': 'Lambda fit SNR'}, **stdin_flt),
         'v': dict({'units': 'm/s', 'long_name': 'LOS Vel. (+ve away from radar)'}, **stdin_flt),
         'v_e': dict({'units': 'm/s', 'long_name': 'LOS Vel. error'}, **stdin_flt),
@@ -385,7 +395,6 @@ def combine_fitacfs(startTime, endTime, runDir, fitDir, fitVersion):
         radar_list = get_radar_list(fitDir)
         for radar in radar_list:
             inFilenameFormat = time.strftime(os.path.join(fitDir, '%Y%m%d*{0}*fitacf.bz2'.format(radar)))
-
             if fitVersion == 3.0:
                 outputFilename = time.strftime(os.path.join(fitDir, '%Y%m%d.{0}.v{1}.despeckled.fit'.format(radar, fitVersion)))
             elif fitVersion == 2.5:
@@ -416,20 +425,22 @@ def combine_files(inFilenameFormat, outputFilename, fitVersion):
         return 1
 
     unzippedInputFileFormat = '.'.join(inFilenameFormat.split('.')[:-1])
+    print('Unzipped File Format: {0}'.format(unzippedInputFileFormat))
 
     # Unzip the files that match the specified format
     for inputFitacf in zippedInputFiles:
         os.system('bzip2 -d {0}'.format(inputFitacf))
 
     # Combine the unzipped fitACFs for the given day
-    os.system('cat {0} > tmp.fitacf'.format(unzippedInputFileFormat))
+    combinedFile = os.path.join(outDir, 'combined.fit')
+    os.system('cat {0} > {1}'.format(unzippedInputFileFormat, combinedFile))
     
     if fitVersion == 2.5:
-            shutil.move('tmp.fitacf', outputFilename)
+            shutil.move(combinedFile, outputFilename)
     if fitVersion == 3.0:
-        os.system('fit_speck_removal tmp.fitacf > {0}'.format(outputFilename))
+        os.system('fit_speck_removal {0} > {1}'.format(combinedFile, outputFilename))
+        os.remove(combinedFile)
 
-    # Make sure the combined fitACF is large enough
     fn_inf = os.stat(outputFilename)
     if fn_inf.st_size < MIN_FITACF_FILE_SIZE:
         print('File %s too small, size %1.1f MB' % (outputFilename, fn_inf.st_size / 1E6))
@@ -437,7 +448,7 @@ def combine_files(inFilenameFormat, outputFilename, fitVersion):
     else: 
         print('File created at %s, size %1.1f MB' % (outputFilename, fn_inf.st_size / 1E6))
 
-    os.system('rm {0}'.format(unzippedInputFileFormat))
+    #os.system('rm {0}'.format(unzippedInputFileFormat))
         
     return 0
 
@@ -450,17 +461,22 @@ if __name__ == '__main__':
         'python3 fit_to_nc.py 2014,4,23 2014,4,24 ' + \
         '/project/superdarn/data/fitacf/%Y/%m/  ' + \
         '/project/superdarn/data/netcdf/%Y/%m/ 2.5'
+    
 
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
+
+    fitDir = args[3]
+    outDir = args[4]
     if len(args) == 6:
-        fit_dir = args[3]
-        outDir = args[4]
-        fitVersion = args[5]
+        fitVersion = float(args[5])
+    else:
+        fitVersion = None
+
     runDir = '/project/superdarn/run/run_%s' % get_random_string(4) 
 
     
-    main(stime, etime, fit_dir, outDir, fitVersion)
+    main(stime, etime, fitDir, outDir, fitVersion)
 
 
 

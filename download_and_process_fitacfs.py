@@ -10,12 +10,9 @@ import helper
 import fit_to_nc
 import subprocess
 
-DOWNLOAD_25_SOURCE_FILES = True
-DOWNLOAD_30_SOURCE_FILES = True
-
 DELETE_FITACFS = True
 
-def main(date):
+def main(date, two_five, three_zero):
     # Capture the start time in order to caluclate total processing time
     startTime = time.time()
     
@@ -28,25 +25,24 @@ def main(date):
     os.makedirs(netDir, exist_ok=True)
 
     # fitACF 2.5
-    if DOWNLOAD_25_SOURCE_FILES:
-        download_fitacfs_from_globus(fitDir, startDate, 'fitacf_25')
+    if two_five:
+        #download_fitacfs_from_globus(fitDir, startDate, 'fitacf_25')
 
-    convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 2.5)
-    remove_converted_files(fitDir)
+        convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 2.5)
+        remove_converted_files(fitDir)
 
 
     # fitACF 3.0 (speckled)
-    if DOWNLOAD_30_SOURCE_FILES:
+    if three_zero:
         download_fitacfs_from_globus(fitDir, startDate, 'fitacf_30')
 
-    convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 3.0)
-    remove_converted_files(fitDir)
-
-    os.rmdir(fitDir)
+        convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 3.0)
+        remove_converted_files(fitDir)
+        os.rmdir(fitDir)
 
 
     totalTime = helper.getTimeString(time.time() - startTime)
-    emailSubject = '"RawACF Download and Conversion Complete"'
+    emailSubject = '"FitACF Download and Conversion Complete"'
     emailBody    = '"Finished downloading and converting {month} fitACF data\nTotal time: {time}"'.format(month = startDate.strftime('%Y/%m'), time = totalTime)
     helper.send_email(emailSubject, emailBody)
 
@@ -98,4 +94,4 @@ if __name__ == '__main__':
     else:
         date = args[0]
     
-    main(date)
+    main(date, True, True)

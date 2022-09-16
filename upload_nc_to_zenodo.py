@@ -62,7 +62,7 @@ def upload_to_zenodo(sandbox, date):
 
     uploadDir = date.strftime(helper.NETCDF_DIR_FMT)
     
-    # TODO: Update this once 2019 data is allowed to be released publically
+    # TODO: Update this once 2020 data is allowed to be released publically
     if date.year > helper.LATEST_PUBLIC_DATA:
         fileList = glob.glob(os.path.join(uploadDir, '*wal**.nc'))
     else:

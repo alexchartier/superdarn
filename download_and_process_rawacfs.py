@@ -7,10 +7,12 @@ import socket
 import time
 from dateutil.relativedelta import relativedelta
 import helper
-import raw_to_nc
+#import raw_to_nc
+import fit_to_nc
+import raw_to_fit
 import subprocess
 
-DOWNLOAD_SOURCE_FILES = False
+DOWNLOAD_SOURCE_FILES = True
 DELETE_FITACFS_V2_5 = True
 PROCESS_JME_RAWACFS = True
 
@@ -172,7 +174,7 @@ def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netD
     from sd_utils import get_random_string
     runDir = '/project/superdarn/run/%s' % get_random_string(4)
     raw_to_fit.raw_to_fit(startDate, endDate, runDir, rawDir, fitDir)
-    fit_to_nc.fit_to_nc(startDate, endDate, fitDir, ncDir)
+    fit_to_nc.fit_to_nc(startDate, endDate, fitDir, netDir)
     dateString = startDate.strftime('%Y/%m')
 
     emailSubject = '"{date} rawACF to netCDF Conversion Successful"'.format(date = dateString)

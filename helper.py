@@ -6,8 +6,8 @@ import os
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
-# TODO: Update this once 2019 data is allowed to be released publically
-LATEST_PUBLIC_DATA = 2018
+# TODO: Update this once 2020 data is allowed to be released publically
+LATEST_PUBLIC_DATA = 2019
 
 # Directories
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
@@ -85,7 +85,8 @@ def getDOI(year):
         2015: 'https://doi.org/10.20383/102.0447',
         2016: 'https://doi.org/10.20383/102.0446',
         2017: 'https://doi.org/10.20383/101.0289',
-        2018: 'https://doi.org/10.20383/101.0290'
+        2018: 'https://doi.org/10.20383/101.0290',
+        2019: 'https://doi.org/10.20383/102.0558'
     }
 
     return DOIs[year]

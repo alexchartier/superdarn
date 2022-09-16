@@ -17,11 +17,11 @@ import download_and_process_fitacfs
 import download_and_process_rawacfs
 import upload_nc_to_zenodo
 
-START_DATE = dt.datetime(2015, 4, 1)
-END_DATE = dt.datetime(2015, 1, 1)
+START_DATE = dt.datetime(1994, 12, 1)
+END_DATE = dt.datetime(1993, 9, 1)
 
 TWO_FIVE = True
-THREE_ZERO = False
+THREE_ZERO = True
 
 def main():
     date = START_DATE
@@ -31,13 +31,12 @@ def main():
         emailBody    = 'Starting to download and process {0} data'.format(date.strftime('%Y%m'))
         helper.send_email(emailSubject, emailBody)
         
-        download_and_process_fitacfs.main(date, TWO_FIVE, THREE_ZERO)
-        #download_and_process_rawacfs.main(date)
-        #upload_nc_to_zenodo.main(date)        
+#        download_and_process_fitacfs.main(date, TWO_FIVE, THREE_ZERO)
+        upload_nc_to_zenodo.main(date)        
 
         emailSubject = '"PROCESS ALL COMPLETE"'
         emailBody    = 'Finished downloading and processing {0} data'.format(date.strftime('%Y%m'))
-        helper.send_email(emailSubject, emailBody)
+#        helper.send_email(emailSubject, emailBody)
 
         date -= relativedelta(months=1)
 

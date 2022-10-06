@@ -11,6 +11,7 @@ LATEST_PUBLIC_DATA = 2019
 
 # Directories
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
+WAL_SERVER = 'radar@38.124.149.234'
 BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m/'   
 BAS_DAT_DIR_FMT = '/sddata/dat/%Y/%m/'
 GLOBUS_RAWACF_DIR_FMT = '/chroot/sddata/dat/%Y/%m/'

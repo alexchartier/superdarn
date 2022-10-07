@@ -172,7 +172,7 @@ def getGlobusFileList():
                 print('{0}: Getting Globus rawACF data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M:%S'), year, numTries))
                 if numTries >= MAX_NUM_TRIES:
                     failedToGrabData(year)
-                    continue
+                    break
 
                 # Get a list of all rawACF files on Globus for the given year and store them in a file
                 filename_raw_new = '{0}/{1}_GlobusFilesRawNew.txt'.format(GLOBUS_FILE_LIST_DIR, year)
@@ -199,7 +199,7 @@ def getGlobusFileList():
                 print('{0}: Getting Globus DAT data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M:%S'), year, numTries))
                 if numTries >= MAX_NUM_TRIES:
                     failedToGrabData(year)
-                    continue
+                    break
 
                 # Get a list of all DAT files on Globus for the given year and store them in a file
                 filename_dat_new = '{0}/{1}_GlobusFilesDatNew.txt'.format(GLOBUS_FILE_LIST_DIR, year)
@@ -268,7 +268,7 @@ def failedToGrabData(year):
     emailSubject = '"Unsuccessful attempt to grab {0} Globus  Data"'.format(year)
     emailBody    = '"Tried to copy {0} from Globus {1} times, but did not succeed. \nSee logfile for more details."'.format(year, MAX_NUM_TRIES)
     helper.send_email(emailSubject, emailBody)
-    # sys.exit(emailBody)
+    sys.exit(emailBody)
 
 
 if __name__ == '__main__':

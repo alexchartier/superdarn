@@ -29,7 +29,7 @@ def main(date, two_five, three_zero):
         download_fitacfs_from_globus(fitDir, startDate, 'fitacf_25')
 
         convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 2.5)
-        remove_converted_files(fitDir)
+#        remove_converted_files(fitDir)
 
 
     # fitACF 3.0 (speckled)
@@ -37,8 +37,8 @@ def main(date, two_five, three_zero):
         download_fitacfs_from_globus(fitDir, startDate, 'fitacf_30')
 
         convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 3.0)
-        remove_converted_files(fitDir)
-        os.rmdir(fitDir)
+#        remove_converted_files(fitDir)
+#        os.rmdir(fitDir)
 
 
     totalTime = helper.getTimeString(time.time() - startTime)

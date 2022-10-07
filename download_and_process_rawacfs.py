@@ -12,7 +12,7 @@ import fit_to_nc
 import raw_to_fit
 import subprocess
 
-DOWNLOAD_SOURCE_FILES = True
+DOWNLOAD_SOURCE_FILES = False
 DELETE_FITACFS_V2_5 = True
 PROCESS_JME_RAWACFS = True
 
@@ -47,7 +47,7 @@ def main(date):
 
     convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir)
 
-    remove_converted_files(rawDir, fitDir)
+    #remove_converted_files(rawDir, fitDir)
 
     totalTime = helper.getTimeString(time.time() - startTime)
     emailSubject = '"RawACF Download and Conversion Complete"'
@@ -173,8 +173,9 @@ def isOpen(server, port):
 def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir):
     from sd_utils import get_random_string
     runDir = '/project/superdarn/run/%s' % get_random_string(4)
-    raw_to_fit.raw_to_fit(startDate, endDate, runDir, rawDir, fitDir)
-    fit_to_nc.fit_to_nc(startDate, endDate, fitDir, netDir)
+    raw_to_fit.main(startDate, endDate, rawDir, fitDir)
+    fit_to_nc.main(startDate, endDate, fitDir, netDir, 2.5)
+    fit_to_nc.main(startDate, endDate, fitDir, netDir, 3.0)
     dateString = startDate.strftime('%Y/%m')
 
     emailSubject = '"{date} rawACF to netCDF Conversion Successful"'.format(date = dateString)
@@ -208,6 +209,9 @@ if __name__ == '__main__':
         # If no date was passed in, process the previous month
         today = datetime.datetime.now()
         date = today - relativedelta(months=1)
+
+        # Process current month
+#        date = today
     else:
         date = args[0]
     

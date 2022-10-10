@@ -41,7 +41,15 @@ def main():
         for file in files:
             # Disregard any non-netCDF files
             if os.path.splitext(file)[-1] == '.nc':
-                ds = nc.Dataset(os.path.join(path, file))
+                try:
+                    ds = nc.Dataset(os.path.join(path, file))
+                except:
+                    # If it doesn't open (e.g. "NetCDF: HDF error"), add it to the list of bad files
+                    numEmptyNetCDFs += 1
+                    with open(emptynetcdfLogFile, "a+") as fp: 
+                        fp.write(file + '\n')
+                    continue
+                
                 numDataPoints = ds.dimensions['npts'].size
                 if numDataPoints == 0:
                     numEmptyNetCDFs += 1

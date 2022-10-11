@@ -38,6 +38,7 @@ def main():
 
     for path, currentDirectory, files in os.walk(netcdfDir):
         print('Current Dir: {0}'.format(path))
+        numEmptyNetCDFs = 0
         for file in files:
             # Disregard any non-netCDF files
             if os.path.splitext(file)[-1] == '.nc':
@@ -47,7 +48,7 @@ def main():
                     # If it doesn't open (e.g. "NetCDF: HDF error"), add it to the list of bad files
                     numEmptyNetCDFs += 1
                     with open(emptynetcdfLogFile, "a+") as fp: 
-                        fp.write(file + '\n')
+                        fp.write(file + ' (HDF error)\n')
                     continue
                 
                 numDataPoints = ds.dimensions['npts'].size
@@ -57,7 +58,9 @@ def main():
                         fp.write(file + '\n')
         
         if numEmptyNetCDFs != 0:
-            logText = '{0}: {1}\n'.format(path, numEmptyNetCDFs)
+            # Get 'YYYY-MM' month format
+            month = path.split('/')[-2] + '-' + path.split('/')[-1]
+            logText = '{0}: {1}\n'.format(month, numEmptyNetCDFs)
             with open(summaryLogFile, "a+") as fp: 
                 fp.write(logText)
 

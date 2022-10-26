@@ -57,12 +57,12 @@ def main():
                     with open(emptynetcdfLogFile, "a+") as fp: 
                         fp.write(file + '\n')
         
-        if numEmptyNetCDFs != 0:
-            # Get 'YYYY-MM' month format
-            month = path.split('/')[-2] + '-' + path.split('/')[-1]
-            logText = '{0}: {1}\n'.format(month, numEmptyNetCDFs)
-            with open(summaryLogFile, "a+") as fp: 
-                fp.write(logText)
+        #if numEmptyNetCDFs != 0:
+        # Get 'YYYY-MM' month format
+        month = path.split('/')[-2] + '-' + path.split('/')[-1]
+        logText = '{0}: {1}\n'.format(month, numEmptyNetCDFs)
+        with open(summaryLogFile, "a+") as fp: 
+            fp.write(logText)
 
     subprocess.call('sort {0} -o {1}'.format(summaryLogFile, summaryLogFile), shell=True)
     subprocess.call('sort {0} -o {1}'.format(emptynetcdfLogFile, emptynetcdfLogFile), shell=True)        

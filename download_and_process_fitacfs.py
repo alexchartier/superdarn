@@ -26,17 +26,17 @@ def main(date, two_five, three_zero):
 
     # fitACF 2.5
     if two_five:
-        download_fitacfs_from_globus(fitDir, startDate, 'fitacf_25')
+#        download_fitacfs_from_globus(fitDir, startDate, 'fitacf_25')
 
         convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 2.5)
 #        remove_converted_files(fitDir)
 
 
     # fitACF 3.0 (speckled)
-    if three_zero:
-        download_fitacfs_from_globus(fitDir, startDate, 'fitacf_30')
+#    if three_zero:
+ #       download_fitacfs_from_globus(fitDir, startDate, 'fitacf_30')
 
-        convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 3.0)
+  #      convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 3.0)
 #        remove_converted_files(fitDir)
 #        os.rmdir(fitDir)
 

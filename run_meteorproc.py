@@ -36,7 +36,7 @@ def meteorproc(
             hdw_params = id_hdw_params_t(time, hdw_params)
 
             # specify input filenames
-            fit_fname_regex = time.strftime(fit_fname_fmt) + '.%s.*.fit' % radar_name 
+            fit_fname_regex = time.strftime(fit_fname_fmt) + '.{0}.v3.0.fit'.format(radar_name) 
             fit_flist = glob.glob(fit_fname_regex)
 
             # Skip nonexistent files

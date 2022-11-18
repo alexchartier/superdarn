@@ -25,6 +25,8 @@ PROCESSING_ISSUE_DIR = '/project/superdarn/processing_issues/%Y/%m'
 FIT_NET_LOG_DIR = '/project/superdarn/logs/fitACF_to_netCDF_logs/%Y/'
 GLOBUS_PATH = '/homes/superdarn/globusconnectpersonal-3.1.6/globusconnectpersonal'
 
+MIN_FITACF_FILE_SIZE = 1E5
+
 DEPOSIT_URL = 'https://zenodo.org/api/deposit/depositions'
 SANDBOX_DEPOSIT_URL = 'https://sandbox.zenodo.org/api/deposit/depositions'
 
@@ -88,7 +90,8 @@ def getDOI(year):
         2016: 'https://doi.org/10.20383/102.0446',
         2017: 'https://doi.org/10.20383/101.0289',
         2018: 'https://doi.org/10.20383/101.0290',
-        2019: 'https://doi.org/10.20383/102.0558'
+        2019: 'https://doi.org/10.20383/102.0558',
+        2020: 'https://doi.org/10.20383/103.0573'
     }
 
     return DOIs[year]
@@ -122,30 +125,3 @@ def get_three_letter_radar_id(radar_letter):
     }
 
     return radar_ids[radar_letter]
-
-def get_radar_list(in_dir):
-    print('Calculating list of radars')
-    assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
-    flist = glob.glob(os.path.join(in_dir, '*.bz2'))
-
-    if len(flist) == 0:
-        print('No files in %s' % in_dir)
-    radar_list = []
-
-    for f in flist:
-        items = f.split('.')
-        if len(items) == 6:
-            radarn = items[3]
-        elif len(items) == 7:
-            if 'despeck' in f:
-                radarn = items[3]
-            else:
-                radarn = '.'.join(items[3:5])
-        elif len(items) == 8:
-            radarn = '.'.join(items[3:5])
-        else:
-            raise ValueError('filename does not match expectations: %s' % f)
-        if radarn not in radar_list:
-            radar_list.append(radarn)
-            print(radarn)
-    return radar_list

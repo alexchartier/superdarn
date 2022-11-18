@@ -3,11 +3,11 @@
 Helper functions for SuperDARN processing scripts
 """
 import os
+import glob
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
-# TODO: Update this once 2020 data is allowed to be released publically
-LATEST_PUBLIC_DATA = 2019
+LATEST_PUBLIC_DATA = 2020
 
 # Directories
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
@@ -19,6 +19,7 @@ GLOBUS_DAT_DIR_FMT = '/chroot/sddata/dat/%Y/%m/'
 RAWACF_DIR_FMT = '/project/superdarn/data/rawacf/%Y/%m'
 FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m'
 NETCDF_DIR_FMT = '/project/superdarn/data/netcdf/%Y/%m'
+METEORWIND_DIR_FMT = '/project/superdarn/data/meteorwind/%Y/%m'
 LOG_DIR = '/project/superdarn/logs/'
 PROCESSING_ISSUE_DIR = '/project/superdarn/processing_issues/%Y/%m'
 FIT_NET_LOG_DIR = '/project/superdarn/logs/fitACF_to_netCDF_logs/%Y/'
@@ -121,3 +122,30 @@ def get_three_letter_radar_id(radar_letter):
     }
 
     return radar_ids[radar_letter]
+
+def get_radar_list(in_dir):
+    print('Calculating list of radars')
+    assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
+    flist = glob.glob(os.path.join(in_dir, '*.bz2'))
+
+    if len(flist) == 0:
+        print('No files in %s' % in_dir)
+    radar_list = []
+
+    for f in flist:
+        items = f.split('.')
+        if len(items) == 6:
+            radarn = items[3]
+        elif len(items) == 7:
+            if 'despeck' in f:
+                radarn = items[3]
+            else:
+                radarn = '.'.join(items[3:5])
+        elif len(items) == 8:
+            radarn = '.'.join(items[3:5])
+        else:
+            raise ValueError('filename does not match expectations: %s' % f)
+        if radarn not in radar_list:
+            radar_list.append(radarn)
+            print(radarn)
+    return radar_list

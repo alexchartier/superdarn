@@ -14,6 +14,7 @@ from dateutil.relativedelta import relativedelta
 import os
 import helper
 import download_and_process_fitacfs
+import download_and_process_fitacf_to_meteor
 import download_and_process_rawacfs
 import upload_nc_to_zenodo
 
@@ -31,7 +32,7 @@ def main():
         emailBody    = 'Starting to download and process {0} data'.format(date.strftime('%Y%m'))
         helper.send_email(emailSubject, emailBody)
         
-        download_and_process_fitacfs.main(date, TWO_FIVE, THREE_ZERO)
+        download_and_process_fitacf_to_meteor.main(date, False, True)
 #        upload_nc_to_zenodo.main(date)        
 
         emailSubject = '"PROCESS ALL COMPLETE"'

@@ -18,8 +18,8 @@ import download_and_process_fitacf_to_meteor
 import download_and_process_rawacfs
 import upload_nc_to_zenodo
 
-START_DATE = dt.datetime(2013, 7, 1)
-END_DATE = dt.datetime(2013, 7, 1)
+START_DATE = dt.datetime(2020, 7, 1)
+END_DATE = dt.datetime(2020, 7, 1)
 
 TWO_FIVE = True
 THREE_ZERO = True

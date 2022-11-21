@@ -6,10 +6,14 @@ import glob
 from collections import defaultdict
 from dateutil.relativedelta import relativedelta
 import netCDF4
+from sd_utils import get_radar_params, id_hdw_params_t
 
 def convert_winds(
     startTime, endTime, indir, outdir,
+    hdw_dat_dir='/project/superdarn/software/rst/tables/superdarn/hdw/',
 ):
+
+    radar_prm = get_radar_params(hdw_dat_dir)
 
     month = startTime
     while month <= endTime:
@@ -33,9 +37,15 @@ def convert_winds(
                 fn_fmt = os.path.join(month.strftime(indir), '.'.join([date, radar, '%s.txt']))
                 out_fname = os.path.join(month.strftime(outdir), '.'.join([date, radar, 'nc']))
                 os.makedirs(os.path.dirname(out_fname), exist_ok=True)
+
+                # pull out boresight
                 merid_wind_fn = fn_fmt % 'm' 
                 zonal_wind_fn = fn_fmt % 'z'
+                hdw_params = radar_prm[radar]
+                hdw_dat_t = id_hdw_params_t(time, hdw_params)
+                boresight = hdw_dat_t['boresight']
 
+                # try to load
                 try:
                     m_hdr, m_vars = read_winds(merid_wind_fn)
                     z_hdr, z_vars = read_winds(zonal_wind_fn)
@@ -45,7 +55,8 @@ def convert_winds(
                 if m_vars['year'] == []:
                     print('Unable to process %s' % fn_fmt)
                     continue
-    
+                
+                # Define output variables 
                 outvars, header_info = format_outvars(m_vars, z_vars)
                 dim_defs = {'npts': len(outvars['hour'])}   
                 var_defs = def_vars()
@@ -54,6 +65,7 @@ def convert_winds(
                     (merid_wind_fn, zonal_wind_fn)
                 header_info['params'] = m_hdr.replace('meridional', 'both')
                 header_info['history'] = 'created on %s' % dt.datetime.now()
+                header_info['boresight'] = '%1.2f degrees East of North' % boresight
 
                 # Write out the netCDF 
                 with netCDF4.Dataset(out_fname, 'w') as nc: 
@@ -79,6 +91,7 @@ def set_header(rootgrp, header_info) :
     rootgrp.lon = header_info['lon']
     rootgrp.rsep_km = header_info['rsep']
     rootgrp.maxrangegate = header_info['frang']
+    rootgrp.boresight = header_info['boresight']
     return rootgrp
 
 
@@ -105,16 +118,15 @@ def def_vars():
     stdin_dbl = {'type': 'f8', 'dims': 'npts'} 
     var_defs = { 
         'hour': dict({'units': 'hours', 'long_name': 'Hour (UT)'}, **stdin_dbl),
-        'V_merid': dict({'units': 'm/s', 'long_name': 'Merid. Vel. (+ve North)'}, **stdin_dbl),
+        'V_merid': dict({'units': 'm/s', 'long_name': 'Merid. Vel. (+ve Poleward)'}, **stdin_dbl),
         'V_zonal': dict({'units': 'm/s', 'long_name': 'Zonal Vel. (+ve East)'}, **stdin_dbl),
-        'Vx': dict({'units': 'm/s', 'long_name': 'X Vel. (radar coords?)'}, **stdin_dbl),
-        'Vy': dict({'units': 'm/s', 'long_name': 'Y Vel. (radar coords?)'}, **stdin_dbl),
+        'Vx': dict({'units': 'm/s', 'long_name': 'Radar Boresight Vel.'}, **stdin_dbl),
+        'Vy': dict({'units': 'm/s', 'long_name': 'Perp. Radar Boresight Vel.'}, **stdin_dbl),
         'sdev_Vx': dict({'units': 'm/s', 'long_name': 'Vel. error'}, **stdin_dbl),
         'sdev_Vy': dict({'units': 'm/s', 'long_name': 'Vel. error'}, **stdin_dbl),
     }   
     return var_defs
 
- 
 
 def read_winds(wind_fn):
     # Turn the text files into dict data

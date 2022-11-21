@@ -16,7 +16,7 @@ import sys
 import pdb
 
 
-def meteorproc(
+def main(
         starttime=dt.datetime(2016, 1, 1), 
         endtime=dt.datetime(2020, 11, 1), 
         fit_fname_fmt='/project/superdarn/data/fit/%Y/%m/%Y%m%d',
@@ -134,7 +134,7 @@ if __name__ == '__main__':
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
     run_dir = './run/%s' % get_random_string(4) 
 
-    meteorproc(
+    main(
         starttime=stime, 
         endtime=etime, 
         fit_fname_fmt=args[3], 

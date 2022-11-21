@@ -36,7 +36,7 @@ def main(
             hdw_params = id_hdw_params_t(time, hdw_params)
 
             # specify input filenames
-            fit_fname_regex = time.strftime(fit_fname_fmt) + '.{0}.v3.0.fit'.format(radar_name) 
+            fit_fname_regex = time.strftime(fit_fname_fmt) + '.{0}.*'.format(radar_name) 
             fit_flist = glob.glob(fit_fname_regex)
 
             # Skip nonexistent files
@@ -53,8 +53,10 @@ def main(
             for mz_flag in ['m', 'z']:
                 print(mz_flag)
 
+                radar_name_with_mode = '.'.join(os.path.basename(fit_fname).split('.')[1:-4])
+
                 # specify output filename
-                wind_fname = time.strftime(wind_fname_fmt) + '.%s.%s.txt' % (radar_name, mz_flag)
+                wind_fname = time.strftime(wind_fname_fmt) + '.%s.%s.txt' % (radar_name_with_mode, mz_flag)
 
                 if (os.path.isfile(wind_fname) & skip_existing):
                     print('wind file already exists')

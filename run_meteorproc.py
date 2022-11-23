@@ -29,7 +29,7 @@ def main(
 ):
     time = starttime
     radar_list = get_radar_params(hdw_dat_dir)
-    while time < endtime:
+    while time <= endtime:
         for radar_name, hdw_params in radar_list.items():
             print(radar_name)
             # get hardware parameters
@@ -53,11 +53,11 @@ def main(
             for mz_flag in ['m', 'z']:
                 print(mz_flag)
 
-                radar_name_with_mode = '.'.join(os.path.basename(fit_fname).split('.')[1:-4])
+                radar_name_with_mode = '.'.join(os.path.basename(fit_fname).split('.')[1:-3])
 
                 # specify output filename
                 wind_fname = time.strftime(wind_fname_fmt) + '.%s.%s.txt' % (radar_name_with_mode, mz_flag)
-
+                
                 if (os.path.isfile(wind_fname) & skip_existing):
                     print('wind file already exists')
                     continue

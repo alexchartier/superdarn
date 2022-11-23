@@ -15,6 +15,7 @@ from sd_utils import get_random_string, get_radar_list, id_beam_north, id_hdw_pa
 import sys
 import pdb
 
+MIN_FITACF_FILE_SIZE = 1E5 # bytes
 
 def main(
         starttime=dt.datetime(2016, 1, 1), 
@@ -46,6 +47,11 @@ def main(
             fit_flist.sort()
 
             fit_fname = fit_flist[0]
+
+            fn_info = os.stat(fit_fname)
+            if fn_info.st_size < MIN_FITACF_FILE_SIZE:
+                print('\n\n%s %1.1f MB\nFile too small - skipping' % (fit_fname, fn_info.st_size / 1E6))
+                continue
 
             hdw_dat_fname = glob.glob(os.path.join(hdw_dat_dir, '*%s*' % radar_name))[0]
 

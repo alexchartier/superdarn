@@ -274,7 +274,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         for k, v in out.items():
             out[k] = np.array(v)
 
-        # Calculate beam azimuths assuming 20 degrees elevation
+        # Calculate beam azimuths assuming 15 degrees elevation
         beam_off = radar_info['beamsep'] * (fov.beams - (radar_info['maxbeams'] - 1) / 2.0)
         el = 15.
         brng = np.zeros(beam_off.shape)
@@ -358,7 +358,7 @@ def set_header(rootgrp, header_info) :
 def def_header_info(in_fname, hdr_vals):
     hdr = {
         **{
-        'description': 'Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF v2.5',
+        'description': 'Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF',
         'fitacf_source': in_fname,
         'history': 'Created on %s' % dt.datetime.now(),
         }, 

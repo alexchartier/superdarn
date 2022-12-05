@@ -44,7 +44,7 @@ def main(
 def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     fitVersion='3.0',
     ref_ht=300.,  # matches the RST operation
-    convert_cmd='make_grid -xtd -chisham -ion %s > %s',
+    convert_cmd='make_grid -xtd -chisham -ion -maxsrng 2000 %s > %s',
     clobber=False,
 ):
     """ Convert fitACF files to .grid (median-filtered & geolocated), then to netCDF """
@@ -157,7 +157,7 @@ def calc_bearings(rlat, rlon, lats, lons, ref_ht):
         lon = lons[ind]
         pointA = wgs84.GeoPoint(latitude=lat, longitude=lon, z=depth, degrees=True)
         p_AB_N = pointA.delta_to(pointB)  # note we want the bearing at point A
-        brng_deg[ind] = p_AB_N.azimuth_deg 
+        brng_deg[ind] = p_AB_N.azimuth_deg - 180  # ... but away from the radar
 
     return brng_deg
 
@@ -211,7 +211,7 @@ def get_hdr_vals(radar_info, fitVersion):
 def def_header_info(in_fname, convert_cmd, hdr_vals):
     hdr = { 
         **{ 
-        'description': 'Gridded, median-filtered "line-of-sight" ExB velocities and related parameters from SuperDARN. Ground scatter removed.',
+        'description': 'Gridded, median-filtered "line-of-sight" ExB velocities and related parameters from SuperDARN. Reference altitude of 300 km assumed. Ground scatter removed.',
         'fitacf_source': in_fname,
         'make_grid call': convert_cmd, 
         'history': 'Created on %s' % dt.datetime.now(),
@@ -252,6 +252,7 @@ def fit_to_grid(fit_fname, grid_fname, convert_cmd,
     os.makedirs(out_dir, exist_ok=True)
 
     # Run the executable
+    #print(convert_cmd % (fit_fname, grid_fname))
     os.system(convert_cmd % (fit_fname, grid_fname))
 
     return 0
@@ -270,7 +271,7 @@ def plot_grid_nc(grid_nc_fn, time, intvl_min=2):
     grid_data, radar_loc = load_grid(grid_nc_fn, time)
     grid_data_t = subsample_data(grid_data, time, intvl_min)
 
-    vels = grid_data_t['vector.vel.median']
+    vels = -grid_data_t['vector.vel.median']  # Converted for consistency
     lons = grid_data_t['vector.glon']
     lats = grid_data_t['vector.glat']
     brng_deg = grid_data_t['vector.g_kvect']
@@ -309,7 +310,6 @@ def subsample_data(grid_data, time, intvl_min=2):
 
 
 if __name__ == '__main__':
-    """
     stime = dt.datetime(2015, 3, 15)
     etime = dt.datetime(2015, 3, 18)
     fit_fn_fmt = '/project/superdarn/data/fitacf/%Y/%m/%Y%m%d.*.v3.0.fit'
@@ -344,6 +344,7 @@ if __name__ == '__main__':
 
     plot_grid_nc(out_fname, time)
     plot_grid(grid_fname, time)
+    """
 
 
 

@@ -39,7 +39,7 @@ def main(
             convert_fit_to_grid_nc(time, fit_fn, grid_fn, out_fn, hdw_dat_dir, clobber=clobber)
 
         time += dt.timedelta(days=1)
-        
+
 
 def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     fitVersion='3.0',
@@ -55,8 +55,12 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
             print('Output file exists: %s - skipping' % out_fname)
             return 
 
+    print('Trying to produce %s' % grid_fname)
+
     # Run fit to GRID file conversion 
     status = fit_to_grid(fit_fname, grid_fname, convert_cmd, clobber=clobber)
+
+    print('Trying to produce %s' % out_fname)
 
     # load
     SDarn_read = pydarn.SuperDARNRead(grid_fname)

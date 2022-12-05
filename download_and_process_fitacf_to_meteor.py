@@ -10,6 +10,7 @@ from dateutil.relativedelta import relativedelta
 import helper
 import fit_to_nc
 import run_meteorproc
+import fit_to_grid_nc
 import subprocess
 
 def main(date, two_five, three_zero):
@@ -27,14 +28,14 @@ def main(date, two_five, three_zero):
     # fitACF 2.5
     if two_five:
         download_fitacfs_from_globus(fitDir, startDate, 'fitacf_25')
-        convert_fitacf_to_meteor_wind(startDate, endDate, fitDir, meteorWindDir, 2.5)
+        convert_fitacf_to_meteor_wind_and_gridnc(startDate, endDate, fitDir, meteorWindDir, 2.5)
 #        remove_converted_files(fitDir)
 
 
     # fitACF 3.0 (speckled)
     if three_zero:
         download_fitacfs_from_globus(fitDir, startDate, 'fitacf_30')
-        convert_fitacf_to_meteor_wind(startDate, endDate, fitDir, meteorWindDir, 3.0)
+        convert_fitacf_to_meteor_wind_and_gridnc(startDate, endDate, fitDir, meteorWindDir, 3.0)
         # remove_converted_files(fitDir)
         # os.rmdir(fitDir)
 
@@ -61,13 +62,14 @@ def download_fitacfs_from_globus(fitDir, date, pattern):
     # helper.send_email(emailSubject, emailBody)
 
 
-def convert_fitacf_to_meteor_wind(startDate, endDate, fitDir, windDir, fitVersion):
+def convert_fitacf_to_meteor_wind_and_gridnc(startDate, endDate, fitDir, windDir, fitVersion):
 
     combine_fitacfs(startDate, endDate, fitDir, fitVersion)
 
     fitFilenameFormat = fitDir + '/%Y%m%d'
     windFilenameFormat = windDir + '/%Y%b%d'
     run_meteorproc.main(startDate, endDate, fitFilenameFormat, windFilenameFormat)
+    fit_to_grid_nc.main(startDate, endDate)
 
     dateString = startDate.strftime('%Y/%m')
     emailSubject = '"{date} fitACF to meteor wind Conversion Successful"'.format(date = dateString)

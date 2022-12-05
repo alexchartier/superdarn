@@ -15,6 +15,31 @@ wgs84 = nv.FrameE(name='WGS84')
 
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
 
+def main(
+    stime = dt.datetime(2015, 3, 15),
+    etime = dt.datetime(2015, 3, 18),
+    fit_fn_fmt = '/project/superdarn/data/fitacf/%Y/%m/%Y%m%d.*.v3.0.fit',
+    grid_dirn = '/project/superdarn/data/grid/%Y/%m/',
+    out_dirn = '/project/superdarn/data/grid_nc/%Y/%m/',
+    hdw_dat_dir = '/project/superdarn/software/rst/tables/superdarn/hdw/',
+    clobber = False):
+
+    time = stime
+    while time <= etime:
+        grid_dirn_t = time.strftime(grid_dirn)
+        out_dirn_t = time.strftime(out_dirn)
+        os.makedirs(grid_dirn_t, exist_ok=True)
+        os.makedirs(out_dirn_t, exist_ok=True)
+
+        flist = glob.glob(time.strftime(fit_fn_fmt))
+        for fit_fn in flist:
+            fn_head = '.'.join(os.path.basename(fit_fn).split('.')[:-1])
+            grid_fn = os.path.join(grid_dirn_t, fn_head + '.grid')
+            out_fn = os.path.join(out_dirn_t, fn_head + '.grid.nc')
+            convert_fit_to_grid_nc(time, fit_fn, grid_fn, out_fn, hdw_dat_dir, clobber=clobber)
+
+        time += dt.timedelta(days=1)
+        
 
 def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     fitVersion='3.0',

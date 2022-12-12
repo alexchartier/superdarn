@@ -44,7 +44,7 @@ def main(
 def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     fitVersion='3.0',
     ref_ht=300.,  # matches the RST operation
-    convert_cmd='make_grid -xtd -chisham -ion -maxsrng 2000 %s > %s',
+    convert_cmd='make_grid -xtd -chisham -ion -minsrng 500 -maxsrng 3000 %s > %s',
     clobber=False,
 ):
     """ Convert fitACF files to .grid (median-filtered & geolocated), then to netCDF """
@@ -55,12 +55,12 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
             print('Output file exists: %s - skipping' % out_fname)
             return 
 
-    print('Trying to produce %s' % grid_fname)
+    #print('Trying to produce %s' % grid_fname)
 
     # Run fit to GRID file conversion 
     status = fit_to_grid(fit_fname, grid_fname, convert_cmd, clobber=clobber)
 
-    print('Trying to produce %s' % out_fname)
+    #print('Trying to produce %s' % out_fname)
 
     # load
     SDarn_read = pydarn.SuperDARNRead(grid_fname)
@@ -68,7 +68,7 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     radar_info = get_radar_params(hdw_dat_dir)
     radar_code = os.path.basename(fit_fname).split('.')[1]
     radar_info_t = id_hdw_params_t(time, radar_info[radar_code])
-    
+
     # set up data holders
     copy_vn = ['vector.mlat', 'vector.mlon', 'vector.kvect', 'vector.vel.median', 
         'vector.vel.sd', 'vector.pwr.median', 'vector.wdt.median',
@@ -99,19 +99,39 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
             int(data['end.hour']), int(data['end.minute']), int(data['end.second']),
         )
         shape = np.ones(data['vector.mlat'].shape)
-        out_vars['mjd_start'] = np.append(out_vars['mjd_start'], jdutil.jd_to_mjd(jdutil.datetime_to_jd(stime)) * shape)
-        out_vars['mjd_end'] = np.append(out_vars['mjd_end'], jdutil.jd_to_mjd(jdutil.datetime_to_jd(etime)) * shape)
+        out_vars['mjd_start'] = np.append(out_vars['mjd_start'], 
+            jdutil.jd_to_mjd(jdutil.datetime_to_jd(stime)) * shape)
+        out_vars['mjd_end'] = np.append(out_vars['mjd_end'], 
+            jdutil.jd_to_mjd(jdutil.datetime_to_jd(etime)) * shape)
+    
+    # Check there's something to write
+    if out_vars['mjd_start'] == []:
+        print('No valid data in %s - not writing %s' % (grid_fname, out_fname))
+        return
 
-        # AACGM to geo
-        mlat = data['vector.mlat']
-        mlon = data['vector.mlon']
-        [glat, glon, alt] = aacgmv2.convert_latlon_arr(mlat, mlon, ref_ht, stime, method_code="A2G")
-        out_vars['vector.glat'] = np.append(out_vars['vector.glat'], glat)
-        out_vars['vector.glon'] = np.append(out_vars['vector.glon'], glon)
-        
-        # bearing
-        gaz = calc_bearings(radar_info_t['glat'], radar_info_t['glon'], glat, glon, ref_ht)
-        out_vars['vector.g_kvect'] = np.append(out_vars['vector.g_kvect'], gaz)
+    # AACGM to geo
+    mlat = out_vars['vector.mlat']
+    mlon = out_vars['vector.mlon']
+    [out_vars['vector.glat'], out_vars['vector.glon'], alt] = \
+        aacgmv2.convert_latlon_arr(mlat, mlon, ref_ht, time, method_code="A2G")
+    
+    # geographic bearing
+    out_vars['vector.g_kvect'] = calc_bearings(
+        radar_info_t['glat'], radar_info_t['glon'], out_vars['vector.glat'], 
+        out_vars['vector.glon'], ref_ht,
+    )
+
+    # geomagnetic bearing (to determine whether velocity oriented  towards/away array) 
+    [r_mlat, r_mlon, _] = aacgmv2.convert_latlon_arr(
+        radar_info_t['glat'], radar_info_t['glon'], radar_info_t['alt'], 
+        stime, method_code="G2A",
+    )
+    maz = calc_bearings(r_mlat[0], r_mlon[0], mlat, mlon, ref_ht)
+    delta_maz = angle_between(maz, out_vars['vector.kvect'])
+    dirn = np.ones(maz.shape) 
+    dirn[np.abs(delta_maz) > 90.] *= -1
+    out_vars['vector.vel.dirn'] = dirn
+    out_vars['vector.vel.median'] 
 
     # Write out to netCDF
     var_defs = def_vars()
@@ -123,6 +143,18 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     write_nc(out_fname, header_info, dim_defs, var_defs, out_vars)
 
     print('Wrote to %s' % out_fname)
+
+
+def angle_between(x, y, deg=True):
+    if deg:
+        x = np.deg2rad(x) 
+        y = np.deg2rad(y) 
+    angle_rad = np.arctan2(np.sin(x-y), np.cos(x-y))
+
+    if deg:
+        return np.rad2deg(angle_rad)
+    else:
+        return angle_rad
 
 
 def write_nc(out_fname, header_info, dim_defs, var_defs, out_vars):
@@ -161,7 +193,7 @@ def calc_bearings(rlat, rlon, lats, lons, ref_ht):
         lon = lons[ind]
         pointA = wgs84.GeoPoint(latitude=lat, longitude=lon, z=depth, degrees=True)
         p_AB_N = pointA.delta_to(pointB)  # note we want the bearing at point A
-        brng_deg[ind] = p_AB_N.azimuth_deg - 180  # ... but away from the radar
+        brng_deg[ind] = p_AB_N.azimuth_deg
 
     return brng_deg
 
@@ -170,6 +202,7 @@ def def_vars():
      # netCDF writer expects a series of variable definitions - here they are
     stdin_flt = {'type': 'f4', 'dims': 'npts'} 
     stdin_dbl = {'type': 'f8', 'dims': 'npts'} 
+    stdin_int = {'type': 'i1', 'dims': 'npts'} 
     var_defs = { 
         'mjd_start': dict({'units': 'days', 'long_name': 'Modified Julian Date (start of window)'}, **stdin_dbl),
         'mjd_end': dict({'units': 'days', 'long_name': 'Modified Julian Date (end of window)'}, **stdin_dbl),
@@ -179,13 +212,13 @@ def def_vars():
         'vector.mlat': dict({'units': 'deg.', 'long_name': 'AACGM Latitude'}, **stdin_flt),
         'vector.mlon': dict({'units': 'deg.', 'long_name': 'AACGM Longitude'}, **stdin_flt),
         'vector.kvect': dict({'units': 'deg.', 'long_name': 'AACGM Azimuth angle'}, **stdin_flt),
-        'vector.vel.median': dict({'units': 'm/s', 'long_name': 'Weighted mean velocity magnitude (+ve away from radar'}, **stdin_flt),
+        'vector.vel.median': dict({'units': 'm/s', 'long_name': 'Weighted mean velocity magnitude'}, **stdin_flt),
         'vector.vel.sd': dict({'units': 'm/s', 'long_name': 'Velocity standard deviation'}, **stdin_flt),
+        'vector.vel.dirn': dict({'units': 'None', 'long_name': 'Velocity direction (+1 away from radar, -1 towards)'}, **stdin_int),
         'vector.pwr.median': dict({'units': 'dB', 'long_name': 'Weighted mean power'}, **stdin_flt),
         'vector.wdt.median': dict({'units': 'm/s', 'long_name': 'Weighted mean spectral width'}, **stdin_flt),
     }
     return var_defs
-
 
 
 def set_header(rootgrp, header_info) :
@@ -268,6 +301,7 @@ def load_grid(grid_nc_fn, time):
     radar_loc = [atts.lat, atts.lon, atts.alt / 1E3]
     m_radar_loc = aacgmv2.convert_latlon_arr(*radar_loc, time, method_code="G2A")
     radar_loc += [l[0] for l in m_radar_loc]
+
     return grid_data, radar_loc 
 
 
@@ -275,7 +309,7 @@ def plot_grid_nc(grid_nc_fn, time, intvl_min=2):
     grid_data, radar_loc = load_grid(grid_nc_fn, time)
     grid_data_t = subsample_data(grid_data, time, intvl_min)
 
-    vels = -grid_data_t['vector.vel.median']  # Converted for consistency
+    vels = grid_data_t['vector.vel.median'] 
     lons = grid_data_t['vector.glon']
     lats = grid_data_t['vector.glat']
     brng_deg = grid_data_t['vector.g_kvect']
@@ -310,6 +344,7 @@ def subsample_data(grid_data, time, intvl_min=2):
     grid_data_t = {}
     for k, v in grid_data.items():
         grid_data_t[k] = v[tidx]
+
     return grid_data_t
 
 
@@ -320,7 +355,7 @@ if __name__ == '__main__':
     grid_dirn = '/project/superdarn/data/grid/%Y/%m/'
     out_dirn = '/project/superdarn/data/grid_nc/%Y/%m/'
     hdw_dat_dir = '/project/superdarn/software/rst/tables/superdarn/hdw/'
-    clobber = False
+    clobber = True
 
     time = stime
     while time <= etime:
@@ -339,17 +374,17 @@ if __name__ == '__main__':
         time += dt.timedelta(days=1)
 
     """ #one-off instance w. before/after plotting for sanity check 
-    time = dt.datetime(2015, 3, 16, 1, 58)
+    time = dt.datetime(2015, 3, 15, 1, 58)
     hdw_dat_dir = '/project/superdarn/software/rst/tables/superdarn/hdw/'
-    fit_fname = '/project/superdarn/data/fitacf/2015/03/20150316.tig.v3.0.fit'
-    grid_fname = '/project/superdarn/data/grid/2015/03/20150316.tig.v3.0.grid'
-    out_fname = '/project/superdarn/data/grid_nc/2015/03/20150316.tig.v3.0.grid.nc'
+    fit_fname = '/project/superdarn/data/fitacf/2015/03/20150315.rkn.v3.0.fit'
+    grid_fname = '/project/superdarn/data/grid/2015/03/20150315.rkn.v3.0.grid'
+    out_fname = '/project/superdarn/data/grid_nc/2015/03/20150315.rkn.v3.0.grid.nc'
     convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir, clobber=True)
 
     plot_grid_nc(out_fname, time)
     plot_grid(grid_fname, time)
-    """
 
+    """
 
 
 

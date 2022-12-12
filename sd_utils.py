@@ -4,6 +4,7 @@ import glob
 import os
 import string 
 import random
+import aacgmv2
 
 def get_radar_params(hdw_dat_dir):
     # Pull out all the time/beam/radar name info from hdw_dat_dir   

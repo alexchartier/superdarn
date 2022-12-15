@@ -62,6 +62,12 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
 
     #print('Trying to produce %s' % out_fname)
 
+    # Check the grid file is big enough to be worth bothering with
+    fn_info = os.stat(grid_fname)
+    if fn_info.st_size < MIN_FITACF_FILE_SIZE:
+        print('\n\n%s %1.1f MB\nFile too small - skipping' % (grid_fname, fn_info.st_size / 1E6))
+        return 1
+
     # load
     SDarn_read = pydarn.SuperDARNRead(grid_fname)
     grid_data = SDarn_read.read_grid()

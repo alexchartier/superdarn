@@ -42,7 +42,7 @@ def send_email(subject, body, addresses = EMAIL_ADDRESSES):
 def get_radar_list():
     radarList = ['ade','adw','bks','cve','cvw','cly','fhe','fhw','gbr',
     'han','hok','hkw','inv','jme','kap','ksr','kod','lyr','pyk','pgr',
-    'rkn', 'sas', 'sch', 'sto', 'wal','bpk','dce','fir','hal','ker',
+    'rkn', 'sas', 'sch', 'sto', 'wal','bpk','dce','dcn','fir','hal','ker',
     'mcm','san','sps','sye','sys','tig','unw','zho']
     return radarList
 

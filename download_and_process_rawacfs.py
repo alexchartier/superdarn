@@ -12,7 +12,7 @@ import fit_to_nc
 import raw_to_fit
 import subprocess
 
-DOWNLOAD_SOURCE_FILES = False
+DOWNLOAD_SOURCE_FILES = True
 DELETE_FITACFS_V2_5 = True
 PROCESS_JME_RAWACFS = True
 
@@ -43,7 +43,8 @@ def main(date):
     os.makedirs(netDir, exist_ok=True)
 
     if DOWNLOAD_SOURCE_FILES:
-        download_source_files(rawDir, netDir, startDate)
+        #download_source_files(rawDir, netDir, startDate)
+        subprocess.call('scp -r \'radar@38.124.149.234:/borealis_nfs/borealis_data/rawacf_dmap/202212*\' /project/superdarn/data/rawacf/2022/12', shell=True)
 
     convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir)
 

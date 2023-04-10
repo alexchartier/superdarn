@@ -13,13 +13,19 @@ def convert_winds(
     hdw_dat_dir='/project/superdarn/software/rst/tables/superdarn/hdw/',
 ):
 
-    radar_prm = get_radar_params(hdw_dat_dir)
+    radar_prm = get_radar_params(hdw_dat_dir)   
+    step = relativedelta(months=1)
 
-    month = startTime
+    month = startTime - step
     while month <= endTime:
+        month += step
     
         # Parse monthly file-list
         flist = glob.glob(os.path.join(month.strftime(indir), '*'))
+        if len(flist) == 0: 
+            print(month.strftime('skipping %Y %b - no files'))
+            continue
+
         dates = []
         radars = []
         for fn in flist:
@@ -80,7 +86,6 @@ def convert_winds(
                         var.long_name = defs['long_name']
                 print('Wrote to %s' % out_fname)
                 
-        month += relativedelta(months=1)
 
 
 def set_header(rootgrp, header_info) :
@@ -97,11 +102,12 @@ def set_header(rootgrp, header_info) :
 
 def format_outvars(m_vars, z_vars):
     outvars = {}
-    varnames = 'hour', 'Vm', 'Vx', 'Vy', 'sdev_Vx', 'sdev_Vy'
+    #varnames = 'hour', 'Vm', 'Vx', 'Vy', 'sdev_Vx', 'sdev_Vy'
+    varnames = 'hour',  'Vx', 'Vy', 'sdev_Vx', 'sdev_Vy', 'lat', 'long'
     for vn in varnames:
         outvars[vn] = m_vars[vn] 
-    outvars['V_merid'] = outvars.pop('Vm')
-    outvars['V_zonal'] = z_vars['Vz']
+    #outvars['V_merid'] = outvars.pop('Vm')
+    #outvars['V_zonal'] = z_vars['Vz']
     params = {
         'day': dt.datetime(int(m_vars['year'][0]), int(m_vars['month'][0]), int(m_vars['day'][0])),
         'lat': m_vars['lat'][0],
@@ -118,12 +124,14 @@ def def_vars():
     stdin_dbl = {'type': 'f8', 'dims': 'npts'} 
     var_defs = { 
         'hour': dict({'units': 'hours', 'long_name': 'Hour (UT)'}, **stdin_dbl),
-        'V_merid': dict({'units': 'm/s', 'long_name': 'Merid. Vel. (+ve Poleward)'}, **stdin_dbl),
-        'V_zonal': dict({'units': 'm/s', 'long_name': 'Zonal Vel. (+ve East)'}, **stdin_dbl),
+        #'V_merid': dict({'units': 'm/s', 'long_name': 'Merid. Vel. (+ve Poleward)'}, **stdin_dbl),
+        #'V_zonal': dict({'units': 'm/s', 'long_name': 'Zonal Vel. (+ve East)'}, **stdin_dbl),
         'Vx': dict({'units': 'm/s', 'long_name': 'Radar Boresight Vel.'}, **stdin_dbl),
-        'Vy': dict({'units': 'm/s', 'long_name': 'Perp. Radar Boresight Vel.'}, **stdin_dbl),
+        'Vy': dict({'units': 'm/s', 'long_name': 'Perp. Radar Boresight Vel. (90deg right)'}, **stdin_dbl),
         'sdev_Vx': dict({'units': 'm/s', 'long_name': 'Vel. error'}, **stdin_dbl),
         'sdev_Vy': dict({'units': 'm/s', 'long_name': 'Vel. error'}, **stdin_dbl),
+        'lat': dict({'units': 'deg', 'long_name': 'Latitude'}, **stdin_dbl),
+        'long': dict({'units': 'deg', 'long_name': 'Longitude'}, **stdin_dbl),
     }   
     return var_defs
 
@@ -138,7 +146,7 @@ def read_winds(wind_fn):
         if line[0] == '#':
             hdr.append(line)
         else:
-            vals.append(np.array(line.split()).astype(np.float))
+            vals.append(np.array(line.split()).astype(float))
     varnames = hdr[-1].split()[1:]
     outvars = {v: [] for v in varnames}
     for val_list in vals:

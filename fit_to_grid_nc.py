@@ -60,6 +60,9 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     # Run fit to GRID file conversion 
     status = fit_to_grid(fit_fname, grid_fname, convert_cmd, clobber=clobber)
 
+    if status == 1:
+        return 1
+
     #print('Trying to produce %s' % out_fname)
 
     # Check the grid file is big enough to be worth bothering with

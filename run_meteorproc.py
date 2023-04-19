@@ -68,9 +68,9 @@ def main(
                     print('wind file already exists')
                     continue
 
-                # beam_num = id_beam_north(hdw_params)
+                beam_num = id_beam_north(hdw_params)
                 # find_middle_beam
-                beam_num = int(hdw_params['maxbeams'] / 2)
+                # beam_num = int(hdw_params['maxbeams'] / 2)
 
                 # skip radars with no good beam
                 if np.isnan(beam_num):  

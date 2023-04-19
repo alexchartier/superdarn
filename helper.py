@@ -7,7 +7,7 @@ import glob
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
-LATEST_PUBLIC_DATA = 2020
+LATEST_PUBLIC_DATA = 2021
 
 # Directories
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
@@ -20,6 +20,8 @@ RAWACF_DIR_FMT = '/project/superdarn/data/rawacf/%Y/%m'
 FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m'
 NETCDF_DIR_FMT = '/project/superdarn/data/netcdf/%Y/%m'
 METEORWIND_DIR_FMT = '/project/superdarn/data/meteorwind/%Y/%m'
+METEORWINDNC_DIR_FMT = '/project/superdarn/data/meteorwindnc/%Y/%m'
+GRID_DIR_FMT = '/project/superdarn/data/grid_nc/%Y/%m'
 LOG_DIR = '/project/superdarn/logs/'
 PROCESSING_ISSUE_DIR = '/project/superdarn/processing_issues/%Y/%m'
 FIT_NET_LOG_DIR = '/project/superdarn/logs/fitACF_to_netCDF_logs/%Y/'
@@ -91,7 +93,8 @@ def getDOI(year):
         2017: 'https://doi.org/10.20383/101.0289',
         2018: 'https://doi.org/10.20383/101.0290',
         2019: 'https://doi.org/10.20383/102.0558',
-        2020: 'https://doi.org/10.20383/103.0573'
+        2020: 'https://doi.org/10.20383/103.0573',
+        2021: 'https://doi.org/10.20383/102.0677'
     }
 
     return DOIs[year]

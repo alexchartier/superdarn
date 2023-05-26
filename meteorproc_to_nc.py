@@ -8,6 +8,7 @@ from dateutil.relativedelta import relativedelta
 import netCDF4
 from sd_utils import get_radar_params, id_hdw_params_t
 
+
 def convert_winds(
     startTime, endTime, indir, outdir,
     hdw_dat_dir='/project/superdarn/software/rst/tables/superdarn/hdw/',
@@ -40,13 +41,21 @@ def convert_winds(
         for date in dates:
             time = dt.datetime.strptime(date, '%Y%b%d') 
             for radar in radars:
-                fn_fmt = os.path.join(month.strftime(indir), '.'.join([date, radar, '%s.txt']))
+                print(radar)
+                fn_fmt = os.path.join(month.strftime(indir), '.'.join([date, radar, '*%s.txt']))
                 out_fname = os.path.join(month.strftime(outdir), '.'.join([date, radar, 'nc']))
                 os.makedirs(os.path.dirname(out_fname), exist_ok=True)
-
-                # pull out boresight
-                merid_wind_fn = fn_fmt % 'm' 
-                zonal_wind_fn = fn_fmt % 'z'
+                
+                # Grab the file
+                merid_wind_fn_glob = fn_fmt % 'm' 
+                merid_wind_fn_list = glob.glob(merid_wind_fn_glob)
+                if len(merid_wind_fn_list) < 1:
+                    print('Unable to find %s' % merid_wind_fn_glob)
+                    continue
+                merid_wind_fn = merid_wind_fn_list[0]
+                if os.stat(merid_wind_fn).st_size == 0:
+                    print('Empty file: %s' % merid_wind_fn)
+                    continue
                 hdw_params = radar_prm[radar]
                 hdw_dat_t = id_hdw_params_t(time, hdw_params)
                 boresight = hdw_dat_t['boresight']
@@ -54,21 +63,20 @@ def convert_winds(
                 # try to load
                 try:
                     m_hdr, m_vars = read_winds(merid_wind_fn)
-                    z_hdr, z_vars = read_winds(zonal_wind_fn)
                 except:
-                    print('Unable to find %s' % fn_fmt)
+                    print('Unable to process %s' % fn_fmt)
                     continue
                 if m_vars['year'] == []:
                     print('Unable to process %s' % fn_fmt)
                     continue
                 
                 # Define output variables 
-                outvars, header_info = format_outvars(m_vars, z_vars)
+                outvars, header_info = format_outvars(m_vars)
                 dim_defs = {'npts': len(outvars['hour'])}   
                 var_defs = def_vars()
                 header_info['description'] = \
-                    'meridional + zonal winds from %s and %s' % \
-                    (merid_wind_fn, zonal_wind_fn)
+                    'SuperDARN winds from %s' % \
+                    (merid_wind_fn)
                 header_info['params'] = m_hdr.replace('meridional', 'both')
                 header_info['history'] = 'created on %s' % dt.datetime.now()
                 header_info['boresight'] = '%1.2f degrees East of North' % boresight
@@ -100,7 +108,7 @@ def set_header(rootgrp, header_info) :
     return rootgrp
 
 
-def format_outvars(m_vars, z_vars):
+def format_outvars(m_vars):
     outvars = {}
     #varnames = 'hour', 'Vm', 'Vx', 'Vy', 'sdev_Vx', 'sdev_Vy'
     varnames = 'hour',  'Vx', 'Vy', 'sdev_Vx', 'sdev_Vy', 'lat', 'long'

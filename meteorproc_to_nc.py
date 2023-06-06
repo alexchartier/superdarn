@@ -13,7 +13,6 @@ def convert_winds(
     startTime, endTime, indir, outdir,
     hdw_dat_dir='/project/superdarn/software/rst/tables/superdarn/hdw/',
 ):
-
     radar_prm = get_radar_params(hdw_dat_dir)   
     step = relativedelta(months=1)
 
@@ -103,7 +102,7 @@ def set_header(rootgrp, header_info) :
     rootgrp.lat = header_info['lat']
     rootgrp.lon = header_info['lon']
     rootgrp.rsep_km = header_info['rsep']
-    rootgrp.maxrangegate = header_info['frang']
+    rootgrp.frang = header_info['frang']
     rootgrp.boresight = header_info['boresight']
     return rootgrp
 

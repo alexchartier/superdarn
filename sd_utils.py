@@ -5,11 +5,22 @@ import os
 import string 
 import random
 import aacgmv2
+import re
 
 def get_radar_params(hdw_dat_dir):
     # Pull out all the time/beam/radar name info from hdw_dat_dir   
     filenames = glob.glob(os.path.join(hdw_dat_dir, '*'))
     assert len(filenames) > 0, 'No HDW files found in: %s' % hdw_dat_dir
+
+    # NOTE: Simon's ICW/ICE hdw.dat files are non-standard format and of unknown provenance -I'm taking them out (ATC)
+    filenames_nosimon = []
+    for fn in filenames:
+        if fn.split('.')[-1] == 'icw':
+            continue
+        if fn.split('.')[-1] == 'ice':
+            continue
+        filenames_nosimon.append(fn)
+    filenames = filenames_nosimon
 
     prm = [
         'glat', 'glon', 'alt', 'boresight', 'beamsep', 'velsign',
@@ -19,6 +30,7 @@ def get_radar_params(hdw_dat_dir):
     radar_list = {}
     for fn in filenames:
         radar_name = fn.split('.')[-1]
+
 
         # Read in text and remove comments
         with open(fn, 'r') as f:
@@ -34,7 +46,16 @@ def get_radar_params(hdw_dat_dir):
         # Read hardware parameters
         radar_list[radar_name] = {}
         for line in txt2:
-            vals = [float(ln) for ln in line.split()]
+            ln = line.split()
+
+            # Simon has decided to add a time of day to the hdw.dat - here's a workaround
+            #lnclean = []
+            #for x in ln:
+            #    if not re.search(r':', x):
+            #        lnclean.append(x)
+            #ln = lnclean
+
+            vals = [float(vn) for vn in ln]
             yr = int(vals[1])
             tot_sec = int(vals[2])
             assert (yr < 5000) & (yr > 1980), 'year looks wrong: %i' % yr
@@ -81,6 +102,7 @@ def get_random_string(length):
 
 
 def get_radar_list(in_dir):
+    breakpoint()
     print('Calculating list of radars')
     assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
     flist = glob.glob(os.path.join(in_dir, '*.bz2'))

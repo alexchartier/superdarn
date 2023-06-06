@@ -13,7 +13,6 @@ import glob
 # import bz2
 from sd_utils import get_random_string, get_radar_list, id_beam_north, id_hdw_params_t, get_radar_params
 import sys
-import pdb
 
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
 

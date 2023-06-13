@@ -57,7 +57,7 @@ def main(
             # loop over meridional and zonal
             for mz_flag in ['m', 'z']:
                 print(mz_flag)
-
+                
                 radar_name_with_mode = '.'.join(os.path.basename(fit_fname).split('.')[1:-3])
 
                 # specify output filename
@@ -67,14 +67,14 @@ def main(
                     print('wind file already exists')
                     continue
 
-                beam_num = id_beam_north(hdw_params)
+                beam_num = 1 # id_beam_north(hdw_params)
                 # find_middle_beam
                 # beam_num = int(hdw_params['maxbeams'] / 2)
 
                 # skip radars with no good beam
-                if np.isnan(beam_num):  
-                    print('No valid beam')
-                    continue
+                #if np.isnan(beam_num):  
+                #    print('No valid beam')
+                #    continue
 
 
                 # Convert file to a wind
@@ -96,8 +96,8 @@ def fit_to_wind(
 
     # Convert cfit to  wind
     os.makedirs(os.path.dirname(wind_fname), exist_ok=True)
-    cmd = '%s -bm %i -mz %s %s > %s' % \
-        (meteorproc_exe, beam_num, mz_flag, cfit_fname, wind_fname)
+    cmd = '%s -mz %s %s > %s' % \
+        (meteorproc_exe, mz_flag, cfit_fname, wind_fname)
     print(cmd)
     os.system(cmd)
     print('written to %s' % wind_fname)

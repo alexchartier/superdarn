@@ -1,3 +1,6 @@
-[submodule "/homes/superdarn/superdarn/globus_sync"]
-	path = /homes/superdarn/superdarn/globus_sync
+[submodule "globus_sync"]
+	path = ./
+	url = https://github.com/SuperDARNCanada/globus.git
+[submodule "globus"]
+	path = globus
 	url = https://github.com/SuperDARNCanada/globus.git

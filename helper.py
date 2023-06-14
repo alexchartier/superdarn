@@ -25,7 +25,7 @@ GRID_DIR_FMT = '/project/superdarn/data/grid_nc/%Y/%m'
 LOG_DIR = '/project/superdarn/logs/'
 PROCESSING_ISSUE_DIR = '/project/superdarn/processing_issues/%Y/%m'
 FIT_NET_LOG_DIR = '/project/superdarn/logs/fitACF_to_netCDF_logs/%Y/'
-GLOBUS_PATH = '/homes/superdarn/globusconnectpersonal-3.1.6/globusconnectpersonal'
+GLOBUS_PATH = '/homes/superdarn/globusconnectpersonal-3.2.2/globusconnectpersonal'
 
 MIN_FITACF_FILE_SIZE = 1E5
 

@@ -21,11 +21,16 @@ FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m'
 NETCDF_DIR_FMT = '/project/superdarn/data/netcdf/%Y/%m'
 METEORWIND_DIR_FMT = '/project/superdarn/data/meteorwind/%Y/%m'
 METEORWINDNC_DIR_FMT = '/project/superdarn/data/meteorwindnc/%Y/%m'
-GRID_DIR_FMT = '/project/superdarn/data/grid_nc/%Y/%m'
+GRID_DIR_FMT = '/project/superdarn/data/grid/%Y/%m'
+GRIDNC_DIR_FMT = '/project/superdarn/data/grid_nc/%Y/%m'
 LOG_DIR = '/project/superdarn/logs/'
 PROCESSING_ISSUE_DIR = '/project/superdarn/processing_issues/%Y/%m'
 FIT_NET_LOG_DIR = '/project/superdarn/logs/fitACF_to_netCDF_logs/%Y/'
 GLOBUS_PATH = '/homes/superdarn/globusconnectpersonal-3.2.2/globusconnectpersonal'
+BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
+GLOBUS_FILE_LIST_DIR = '/project/superdarn/data/data_status/Globus_files'
+ZENODO_FILE_LIST_DIR = '/project/superdarn/data/data_status/Zenodo_files'
+DATA_STATUS_DIR = '/project/superdarn/data/data_status'
 
 MIN_FITACF_FILE_SIZE = 1E5
 

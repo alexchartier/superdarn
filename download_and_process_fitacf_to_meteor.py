@@ -52,7 +52,7 @@ def download_fitacfs_from_globus(fitDir, date, pattern):
     subprocess.call('{0} -start -restrict-paths \'rw~/,rw/project/superdarn/data/fitacf\' &'.format(helper.GLOBUS_PATH), shell=True)
 
     # Initiate the Globus -> APL transfer
-    subprocess.call('nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} -t {2} {3}'.format(date.year, date.month, pattern, fitDir), shell=True)
+    subprocess.call('nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} -t {2} {3}'.format(date.year, date.month, pattern, fitDir), shell=True)
 
     # Stop Globus Connect Personal
     #subprocess.call('{0} -stop'.format(helper.GLOBUS_PATH), shell=True)

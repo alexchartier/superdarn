@@ -10,7 +10,7 @@ import helper
 #import raw_to_nc
 import fit_to_nc
 import raw_to_fit
-import fitacf_to_meteorwind
+import fit_to_meteorwind
 import fit_to_grid_nc
 import upload_nc_to_zenodo
 import meteorproc_to_nc
@@ -55,7 +55,7 @@ def convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netD
     windDir = startDate.strftime(helper.METEORWIND_DIR_FMT)
     windncDir = startDate.strftime(helper.METEORWINDNC_DIR_FMT)
     windFilenameFormat = windDir + '/%Y%b%d'
-    fitacf_to_meteorwind.main(startDate, endDate, fitFilenameFormat, windFilenameFormat)
+    fit_to_meteorwind.main(startDate, endDate, fitFilenameFormat, windFilenameFormat)
     meteorproc_to_nc.convert_winds(startDate, endDate, windDir, windncDir)
 
     fit_to_grid_nc.main(startDate, endDate)    

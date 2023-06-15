@@ -9,7 +9,7 @@ import time
 from dateutil.relativedelta import relativedelta
 import helper
 import fit_to_nc
-import run_meteorproc
+import fit_to_meteorwind
 import fit_to_grid_nc
 import subprocess
 
@@ -67,7 +67,7 @@ def convert_fitacf_to_meteor_wind_and_gridnc(startDate, endDate, fitDir, windDir
 
     fitFilenameFormat = fitDir + '/%Y%m%d'
     windFilenameFormat = windDir + '/%Y%b%d'
-    run_meteorproc.main(startDate, endDate, fitFilenameFormat, windFilenameFormat)
+    fit_to_meteorwind.main(startDate, endDate, fitFilenameFormat, windFilenameFormat)
    # fit_to_grid_nc.main(startDate, endDate)
 
     dateString = startDate.strftime('%Y/%m')

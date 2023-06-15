@@ -11,7 +11,7 @@ END_DATE = dt.datetime(1993, 9, 1)
 VALID_FILE_TYPES = ['rawacf', 'fitacf', 'fit_nc', 'meteorwind', 'meteorwind_nc', 'grid', 'grid_nc']
 
 
-def getLocalFileList(date, file_types=None):
+def get_local_file_list(date, file_types=None):
     file_list = {}
     rawacf_dir = date.strftime(helper.RAWACF_DIR_FMT)
     fitacf_dir = date.strftime(helper.FITACF_DIR_FMT)
@@ -79,11 +79,15 @@ def getLocalFileList(date, file_types=None):
     return file_list
 
 
-def getGlobusFileList(date):
+def get_globus_file_list(date):
     day = date.strftime('%Y%m%d')
     with open(f'{helper.GLOBUS_FILE_LIST_DIR}/globus_data_inventory.json') as f:
         remote_data = json.load(f)
     return remote_data.get(day, [])
+
+
+def produce_missing_files(missing_files):
+    return
 
 
 def main(file_types):
@@ -109,8 +113,8 @@ def main(file_types):
     while date >= END_DATE:
         print(f'Checking files for {date.strftime("%Y-%m-%d")}...')
 
-        globus_files = getGlobusFileList(date)
-        local_files = getLocalFileList(date, file_types)
+        globus_files = get_globus_file_list(date)
+        local_files = get_local_file_list(date, file_types)
         missing_files = {}
 
         for file_type, files in local_files.items():
@@ -129,7 +133,9 @@ def main(file_types):
             for file_type, files in missing_files.items():
                 if files:
                     print(f'{file_type}: {files}')
-        breakpoint()
+
+        produce_missing_files(missing_files)
+
         date -= dt.timedelta(days=1)
 
 
@@ -139,4 +145,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args.file_types)
-

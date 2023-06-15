@@ -11,7 +11,7 @@ END_DATE = dt.datetime(1993, 9, 1)
 VALID_FILE_TYPES = ['rawacf', 'fitacf', 'fit_nc', 'meteorwind', 'meteorwind_nc', 'grid', 'grid_nc']
 
 
-def getLocalFileList(date):
+def getLocalFileList(date, file_types=None):
     file_list = {}
     rawacf_dir = date.strftime(helper.RAWACF_DIR_FMT)
     fitacf_dir = date.strftime(helper.FITACF_DIR_FMT)
@@ -24,41 +24,57 @@ def getLocalFileList(date):
     day_string = date.strftime('%Y%m%d')
     day_string_two = date.strftime('%Y%b%d')
 
-    rawacf_files = glob.glob(f'{rawacf_dir}/*{day_string}*')
-    if not rawacf_files or not os.path.isdir(rawacf_dir):
-        file_list['rawacf'] = []
+    if file_types is None:
+        file_types = VALID_FILE_TYPES
 
-    fitacf_files = glob.glob(f'{fitacf_dir}/*{day_string}*')
-    if not fitacf_files or not os.path.isdir(fitacf_dir):
-        file_list['fitacf'] = []
+    if 'rawacf' in file_types:
+        rawacf_files = glob.glob(f'{rawacf_dir}/*{day_string}*')
+        if not rawacf_files or not os.path.isdir(rawacf_dir):
+            file_list['rawacf'] = []
+        else:
+            file_list['rawacf'] = rawacf_files
 
-    fitnc_files = glob.glob(f'{fit_nc_dir}/*{day_string}*')
-    if not fitnc_files or not os.path.isdir(fit_nc_dir):
-        file_list['fit_nc'] = []
+    if 'fitacf' in file_types:
+        fitacf_files = glob.glob(f'{fitacf_dir}/*{day_string}*')
+        if not fitacf_files or not os.path.isdir(fitacf_dir):
+            file_list['fitacf'] = []
+        else:
+            file_list['fitacf'] = fitacf_files
 
-    meteorwind_files = glob.glob(f'{meteorwind_dir}/*{day_string_two}*')
-    if not meteorwind_files or not os.path.isdir(meteorwind_dir):
-        file_list['meteorwind'] = []
+    if 'fit_nc' in file_types:
+        fitnc_files = glob.glob(f'{fit_nc_dir}/*{day_string}*')
+        if not fitnc_files or not os.path.isdir(fit_nc_dir):
+            file_list['fit_nc'] = []
+        else:
+            file_list['fit_nc'] = fitnc_files
 
-    meteorwindnc_files = glob.glob(f'{meteorwind_nc_dir}/*{day_string_two}*')
-    if not meteorwindnc_files or not os.path.isdir(meteorwind_nc_dir):
-        file_list['meteorwind_nc'] = []
+    if 'meteorwind' in file_types:
+        meteorwind_files = glob.glob(f'{meteorwind_dir}/*{day_string_two}*')
+        if not meteorwind_files or not os.path.isdir(meteorwind_dir):
+            file_list['meteorwind'] = []
+        else:
+            file_list['meteorwind'] = meteorwind_files
 
-    grid_files = glob.glob(f'{grid_dir}/*{day_string}*')
-    if not grid_files or not os.path.isdir(grid_dir):
-        file_list['grid'] = []
+    if 'meteorwind_nc' in file_types:
+        meteorwindnc_files = glob.glob(f'{meteorwind_nc_dir}/*{day_string_two}*')
+        if not meteorwindnc_files or not os.path.isdir(meteorwind_nc_dir):
+            file_list['meteorwind_nc'] = []
+        else:
+            file_list['meteorwind_nc'] = meteorwindnc_files
 
-    gridnc_files = glob.glob(f'{grid_nc_dir}/*{day_string}*')
-    if not gridnc_files or not os.path.isdir(grid_nc_dir):
-        file_list['grid_nc'] = []
+    if 'grid' in file_types:
+        grid_files = glob.glob(f'{grid_dir}/*{day_string}*')
+        if not grid_files or not os.path.isdir(grid_dir):
+            file_list['grid'] = []
+        else:
+            file_list['grid'] = grid_files
 
-    file_list['rawacf'] = rawacf_files
-    file_list['fitacf'] = fitacf_files
-    file_list['fit_nc'] = fitnc_files
-    file_list['meteorwind'] = meteorwind_files
-    file_list['meteorwind_nc'] = meteorwindnc_files
-    file_list['grid'] = grid_files
-    file_list['grid_nc'] = gridnc_files
+    if 'grid_nc' in file_types:
+        gridnc_files = glob.glob(f'{grid_nc_dir}/*{day_string}*')
+        if not gridnc_files or not os.path.isdir(grid_nc_dir):
+            file_list['grid_nc'] = []
+        else:
+            file_list['grid_nc'] = gridnc_files
 
     return file_list
 
@@ -71,14 +87,21 @@ def getGlobusFileList(date):
 
 
 def main(file_types):
-    if file_types:
+    if args.file_types is None:
+        file_types = VALID_FILE_TYPES
+    elif not args.file_types:
+        print('\nFile type flag is used, but no file types are specified.\nExample usage:\n')
+        print('   python3 process_missing_files.py')
+        print('   python3 process_missing_files.py -t fitacf meteorwind_nc\n')
+        return
+    else:
         file_types = [file_type.lower() for file_type in file_types]
         invalid_file_types = set(file_types) - set(VALID_FILE_TYPES)
         if invalid_file_types:
-            print(f'\nInvalid file types specified: {", ".join(invalid_file_types)}.')
+            print(f'\nInvalid file types specified: {", ".join(invalid_file_types)}')
             print('Valid file types are:')
             for file_type in VALID_FILE_TYPES:
-                print(f'    {file_type}')            
+                print(f'  {file_type}')
             print('\nExample usage: python3 process_missing_files.py -t fitacf meteorwind_nc\n')
             return
 
@@ -87,13 +110,10 @@ def main(file_types):
         print(f'Checking files for {date.strftime("%Y-%m-%d")}...')
 
         globus_files = getGlobusFileList(date)
-        local_files = getLocalFileList(date)
+        local_files = getLocalFileList(date, file_types)
         missing_files = {}
 
         for file_type, files in local_files.items():
-            if file_types and file_type.lower() not in file_types:
-                continue
-
             missing_files[file_type] = []
             for globus_file in globus_files:
                 file_exists = False
@@ -117,5 +137,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-t', '--file-types', nargs='*', help='Specify the file types to check (e.g. fitacf, meteorwind_nc, etc)')
     args = parser.parse_args()
+
     main(args.file_types)
 

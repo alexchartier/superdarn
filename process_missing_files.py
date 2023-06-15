@@ -6,8 +6,6 @@ import os
 import subprocess
 import json
 
-START_DATE = dt.datetime(2017, 5, 5)
-END_DATE = dt.datetime(1993, 9, 1)
 VALID_FILE_TYPES = ['rawacf', 'fitacf', 'fit_nc', 'meteorwind', 'meteorwind_nc', 'grid', 'grid_nc']
 
 
@@ -90,13 +88,13 @@ def produce_missing_files(missing_files):
     return
 
 
-def main(file_types):
-    if args.file_types is None:
+def main(start_date, end_date, file_types):
+    if file_types is None:
         file_types = VALID_FILE_TYPES
-    elif not args.file_types:
+    elif not file_types:
         print('\nFile type flag is used, but no file types are specified.\nExample usage:\n')
-        print('   python3 process_missing_files.py')
-        print('   python3 process_missing_files.py -t fitacf meteorwind_nc\n')
+        print('   python3 process_missing_files.py 20221022 20220901')
+        print('   python3 process_missing_files.py 20221022 20220901 -t fitacf meteorwind_nc\n')
         return
     else:
         file_types = [file_type.lower() for file_type in file_types]
@@ -109,8 +107,8 @@ def main(file_types):
             print('\nExample usage: python3 process_missing_files.py -t fitacf meteorwind_nc\n')
             return
 
-    date = START_DATE
-    while date >= END_DATE:
+    date = start_date
+    while date >= end_date:
         print(f'Checking files for {date.strftime("%Y-%m-%d")}...')
 
         globus_files = get_globus_file_list(date)
@@ -141,7 +139,12 @@ def main(file_types):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('start_date', help='Specify the start date (YYYYMMDD)')
+    parser.add_argument('end_date', help='Specify the end date (YYYYMMDD)')
     parser.add_argument('-t', '--file-types', nargs='*', help='Specify the file types to check (e.g. fitacf, meteorwind_nc, etc)')
     args = parser.parse_args()
 
-    main(args.file_types)
+    start_date = dt.datetime.strptime(args.start_date, '%Y%m%d')
+    end_date = dt.datetime.strptime(args.end_date, '%Y%m%d')
+
+    main(start_date, end_date, args.file_types)

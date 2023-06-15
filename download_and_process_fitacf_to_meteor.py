@@ -50,12 +50,11 @@ def download_fitacfs_from_globus(fitDir, date, pattern):
     # Start Globus Connect Personal and establish connection
     # Also allow access to /project/superdarn/data/
     subprocess.call('{0} -start -restrict-paths \'rw~/,rw/project/superdarn/data/fitacf\' &'.format(helper.GLOBUS_PATH), shell=True)
-
+    
     # Initiate the Globus -> APL transfer
-    subprocess.call('nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} -t {2} {3}'.format(date.year, date.month, pattern, fitDir), shell=True)
-
-    # Stop Globus Connect Personal
-    #subprocess.call('{0} -stop'.format(helper.GLOBUS_PATH), shell=True)
+    subprocess.run(['nohup', '/software/python-3.11.4/bin/python3', 
+                    '/homes/superdarn/superdarn/globus/sync_radar_data_globus.py',
+                    '-y', str(date.year), '-m', str(date.month), '-t', pattern, fitDir])
 
     # emailSubject = '"{0} {1} Data Successfully Downloaded"'.format(date.strftime('%Y/%m'), pattern)
     # emailBody    = '"{0} {1} source files have been downloaded. Starting conversion to netCDF."'.format(date.strftime('%Y/%m'), pattern)
@@ -69,7 +68,7 @@ def convert_fitacf_to_meteor_wind_and_gridnc(startDate, endDate, fitDir, windDir
     fitFilenameFormat = fitDir + '/%Y%m%d'
     windFilenameFormat = windDir + '/%Y%b%d'
     run_meteorproc.main(startDate, endDate, fitFilenameFormat, windFilenameFormat)
-    fit_to_grid_nc.main(startDate, endDate)
+   # fit_to_grid_nc.main(startDate, endDate)
 
     dateString = startDate.strftime('%Y/%m')
     emailSubject = '"{date} fitACF to meteor wind Conversion Successful"'.format(date = dateString)

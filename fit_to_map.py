@@ -27,7 +27,7 @@ import datetime as dt
 #import bz2
 import shutil
 import pdb
-from run_meteorproc import get_radar_params
+from fitacf_to_meteorwind import get_radar_params
 sys.path.append('/homes/chartat1/fusionpp/src/nimo/')
 
 

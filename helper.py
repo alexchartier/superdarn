@@ -31,6 +31,8 @@ BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
 GLOBUS_FILE_LIST_DIR = '/project/superdarn/data/data_status/Globus_files'
 ZENODO_FILE_LIST_DIR = '/project/superdarn/data/data_status/Zenodo_files'
 DATA_STATUS_DIR = '/project/superdarn/data/data_status'
+HDW_DAT_DIR = '/project/superdarn/software/rst/tables/superdarn/hdw'
+
 
 MIN_FITACF_FILE_SIZE = 1E5
 

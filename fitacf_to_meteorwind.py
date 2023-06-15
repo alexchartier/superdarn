@@ -1,20 +1,16 @@
 """
-run_meteorproc.py
+fitacf_to_meteorwind.py
 
 Loop through all the days and radars, processing the bzipped fitACFs into meteor winds
 Use hardware.dat files to identify the beam configurations
 
 """
-
-import numpy as np
 import datetime as dt
 import os
 import glob
-# import bz2
 from sd_utils import get_random_string, get_radar_list, id_beam_north, id_hdw_params_t, get_radar_params
 import sys
-
-MIN_FITACF_FILE_SIZE = 1E5 # bytes
+import helper
 
 def main(
         starttime=dt.datetime(2016, 1, 1), 
@@ -48,7 +44,7 @@ def main(
             fit_fname = fit_flist[0]
 
             fn_info = os.stat(fit_fname)
-            if fn_info.st_size < MIN_FITACF_FILE_SIZE:
+            if fn_info.st_size < helper.MIN_FITACF_FILE_SIZE:
                 print('\n\n%s %1.1f MB\nFile too small - skipping' % (fit_fname, fn_info.st_size / 1E6))
                 continue
 
@@ -125,27 +121,22 @@ def get_radar_list(in_dir):
             print(radarn)
     return radar_list
 
-
 if __name__ == '__main__':
     args = sys.argv
     assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
-        'python3 run_meteorproc.py 2016,1,1 2017,1,1 ' + \
+        'python3 fitacf_to_meteorwind.py 20160101 20170101 ' + \
         '/project/superdarn/data/fitacf/%Y/%m/%Y%m%d  ' + \
         '/project/superdarn/data/meteorwind/%Y/%m/%Y%b%d \n'
 
     clobber = False
-    if (len(args) > 5) and (args[5] == 'clobber'):
+    if len(args) > 5 and args[5] == 'clobber':
         clobber = True
 
-    stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
-    etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
+    stime = dt.datetime.strptime(args[1], '%Y%m%d')
+    etime = dt.datetime.strptime(args[2], '%Y%m%d')
     run_dir = './run/%s' % get_random_string(4) 
 
-    main(
-        starttime=stime, 
-        endtime=etime, 
-        fit_fname_fmt=args[3], 
-        wind_fname_fmt=args[4],
-    )
+    main(starttime=stime, endtime=etime, fit_fname_fmt=args[3], wind_fname_fmt=args[4])
+
 
 

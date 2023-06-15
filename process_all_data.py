@@ -18,8 +18,8 @@ import download_and_process_fitacf_to_meteor
 import download_and_process_rawacfs
 import upload_nc_to_zenodo
 
-START_DATE = dt.datetime(2022, 11, 1)
-END_DATE = dt.datetime(2022, 11, 1)
+START_DATE = dt.datetime(1993, 12, 1)
+END_DATE = dt.datetime(1993, 8, 1)
 
 TWO_FIVE = True
 THREE_ZERO = True
@@ -32,9 +32,9 @@ def main():
         emailBody    = 'Starting to download and process {0} data'.format(date.strftime('%Y%m'))
         helper.send_email(emailSubject, emailBody)
         
-        download_and_process_rawacfs.main(date)        
-        #download_and_process_fitacf_to_meteor.main(date, False, True)
-        upload_nc_to_zenodo.main(date)        
+        #download_and_process_rawacfs.main(date)        
+        download_and_process_fitacf_to_meteor.main(date, False, True)
+        #upload_nc_to_zenodo.main(date)        
 
         emailSubject = '"PROCESS ALL COMPLETE"'
         emailBody    = 'Finished downloading and processing {0} data'.format(date.strftime('%Y%m'))

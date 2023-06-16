@@ -5,6 +5,9 @@ import helper
 import os
 import subprocess
 import json
+from dateutil.relativedelta import relativedelta
+import re
+import bz2
 
 VALID_FILE_TYPES = ['rawacf', 'fitacf', 'fit_nc', 'meteorwind', 'meteorwind_nc', 'grid', 'grid_nc']
 
@@ -82,12 +85,39 @@ def get_globus_file_list():
         remote_data = json.load(f)
     return remote_data.get(day, [])
 
+# NEXT: Test this with already existing fitACF files to confirm it's combining them properly
+def combine_files(file_list, fitVersion):
+    file_dict = {}
+
+    for file_name in file_list:
+        match = re.search(r'(\d{8})\.\d{4}\.\d{2}\.(.+)\.fitacf\.bz2$', file_name)
+        if match:
+            file_date = match.group(1)  # Extract the YYYYMMDD portion as the file date
+            station = match.group(2)  # Extract the radar station name
+            key = (file_date, station)
+            if key not in file_dict:
+                file_dict[key] = []
+            file_dict[key].append(file_name)
+
+    for (file_date, station), files in file_dict.items():
+        output_file = os.path.join(fitacf_dir, f'{file_date}.{station}.{fitVersion}.fit')
+        with open(output_file, 'wb') as output:
+            for file_name in files:
+                file_path = os.path.join(fitacf_dir, file_name)
+                with bz2.open(file_path, 'rb') as compressed_file:
+                    uncompressed_data = compressed_file.read()
+                    output.write(uncompressed_data)
+
+
 def produce_rawacf(files):
 
     return
 
 def produce_fitacf(files):
     download_files('fitacf_30', files, fitacf_dir)
+    files_to_combine = os.listdir(fitacf_dir)
+    fit_version = 'v3.0'
+    combine_files(files_to_combine, fit_version)
 
 def produce_fit_nc(files):
     return
@@ -126,15 +156,17 @@ def produce_missing_files(missing_files):
                 print(f'No data production function found for file type: {file_type_to_produce}')
             
 def download_files(globus_file_type, stations, destination_dir):
-    for station in stations:
-        pattern = date.strftime('%Y%m%d') + '*' + station
+    subprocess.run(['nohup', '/software/python-3.11.4/bin/python3', 
+                    '/homes/superdarn/superdarn/globus/sync_radar_data_globus.py',
+                    '-y', str(date.year), '-m', str(date.month), '-t', globus_file_type, destination_dir])
+    
+    # for station in stations:
+        # pattern = date.strftime('%Y%m%d') + '*' + station
 
-        breakpoint()
-
-        # Initiate the Globus -> APL transfer
-        subprocess.run(['nohup', '/software/python-3.11.4/bin/python3', 
-                        '/homes/superdarn/superdarn/globus/sync_radar_data_globus.py',
-                        '-y', str(date.year), '-m', str(date.month), '-t', globus_file_type, '-p', pattern, destination_dir])
+    # Initiate the Globus -> APL transfer
+    # subprocess.run(['nohup', '/software/python-3.11.4/bin/python3', 
+    #                 '/homes/superdarn/superdarn/globus/sync_radar_data_globus.py',
+    #                 '-y', str(date.year), '-m', str(date.month), '-t', globus_file_type, '-p', pattern, destination_dir])
 
 def main(start_date, end_date, file_types):
     if file_types is None:
@@ -194,7 +226,8 @@ def main(start_date, end_date, file_types):
 
         produce_missing_files(missing_files)
 
-        date -= dt.timedelta(days=1)
+        # date -= dt.timedelta(days=1)
+        date -= relativedelta(months=1)
 
 
 if __name__ == '__main__':

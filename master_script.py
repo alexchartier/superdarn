@@ -18,7 +18,7 @@ import download_and_process_fitacf_to_meteor
 import download_and_process_rawacfs
 import upload_nc_to_zenodo
 
-TWO_FIVE = False
+TWO_FIVE = True
 THREE_ZERO = True
 
 def main(start_date, end_date):
@@ -30,7 +30,8 @@ def main(start_date, end_date):
         helper.send_email(emailSubject, emailBody)
 
         # download_and_process_rawacfs.main(date)
-        download_and_process_fitacf_to_meteor.main(date, TWO_FIVE, THREE_ZERO)
+        #download_and_process_fitacf_to_meteor.main(date, TWO_FIVE, THREE_ZERO)
+        download_and_process_fitacfs.main(date, TWO_FIVE, THREE_ZERO)
         # upload_nc_to_zenodo.main(date)
 
         date -= relativedelta(months=1)

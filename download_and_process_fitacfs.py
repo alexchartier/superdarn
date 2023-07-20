@@ -19,24 +19,24 @@ def main(date, two_five, three_zero):
     startDate, endDate = get_first_and_last_days_of_month(date)
 
     fitDir = startDate.strftime(helper.FITACF_DIR_FMT)
-    netDir = startDate.strftime(helper.NETCDF_DIR_FMT)
+    netDir = startDate.strftime(helper.FIT_NC_DIR_FMT)
 
     os.makedirs(fitDir, exist_ok=True)
     os.makedirs(netDir, exist_ok=True)
 
     # fitACF 2.5
     if two_five:
-#        download_fitacfs_from_globus(fitDir, startDate, 'fitacf_25')
+        download_fitacfs_from_globus(fitDir, startDate, 'fitacf_25')
 
         convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 2.5)
 #        remove_converted_files(fitDir)
 
 
     # fitACF 3.0 (speckled)
-#    if three_zero:
- #       download_fitacfs_from_globus(fitDir, startDate, 'fitacf_30')
+    if three_zero:
+        download_fitacfs_from_globus(fitDir, startDate, 'despeck_fitacf_30')
 
-  #      convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 3.0)
+        convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 3.0)
 #        remove_converted_files(fitDir)
 #        os.rmdir(fitDir)
 
@@ -50,6 +50,7 @@ def main(date, two_five, three_zero):
 def download_fitacfs_from_globus(fitDir, date, pattern):
     # Start Globus Connect Personal and establish connection
     # Also allow access to /project/superdarn/data/
+    breakpoint()
     subprocess.call('{0} -start -restrict-paths \'rw~/,rw/project/superdarn/data/fitacf\' &'.format(helper.GLOBUS_PATH), shell=True)
 
     # Initiate the Globus -> APL transfer

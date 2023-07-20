@@ -102,7 +102,6 @@ def get_random_string(length):
 
 
 def get_radar_list(in_dir):
-    breakpoint()
     print('Calculating list of radars')
     assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
     flist = glob.glob(os.path.join(in_dir, '*.bz2'))

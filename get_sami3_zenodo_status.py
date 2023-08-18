@@ -31,7 +31,7 @@ data = {}
 date = START_DATE
 while date <= END_DATE:
     day = date.strftime('%Y-%b-%d')
-    print('{0}: Getting Zenodo data for {1}'.format(time.strftime('%Y-%m-%d %H:%M'), day))
+    print('Getting SAMI3 Zenodo data for {}'.format(day))
 
     response = requests.get('https://zenodo.org/api/records',
                             params={'q': '"SAMI3 data in netCDF format ({})"'.format(day),
@@ -39,7 +39,7 @@ while date <= END_DATE:
     # Extract rate-limit information from response headers
     rate_limit_remaining = int(response.headers.get("X-RateLimit-Remaining", 0))
     rate_limit_reset = int(response.headers.get("X-RateLimit-Reset", 0))
-    print(rate_limit_remaining)
+    # print(rate_limit_remaining)
     
     data[day] = 1 if response.json()["hits"]["hits"] else 0
     

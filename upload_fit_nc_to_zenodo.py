@@ -10,8 +10,6 @@ Terms:
             Daily, one per hemisphere
 """  
 import sys, os
-# TODO: Remove this once requests is installed for python3
-# sys.path.append('/usr/lib/python2.7/site-packages/')
 import requests
 import datetime as dt
 from dateutil.relativedelta import relativedelta
@@ -21,7 +19,7 @@ import glob
 import time
     
 __author__ = "Jordan Wiker"
-__copyright__ = "Copyright 2022, JHUAPL"
+__copyright__ = "Copyright 2023, JHUAPL"
 __version__ = "1.0.0"
 __maintainer__ = "Jordan Wiker"
 __email__ = "jordan.wiker@jhuapl.edu"
@@ -33,12 +31,7 @@ chartierORCID = '0000-0002-4215-031X'
 aplAffiliation = 'JHU/APL'
 keywords = 'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, netcdf, aeronomy, cedar, gem, radar, OTHR'
 
-DEPOSIT_URL = 'https://zenodo.org/api/deposit/depositions'
-SANDBOX_DEPOSIT_URL = 'https://sandbox.zenodo.org/api/deposit/depositions'
-SANDBOX = False
-
-ZENODO_TOKEN = 'RT4wr3kTsZkEgwWC4r99VTytmGqzULUzloRqn8nVirg2e5nGBYxw4Ohy5FUf'
-ZENODO_SANDBOX_TOKEN = '9FWXXWi1NYeEo6c7zarVtOEOzUkPwiwgVNJ6FD2Wyzecf3PNrs1HKKnrDjYS'
+USE_SANDBOX = False
 
 def main(date):
 
@@ -47,7 +40,7 @@ def main(date):
     emailBody = '"Starting to upload {0} netCDF files to Zenodo"'.format(date.strftime('%Y-%m'))
     helper.send_email(emailSubject, emailBody)
 
-    upload_to_zenodo(SANDBOX, date)
+    upload_to_zenodo(USE_SANDBOX, date)
 
     totalTime = helper.getTimeString(time.time() - startTime)
     emailSubject = '"Finished Zenodo Upload"'
@@ -57,12 +50,11 @@ def main(date):
 
 def upload_to_zenodo(sandbox, date):
   
-    accessToken = ZENODO_SANDBOX_TOKEN if sandbox else ZENODO_TOKEN
-    depositURL = SANDBOX_DEPOSIT_URL if sandbox else DEPOSIT_URL
+    accessToken = helper.ZENODO_SANDBOX_TOKEN if sandbox else helper.ZENODO_TOKEN
+    depositURL = helper.SANDBOX_DEPOSIT_URL if sandbox else helper.DEPOSIT_URL
 
     uploadDir = date.strftime(helper.NETCDF_DIR_FMT)
     
-    # TODO: Update this once 2020 data is allowed to be released publically
     if date.year > helper.LATEST_PUBLIC_DATA:
         fileList = glob.glob(os.path.join(uploadDir, '*wal**.nc'))
     else:
@@ -83,6 +75,7 @@ def upload_to_zenodo(sandbox, date):
 
     bucket_url = r.json()["links"]["bucket"]
     deposition_id = r.json()['id']
+    helper.check_remaining_zenodo_requests(r)
 
     # The target URL is a combination of the bucket link with the desired filename
     for file in fileList:
@@ -93,6 +86,7 @@ def upload_to_zenodo(sandbox, date):
                 data=fp,
                 params=params,
             )
+            helper.check_remaining_zenodo_requests(r)
     
     if date.year > helper.LATEST_PUBLIC_DATA:
         data = {
@@ -162,6 +156,8 @@ def upload_to_zenodo(sandbox, date):
 
     r = requests.put(depositURL + '/%s' % deposition_id,
     params={'access_token': accessToken}, data=json.dumps(data), headers=headers)
+    
+    helper.check_remaining_zenodo_requests(r)
 
 
 if __name__ == '__main__':

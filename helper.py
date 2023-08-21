@@ -4,6 +4,7 @@ Helper functions for SuperDARN processing scripts
 """
 import os
 import glob
+import time
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
@@ -32,7 +33,6 @@ GLOBUS_FILE_LIST_DIR = '/project/superdarn/data/data_status/Globus_files'
 ZENODO_FILE_LIST_DIR = '/project/superdarn/data/data_status/Zenodo_files'
 DATA_STATUS_DIR = '/project/superdarn/data/data_status'
 HDW_DAT_DIR = '/project/superdarn/software/rst/tables/superdarn/hdw'
-
 
 MIN_FITACF_FILE_SIZE = 1E5
 
@@ -135,3 +135,14 @@ def get_three_letter_radar_id(radar_letter):
     }
 
     return radar_ids[radar_letter]
+
+def check_remaining_zenodo_requests(response):
+    rate_limit_remaining = int(response.headers.get("X-RateLimit-Remaining", 0))
+    rate_limit_reset = int(response.headers.get("X-RateLimit-Reset", 0))
+
+    # Check to see if we've used up our alloted requests
+    if rate_limit_remaining == 1:
+        current_time = int(time.time())
+        sleep_time = rate_limit_reset - current_time
+        print("Rate limit about to be exhausted. Waiting for {} seconds...".format(sleep_time))
+        time.sleep(sleep_time)

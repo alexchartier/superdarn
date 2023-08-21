@@ -12,7 +12,7 @@ import fit_to_nc
 import raw_to_fit
 import fit_to_meteorwind
 import fit_to_grid_nc
-import upload_nc_to_zenodo
+import upload_fit_nc_to_zenodo
 import meteorproc_to_nc
 import subprocess
 

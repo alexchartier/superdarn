@@ -29,7 +29,7 @@ def main(date, two_five, three_zero):
         download_fitacfs_from_globus(fitDir, startDate, 'fitacf_25')
 
         convert_fitacf_to_netcdf(startDate, endDate, fitDir, netDir, 2.5)
-#        remove_converted_files(fitDir)
+        remove_converted_files(fitDir)
 
 
     # fitACF 3.0 (speckled)
@@ -50,11 +50,10 @@ def main(date, two_five, three_zero):
 def download_fitacfs_from_globus(fitDir, date, pattern):
     # Start Globus Connect Personal and establish connection
     # Also allow access to /project/superdarn/data/
-    breakpoint()
     subprocess.call('{0} -start -restrict-paths \'rw~/,rw/project/superdarn/data/fitacf\' &'.format(helper.GLOBUS_PATH), shell=True)
 
     # Initiate the Globus -> APL transfer
-    subprocess.call('nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} -t {2} {3}'.format(date.year, date.month, pattern, fitDir), shell=True)
+    subprocess.call('nohup /software/python-3.11.4/bin/python3 /homes/superdarn/superdarn/globus/sync_radar_data_globus.py -y {0} -m {1} -t {2} {3}'.format(date.year, date.month, pattern, fitDir), shell=True)
 
     # Stop Globus Connect Personal
     #subprocess.call('{0} -stop'.format(helper.GLOBUS_PATH), shell=True)

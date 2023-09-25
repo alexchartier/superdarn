@@ -13,12 +13,11 @@ import helper
 import subprocess
 import bz2
 import re
-import glob
+from glob import glob
 
-DELAY = 1800  # 30 minutes
-RETRY = 17    # Try to connect every 30 minutes for a day
+DELAY = 60  # 1 minute
+RETRIES = 15    # Try to connect every 30 minutes for a day
 TIMEOUT = 10  # seconds
-MAX_NUM_RSYNC_TRIES = 3
 
 # Global date variable
 date = None
@@ -91,7 +90,7 @@ def download_files_from_bas(rawDir):
     if not BASServerConnected():
         # Send email if BAS couldn't be reached
         emailSubject = '"Unable to reach BAS"'
-        emailBody = 'Unable to reach BAS after trying for {hours} hours.'.format(hours=RETRY * DELAY / 3600)
+        emailBody = 'Unable to reach BAS after trying for {} minutes.'.format(RETRIES * DELAY / 60)
         helper.send_email(emailSubject, emailBody)
         sys.exit('{message}'.format(message=emailBody))
 
@@ -122,7 +121,7 @@ def combine_source_files():
     rawDir = date.strftime(helper.RAWACF_DIR_FMT)
 
     # Get all files for the date
-    filenames = glob.glob(f"{os.path.join(rawDir, dateString)}.*")
+    filenames = glob(f"{os.path.join(rawDir, dateString)}.*")
 
     radarSites = set()  # Use a set to store unique radar sites
 
@@ -139,7 +138,6 @@ def combine_source_files():
         outputFilename = f"{dateString}.{site}.rawacf"
         fullOutputFilename = os.path.join(rawDir, outputFilename)
         unzipAndCombine(siteFiles, fullOutputFilename)
-
 
 def unzipAndCombine(files, outputFile):
   """
@@ -163,7 +161,7 @@ def BASServerConnected():
         bool: True if the server is reachable, False otherwise.
     """
     BASup = False
-    for i in range(RETRY):
+    for i in range(RETRIES):
         if isOpen(helper.BAS_SERVER, 22):
             BASup = True
             break

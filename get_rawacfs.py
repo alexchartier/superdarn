@@ -11,6 +11,9 @@ import socket
 import time
 import helper
 import subprocess
+import bz2
+import re
+import glob
 
 DELAY = 1800  # 30 minutes
 RETRY = 17    # Try to connect every 30 minutes for a day
@@ -93,26 +96,64 @@ def download_files_from_bas(rawDir):
         helper.send_email(emailSubject, emailBody)
         sys.exit('{message}'.format(message=emailBody))
 
-    dateString = date.strftime('%Y-%m-%d')
+    dateString = date.strftime('%Y%m%d')
     print(f'Downloading {dateString} rawACFs from BAS')
     rsyncLogDir = os.path.join(helper.LOG_DIR, 'BAS_rsync_logs', date.strftime('%Y'))
     os.makedirs(rsyncLogDir, exist_ok=True)
     rsyncLogFilename = f'BAS_rsync_{dateString}.out'
     fullLogFilename = os.path.join(rsyncLogDir, rsyncLogFilename)
-    rsyncCommand = f'nohup rsync -rv apl@{helper.BAS_SERVER}:{basRawDir} {rawDir} >& {fullLogFilename}'
+    rsyncCommand = f'nohup rsync -rv apl@{helper.BAS_SERVER}:{basRawDir}/{dateString}*.rawacf.bz2 {rawDir} >& {fullLogFilename}'
     rsyncProcess = subprocess.Popen(rsyncCommand, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     rsyncExitCode = rsyncProcess.wait()
 
-    if rsyncExitCode != 0:
+    if rsyncExitCode == 0:
+        print(f'Successfully downloaded {dateString} rawACFs from BAS')
+    else:
         # Send an email and end the script if rsync didn't succeed
         emailSubject = f'"Unsuccessful attempt to copy {dateString} BAS rawACF data"'
         emailBody = f'"Failed to copy {dateString} rawACFs from BAS with exit code {rsyncExitCode}. \nSee {fullLogFilename} for more details."'
         helper.send_email(emailSubject, emailBody)
+        print(emailBody)
         sys.exit('{message}'.format(message=emailBody))
 
 def combine_source_files():
-    # TODO
-    return
+    print(f'Starting to combine {dateString} rawACF files')
+
+    basRawDir = date.strftime(helper.BAS_RAWACF_DIR_FMT)
+    dateString = date.strftime('%Y%m%d')
+
+    # Get all files for the date
+    filenames = glob.glob(f"{os.path.join(basRawDir, dateString)}.*")
+
+    radarSites = []
+
+    for filename in filenames:
+        # Use regular expression to extract the station string
+        # E.g. get 'inv.a' from 20230901.2200.03.inv.a.rawacf.bz2
+        match = re.search(r'\d{8}\.\d{4}\.\d{2}\.(.*?)\.rawacf\.bz2', filename)
+        if match:
+            radarSites.append(match.group(1))
+
+    for site in radarSites:
+        siteFiles = glob.glob(f"{dateString}.*{site}")
+        outputFilename = f"{dateString}.{site}.rawacf"
+        fullOutputFilename = os.path.join(basRawDir, outputFilename)
+        unzipAndCombine(siteFiles, fullOutputFilename)
+
+
+def unzipAndCombine(files, outputFile):
+  """
+  Unzips and combines the given files into a single output file.
+
+  Args:
+    files: A list of file paths to the files to be unzipped and combined.
+    outputFile: The path to the output file.
+  """
+
+  with open(outputFile, "wb") as f_out:
+    for file in files:
+      with bz2.open(file, "rb") as f_in:
+        f_out.write(f_in.read())
 
 def BASServerConnected():
     """

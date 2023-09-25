@@ -3,7 +3,6 @@
 Helper functions for SuperDARN processing scripts
 """
 import os
-import glob
 import time
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
@@ -13,9 +12,9 @@ LATEST_PUBLIC_DATA = 2021
 # Directories
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
 WAL_SERVER = 'radar@38.124.149.234'
-BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m/'   
-BAS_DAT_DIR_FMT = '/sddata/dat/%Y/%m/'
-GLOBUS_RAWACF_DIR_FMT = '/chroot/sddata/dat/%Y/%m/'
+BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m'   
+BAS_DAT_DIR_FMT = '/sddata/dat/%Y/%m'
+GLOBUS_RAWACF_DIR_FMT = '/chroot/sddata/dat/%Y/%m'
 GLOBUS_DAT_DIR_FMT = '/chroot/sddata/dat/%Y/%m/'
 RAWACF_DIR_FMT = '/project/superdarn/data/rawacf/%Y/%m'
 FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m'
@@ -24,9 +23,9 @@ METEORWIND_DIR_FMT = '/project/superdarn/data/meteorwind/%Y/%m'
 METEORWIND_NC_DIR_FMT = '/project/superdarn/data/meteorwindnc/%Y/%m'
 GRID_DIR_FMT = '/project/superdarn/data/grid/%Y/%m'
 GRID_NC_DIR_FMT = '/project/superdarn/data/grid_nc/%Y/%m'
-LOG_DIR = '/project/superdarn/logs/'
+LOG_DIR = '/project/superdarn/logs'
 PROCESSING_ISSUE_DIR = '/project/superdarn/processing_issues/%Y/%m'
-FIT_NET_LOG_DIR = '/project/superdarn/logs/fitACF_to_netCDF_logs/%Y/'
+FIT_NET_LOG_DIR = '/project/superdarn/logs/fitACF_to_netCDF_logs/%Y'
 GLOBUS_PATH = '/homes/superdarn/globusconnectpersonal-3.2.2/globusconnectpersonal'
 BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
 GLOBUS_FILE_LIST_DIR = '/project/superdarn/data/data_status/Globus_files'

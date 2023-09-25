@@ -39,7 +39,6 @@ def main(dateString, dataSource=None):
         dataSource = dataSource.lower().strip()
 
     download_source_files(dataSource)
-    combine_source_files()
 
 def download_source_files(dataSource):
     """
@@ -117,27 +116,28 @@ def download_files_from_bas(rawDir):
         sys.exit('{message}'.format(message=emailBody))
 
 def combine_source_files():
+    dateString = date.strftime('%Y%m%d')
     print(f'Starting to combine {dateString} rawACF files')
 
-    basRawDir = date.strftime(helper.BAS_RAWACF_DIR_FMT)
-    dateString = date.strftime('%Y%m%d')
+    rawDir = date.strftime(helper.RAWACF_DIR_FMT)
 
     # Get all files for the date
-    filenames = glob.glob(f"{os.path.join(basRawDir, dateString)}.*")
+    filenames = glob.glob(f"{os.path.join(rawDir, dateString)}.*")
 
-    radarSites = []
+    radarSites = set()  # Use a set to store unique radar sites
 
     for filename in filenames:
         # Use regular expression to extract the station string
         # E.g. get 'inv.a' from 20230901.2200.03.inv.a.rawacf.bz2
         match = re.search(r'\d{8}\.\d{4}\.\d{2}\.(.*?)\.rawacf\.bz2', filename)
         if match:
-            radarSites.append(match.group(1))
-
+            radarSites.add(match.group(1))
+    
     for site in radarSites:
-        siteFiles = glob.glob(f"{dateString}.*{site}")
+        siteFilesFormat = os.path.join(rawDir, f"{dateString}*{site}*")
+        siteFiles = glob.glob(siteFilesFormat)
         outputFilename = f"{dateString}.{site}.rawacf"
-        fullOutputFilename = os.path.join(basRawDir, outputFilename)
+        fullOutputFilename = os.path.join(rawDir, outputFilename)
         unzipAndCombine(siteFiles, fullOutputFilename)
 
 

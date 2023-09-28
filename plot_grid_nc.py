@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-""" Quiver plot example
+""" Quiver & scatter plot example for grid files
 nc_utils from github.com/alexchartier/nc_utils
 """ 
 

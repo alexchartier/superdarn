@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 """
 Demonstrate velocity vector bearing calculation using nvector
+Plots the fitACF-level nc files
 """
 
 wgs84 = nv.FrameE(name='WGS84')

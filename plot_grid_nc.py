@@ -30,7 +30,7 @@ def main(
     vels = data['vector.vel.median'] * data['vector.vel.dirn']
 
     brng_deg = data['vector.g_kvect']# * data['vector.vel.dirn']
-    #plot_scatter(rlat, rlon, lats, lons, vels, fn)
+    plot_scatter(rlat, rlon, lats, lons, vels, fn)
     plot_quiver(rlat, rlon, lats, lons, vels, brng_deg, fn)
 
 

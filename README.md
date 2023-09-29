@@ -24,5 +24,11 @@ The version 3 fitACFs are gridded using make_grid (also from RST) and then conve
 netCDF. 
 
 To the extent possible, we preserve variable names and other terminology from the RST,
-with the goal of maximizing interoperability. 
+with the goal of maximizing interoperability. Therefore, see 
+    https://radar-software-toolkit-rst.readthedocs.io/en/latest/references/general/fitacf/
+    https://radar-software-toolkit-rst.readthedocs.io/en/latest/references/general/grid/
+for further details of variable definitions. 
+
+See plot_grid_nc.py and plot_fit_nc.py for examples of how to plot the data. 
+
 

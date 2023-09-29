@@ -6,6 +6,7 @@ import os
 import time
 import re
 from datetime import datetime
+from glob import glob
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
@@ -160,15 +161,14 @@ def get_rawacf_radar_sites_for_date(date_string):
         List[str]: A list of unique radar sites found in the directory for the given date.
     """
     date = datetime.strptime(date_string, '%Y%m%d')
-    dir = date.strftime(RAWACF_DIR_FMT)
-    
-    file_pattern = re.compile(f"{date_string}\\.(.*?)\\.(?:[^.]+\\.)?rawacf")
-    radar_sites = set()
+    raw_dir = date.strftime(RAWACF_DIR_FMT)
+    files = glob(os.path.join(raw_dir, f"{date_string}*rawacf"))    
 
-    for filename in os.listdir(dir):
-        match = file_pattern.match(filename)
+    radar_sites = []
+    for file in files:
+        match = re.search(r'\.([a-z]+(?:\.[a-z]+)*)\.', file)
         if match:
-            radar_site = match.group(1)
-            radar_sites.add(radar_site)
+            radar_sites.append(match.group(1))
 
-    return list(radar_sites)
+    # Remove duplicates from the list.
+    return list(set(radar_sites))

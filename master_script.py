@@ -37,8 +37,8 @@ def main(start_date, end_date):
     while date <= end_date:
 
         date_string = date.strftime('%Y%m%d')
-        get_rawacfs(date_string)
-        convert_rawacf_to_fitacf(date_string)
+        get_rawacfs.main(date_string)
+        convert_rawacf_to_fitacf.main(date_string)
         delete_rawacfs(date_string)
 
         date += timedelta(days=1)

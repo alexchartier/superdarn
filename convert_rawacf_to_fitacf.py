@@ -54,6 +54,16 @@ def main(date_string):
 
         # Wait for all tasks to complete
         concurrent.futures.wait(futures)
+    
+    combine_fitacfs(date_string)
+    
+    # Now produce despeckled versions of all fitacf3 files
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3")
+        futures = executor.map(perform_speck_removal, fitacf3_files)
+
+        # Wait for all tasks to complete
+        concurrent.futures.wait(futures)
 
 def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
     """
@@ -68,6 +78,65 @@ def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
     fit_version = "-fitacf2" if version == 2.5 else "-fitacf3"    
     command = f"make_fit {fit_version} {rawacf_file} > {fitacf_file}"
     subprocess.run(command, shell=True)
+
+def combine_fitacfs(date_string):
+    """
+    Combine fitACF files for the given date
+
+    Args:
+        None
+
+    Returns:
+        None
+    """
+    fitacf_dir = date.strftime(helper.FITACF_DIR_FMT)
+    radar_sites = helper.get_rawacf_radar_sites_for_date(date_string)
+
+    for radar_site in radar_sites:
+        # Get all fitacf2 files for the radar site
+        site_fitacf2_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*{radar_site}.fitacf2")
+        
+        # Sort files by time
+        site_fitacf2_files.sort()
+
+        # Concatenate files into a daily file
+        daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fitacf2")
+        command = f"cat {' '.join(site_fitacf2_files)} > {daily_filename}"
+        subprocess.run(command, shell=True)
+
+        for source_file in site_fitacf2_files:
+            # os.remove(source_file)
+
+        # Get all fitacf3 files for the radar site
+        site_fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*{radar_site}.fitacf2")
+        
+        # Sort files by time
+        site_fitacf3_files.sort()
+
+        # Concatenate files into a daily file
+        daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fitacf3")
+        command = f"cat {' '.join(site_fitacf3_files)} > {daily_filename}"
+        subprocess.run(command, shell=True)
+
+        for source_file in site_fitacf3_files:
+            # os.remove(source_file)
+
+def perform_speck_removal(input_file):
+    """
+    Perform speck removal on a fitACF file.
+
+    Args:
+        input_file (str): The path to the input fitACF file.
+
+    Returns:
+        None
+    """
+    # Create the output filename with 'despeck' added
+    output_file = input_file.replace(".fitacf3", ".despeck.fitacf3")
+
+    # Perform speck removal
+    command = f"fit_speck_removal {input_file} > {output_file}"
+    subprocess.run(command)
 
 def unpack_bz2_and_remove(input_file):
     """
@@ -93,7 +162,6 @@ def unpack_bz2_and_remove(input_file):
         os.remove(input_file)
     else:
         print(f'Error: {input_file} is not a .bz2 file')
-
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

@@ -4,6 +4,8 @@ Helper functions for SuperDARN processing scripts
 """
 import os
 import time
+import re
+from datetime import datetime
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
@@ -145,3 +147,28 @@ def check_remaining_zenodo_requests(response):
         sleep_time = rate_limit_reset - current_time
         print("Rate limit about to be exhausted. Waiting for {} seconds...".format(sleep_time))
         time.sleep(sleep_time)
+
+def get_rawacf_radar_sites_for_date(date_string):
+    """
+    Get a list of radar sites for a given date in a specified directory.
+
+    Args:
+        date_string (str): The date in 'YYYYMMDD' format.
+        directory (str): The directory path where the files are located.
+
+    Returns:
+        List[str]: A list of unique radar sites found in the directory for the given date.
+    """
+    date = datetime.strptime(date_string, '%Y%m%d')
+    dir = date.strftime(RAWACF_DIR_FMT)
+    
+    file_pattern = re.compile(f"{date_string}\\.(.*?)\\.(?:[^.]+\\.)?rawacf")
+    radar_sites = set()
+
+    for filename in os.listdir(dir):
+        match = file_pattern.match(filename)
+        if match:
+            radar_site = match.group(1)
+            radar_sites.add(radar_site)
+
+    return list(radar_sites)

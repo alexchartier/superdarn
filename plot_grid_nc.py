@@ -11,14 +11,15 @@ import nc_utils
 
 
 def main(
-    fn='~/Downloads/20130117.han.v3.0.grid.nc',
+    fn='~/Downloads/20130117.sto.v3.0.grid.nc',
 ):
     df = nc_utils.load_nc(fn)
     data = nc_utils.ncread_vars(fn)
 
-    t0 = np.floor(data['mjd_start'][0]) + 16/24
-    t1 = np.floor(data['mjd_start'][0]) + 16/24 + 2/60/24
+    t0 = np.floor(data['mjd_start'][0])# + 16/24
+    t1 = np.floor(data['mjd_start'][0])+ 2/60/24# + 16/24     
     tidx = np.logical_and(data['mjd_start'] >= t0, data['mjd_start'] <= t1)
+    breakpoint()
     
     for k, v in data.items():
         data[k] = v[tidx]
@@ -28,8 +29,8 @@ def main(
     lats = data['vector.glat']
     lons = data['vector.glon']
     vels = data['vector.vel.median'] * data['vector.vel.dirn']
+    brng_deg = data['vector.g_kvect']
 
-    brng_deg = data['vector.g_kvect']# * data['vector.vel.dirn']
     plot_scatter(rlat, rlon, lats, lons, vels, fn)
     plot_quiver(rlat, rlon, lats, lons, vels, brng_deg, fn)
 

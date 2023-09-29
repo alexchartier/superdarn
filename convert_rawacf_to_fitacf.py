@@ -8,7 +8,7 @@ import sys
 from glob import glob
 from datetime import datetime
 import bz2
-import multiprocessing
+import concurrent.futures
 import subprocess
 import helper
 
@@ -29,38 +29,33 @@ def main(date_string):
     rawacf_bz2_files = glob(f"{os.path.join(rawacf_dir, date_string)}.*rawacf.bz2")
 
     # Unpack all compressed files
-    for rawacf_bz2_file in rawacf_bz2_files:
-        # Unpack the bz2 file
-        unpack_bz2_and_remove(rawacf_bz2_file)
+    print("Unpacking compressed rawACF files...")
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        executor.map(unpack_bz2_and_remove, rawacf_bz2_files)
 
     rawacf_files = glob(f"{os.path.join(rawacf_dir, date_string)}.*rawacf")
 
     # Create a pool of workers for each version
-    pool_25 = multiprocessing.Pool()
-    pool_30 = multiprocessing.Pool()
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Submit the conversion tasks to the pools
+        futures = []
+        for rawacf_file in rawacf_files:
+            rawacf_filename = os.path.basename(rawacf_file)
 
-    # Submit the conversion tasks to the pools
-    for rawacf_file in rawacf_files:
-        
-        rawacf_filename = os.path.basename(rawacf_file)
+            # Convert the RAWACF file to FITACF with version 2.5.
+            fitacf_filename = rawacf_filename.replace("rawacf", "fitacf2")
+            fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
+            print(f'Creating {fitacf_file}')
+            futures.append(executor.submit(convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 2.5))
 
-        # Convert the RAWACF file to FITACF with version 2.5.
-        fitacf_filename = rawacf_filename.replace("rawacf", "fitacf2")
-        fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
-        print(f'Creating {fitacf_file}')
-        pool_25.apply_async(convert_rawacf_to_fitacf, args=(rawacf_file, fitacf_file, 2.5))
+            # Convert the RAWACF file to FITACF with version 3.0.
+            fitacf_filename = rawacf_filename.replace("rawacf", "fitacf3")
+            fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
+            print(f'Creating {fitacf_file}')
+            futures.append(executor.submit(convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 3.0))
 
-        # Convert the RAWACF file to FITACF with version 3.0.
-        fitacf_filename = rawacf_filename.replace("rawacf", "fitacf3")
-        fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
-        pool_30.apply_async(convert_rawacf_to_fitacf, args=(rawacf_file, fitacf_file, 3.0))
-
-    # Close the pools and wait for all of the tasks to finish.
-    pool_25.close()
-    pool_25.join()
-    pool_30.close()
-    pool_30.join()
-
+        # Wait for all tasks to complete
+        concurrent.futures.wait(futures)
 
 def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
     """
@@ -73,9 +68,8 @@ def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
     """
 
     fit_version = "-fitacf2" if version == 2.5 else "-fitacf3"    
-    command = f"make_fit {fit_version} -vb {rawacf_file} > {fitacf_file}"
-    subprocess.run(command)
-
+    command = f"make_fit {fit_version} {rawacf_file} > {fitacf_file}"
+    subprocess.run(command, shell=True)
 
 def unpack_bz2_and_remove(input_file):
     """
@@ -97,12 +91,8 @@ def unpack_bz2_and_remove(input_file):
             # Read from the compressed file and write to the output file
             outfile.write(infile.read())
 
-        # print(f'Unpacked {input_file} to {output_file}')
-
         # Remove the original compressed file
         os.remove(input_file)
-
-        # print(f'Removed {input_file}')
     else:
         print(f'Error: {input_file} is not a .bz2 file')
 
@@ -121,3 +111,4 @@ if __name__ == "__main__":
         sys.exit(1)
 
     main(date_string)
+

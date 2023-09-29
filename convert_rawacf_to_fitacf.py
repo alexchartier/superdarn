@@ -45,13 +45,11 @@ def main(date_string):
             # Convert the RAWACF file to FITACF with version 2.5.
             fitacf_filename = rawacf_filename.replace("rawacf", "fitacf2")
             fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
-            print(f'Creating {fitacf_file}')
             futures.append(executor.submit(convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 2.5))
 
             # Convert the RAWACF file to FITACF with version 3.0.
             fitacf_filename = rawacf_filename.replace("rawacf", "fitacf3")
             fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
-            print(f'Creating {fitacf_file}')
             futures.append(executor.submit(convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 3.0))
 
         # Wait for all tasks to complete

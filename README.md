@@ -6,7 +6,15 @@ languages (e.g. MATLAB, Python) and in Fortran/C/Java etc, eliminating the need
 to acquire/compile/run the Radar Software Toolkit (RST) and providing a common, 
 open and reproducible platform for research. 
 
-The RST is documented here: https://radar-software-toolkit-rst.readthedocs.io/en/latest/
+See plot_grid_nc.py and plot_fit_nc.py for examples of how to plot the data. 
+Commandline users with netCDF installed can use ncdump to interrogate files, e.g.
+    ncdump -h your_nc_file.nc
+
+To the extent possible, we preserve variable names and other terminology from the RST,
+with the goal of maximizing interoperability. Therefore, see 
+    https://radar-software-toolkit-rst.readthedocs.io/en/latest/references/general/fitacf/
+    https://radar-software-toolkit-rst.readthedocs.io/en/latest/references/general/grid/
+for further details of variable definitions. 
 
 
 The procedure we used to generate netCDF "fit.nc" and "grid.nc" files begins with 
@@ -21,14 +29,6 @@ the radar returns using basic assumptions. The output is stored in netCDF format
 vectors to simplify the structure. 
 
 The version 3 fitACFs are gridded using make_grid (also from RST) and then converted to 
-netCDF. 
-
-To the extent possible, we preserve variable names and other terminology from the RST,
-with the goal of maximizing interoperability. Therefore, see 
-    https://radar-software-toolkit-rst.readthedocs.io/en/latest/references/general/fitacf/
-    https://radar-software-toolkit-rst.readthedocs.io/en/latest/references/general/grid/
-for further details of variable definitions. 
-
-See plot_grid_nc.py and plot_fit_nc.py for examples of how to plot the data. 
+netCDF. The executable command used is stored in the file metadata. 
 
 

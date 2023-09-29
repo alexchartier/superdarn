@@ -19,6 +19,8 @@ def main(date_string):
     global date
     date = datetime.strptime(date_string, '%Y%m%d')
 
+    radar_sites = helper.get_rawacf_radar_sites_for_date(date_string)
+    breakpoint()
     print(f'Starting to convert {date_string} rawACF files to fitACF')
 
     rawacf_dir = date.strftime(helper.RAWACF_DIR_FMT)
@@ -36,6 +38,7 @@ def main(date_string):
     rawacf_files = glob(f"{os.path.join(rawacf_dir, date_string)}.*rawacf")
 
     # Create a pool of workers for each version
+    print("Converting rawACF to fitacf2 and fitacf3...")
     with concurrent.futures.ThreadPoolExecutor() as executor:
         # Submit the conversion tasks to the pools
         futures = []
@@ -55,9 +58,10 @@ def main(date_string):
         # Wait for all tasks to complete
         concurrent.futures.wait(futures)
     
+    print("Combining fitacf2 and fitacf3 into daily files...")
     combine_fitacfs(date_string)
     
-    # Now produce despeckled versions of all fitacf3 files
+    print("Producing despeckled versions of fitacf3 files...")
     with concurrent.futures.ThreadPoolExecutor() as executor:
         fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3")
         futures = executor.map(perform_speck_removal, fitacf3_files)
@@ -104,7 +108,7 @@ def combine_fitacfs(date_string):
         command = f"cat {' '.join(site_fitacf2_files)} > {daily_filename}"
         subprocess.run(command, shell=True)
 
-        for source_file in site_fitacf2_files:
+        #for source_file in site_fitacf2_files:
             # os.remove(source_file)
 
         # Get all fitacf3 files for the radar site
@@ -118,7 +122,7 @@ def combine_fitacfs(date_string):
         command = f"cat {' '.join(site_fitacf3_files)} > {daily_filename}"
         subprocess.run(command, shell=True)
 
-        for source_file in site_fitacf3_files:
+        #for source_file in site_fitacf3_files:
             # os.remove(source_file)
 
 def perform_speck_removal(input_file):

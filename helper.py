@@ -57,19 +57,33 @@ def get_radar_list():
     'mcm','san','sps','sye','sys','tig','unw','zho']
     return radarList
 
-def getTimeString(time):
-    day = time // (24 * 3600)
+def get_time_string(time):
+    """Returns a string describing the duration in a human-readable format.
+
+    Args:
+        time: The duration in seconds.
+
+    Returns:
+        A string describing the duration in a human-readable format.
+    """
+    days = int(time // (24 * 3600))
     time = time % (24 * 3600)
-    hour = time // 3600
+    hours = int(time // 3600)
     time %= 3600
-    minute = time // 60
+    minutes = int(time // 60)
+    seconds = int(time % 60)
 
-    dayString = 'day' if int(day) == 1 else 'days'
-    hourString = 'hour' if int(hour) == 1 else 'hours'
-    minuteString = 'minute' if int(minute) == 1 else 'minutes'
+    time_components = []
+    if days > 0:
+        time_components.append(f"{days} {'day' if days == 1 else 'days'}")
+    if hours > 0:
+        time_components.append(f"{hours} {'hour' if hours == 1 else 'hours'}")
+    if minutes > 0:
+        time_components.append(f"{minutes} {'minute' if minutes == 1 else 'minutes'}")
+    if seconds > 0:
+        time_components.append(f"{seconds} {'second' if seconds == 1 else 'seconds'}")
 
-    return '%d %s, %d %s, %d %s' % (day, dayString, hour, hourString, minute, minuteString)
-
+    return ", ".join(time_components)
 
 def getDOI(year):
     """Get the DOI for a given year of SuperDARN data stored on FRDR"""

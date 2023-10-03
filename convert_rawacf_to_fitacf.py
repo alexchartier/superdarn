@@ -19,8 +19,6 @@ def main(date_string):
     global date
     date = datetime.strptime(date_string, '%Y%m%d')
 
-    radar_sites = helper.get_rawacf_radar_sites_for_date(date_string)
-    breakpoint()
     print(f'Starting to convert {date_string} rawACF files to fitACF')
 
     rawacf_dir = date.strftime(helper.RAWACF_DIR_FMT)
@@ -66,6 +64,9 @@ def main(date_string):
         fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3")
         futures = executor.map(perform_speck_removal, fitacf3_files)
 
+        # Remove any None values from the futures list
+        futures = [f for f in futures if f is not None]
+
         # Wait for all tasks to complete
         concurrent.futures.wait(futures)
 
@@ -108,11 +109,11 @@ def combine_fitacfs(date_string):
         command = f"cat {' '.join(site_fitacf2_files)} > {daily_filename}"
         subprocess.run(command, shell=True)
 
-        #for source_file in site_fitacf2_files:
-            # os.remove(source_file)
+        for source_file in site_fitacf2_files:
+            os.remove(source_file)
 
         # Get all fitacf3 files for the radar site
-        site_fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*{radar_site}.fitacf2")
+        site_fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*{radar_site}.fitacf3")
         
         # Sort files by time
         site_fitacf3_files.sort()
@@ -122,8 +123,8 @@ def combine_fitacfs(date_string):
         command = f"cat {' '.join(site_fitacf3_files)} > {daily_filename}"
         subprocess.run(command, shell=True)
 
-        #for source_file in site_fitacf3_files:
-            # os.remove(source_file)
+        for source_file in site_fitacf3_files:
+            os.remove(source_file)
 
 def perform_speck_removal(input_file):
     """
@@ -139,8 +140,8 @@ def perform_speck_removal(input_file):
     output_file = input_file.replace(".fitacf3", ".despeck.fitacf3")
 
     # Perform speck removal
-    command = f"fit_speck_removal {input_file} > {output_file}"
-    subprocess.run(command)
+    command = f"fit_speck_removal -quiet {input_file} > {output_file}"
+    subprocess.run(command, shell=True)
 
 def unpack_bz2_and_remove(input_file):
     """

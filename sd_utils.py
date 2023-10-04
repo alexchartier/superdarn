@@ -91,8 +91,8 @@ def get_radar_params(hdw_dat_dir):
         # Read hardware parameters
         radar_list[radar_name] = {}
         for line in param_text:
-            params = [float(vn) for vn in line.split()]
-            date_str = f"{int(params[2])} {int(params[3])}"  # Combine date and time components
+            params = [float(vn) if "." in vn else vn if ":" in vn else int(vn) for vn in line.split()]
+            date_str = f"{int(params[2])} {params[3]}"  # Combine date and time components
             date_format = "%Y%m%d %H:%M:%S"
             start_date = dt.datetime.strptime(date_str, date_format)
             assert 1980 < start_date.year < 5000, f'Year looks wrong: {start_date.year}'
@@ -113,9 +113,12 @@ def id_hdw_params_t(date, hdw_params):
     timestamps = sorted(hdw_params.keys())
     
     for i in range(len(timestamps) - 1):
-        if timestamps[i].date() <= date < timestamps[i + 1].date():
+        if timestamps[i] <= date < timestamps[i + 1]:
             valid_params = hdw_params[timestamps[i]]
             break
+    
+    if date >= timestamps[-1]:
+        valid_params = hdw_params[timestamps[-1]]
 
     return valid_params
         

@@ -7,20 +7,10 @@ import random
 import aacgmv2
 import re
 
-def get_radar_params(hdw_dat_dir):
+def get_radar_params_old(hdw_dat_dir):
     # Pull out all the time/beam/radar name info from hdw_dat_dir   
     filenames = glob.glob(os.path.join(hdw_dat_dir, '*'))
     assert len(filenames) > 0, 'No HDW files found in: %s' % hdw_dat_dir
-
-    # NOTE: Simon's ICW/ICE hdw.dat files are non-standard format and of unknown provenance -I'm taking them out (ATC)
-    filenames_nosimon = []
-    for fn in filenames:
-        if fn.split('.')[-1] == 'icw':
-            continue
-        if fn.split('.')[-1] == 'ice':
-            continue
-        filenames_nosimon.append(fn)
-    filenames = filenames_nosimon
 
     prm = [
         'glat', 'glon', 'alt', 'boresight', 'beamsep', 'velsign',
@@ -48,13 +38,6 @@ def get_radar_params(hdw_dat_dir):
         for line in txt2:
             ln = line.split()
 
-            # Simon has decided to add a time of day to the hdw.dat - here's a workaround
-            #lnclean = []
-            #for x in ln:
-            #    if not re.search(r':', x):
-            #        lnclean.append(x)
-            #ln = lnclean
-
             vals = [float(vn) for vn in ln]
             yr = int(vals[1])
             tot_sec = int(vals[2])
@@ -73,13 +56,69 @@ def get_radar_params(hdw_dat_dir):
     return radar_list
 
     
-def id_hdw_params_t(day, hdw_params):
+def id_hdw_params_t_old(day, hdw_params):
     # return the first hardware params with an end-date after time t
     for enddate, hdw_params_t in hdw_params.items():
         if enddate > day:
             return hdw_params_t
 
+def get_radar_params(hdw_dat_dir):
+    # Pull out all the time/beam/radar name info from hdw_dat_dir   
+    filenames = glob.glob(os.path.join(hdw_dat_dir, '*'))
+    assert len(filenames) > 0, 'No HDW files found in: %s' % hdw_dat_dir
 
+    parameters = [
+        'glat', 'glon', 'alt', 'boresight', 'boresight_offset', 'beamsep', 'velsign',
+        'phasesign', 'tdiff_a', 'tdiff_b', 'intoffset_x', 'intoffset_y',
+        'intoffset_z', 'risetime', 'atten_step', 'atten', 'maxrg', 'maxbeams',
+    ]
+
+    radar_list = {}
+    for filename in filenames:
+        radar_name = filename.split('.')[-1]
+
+        # Read in text and remove comments
+        with open(filename, 'r') as f:
+            all_text = f.readlines()
+        param_text = []
+        for line in all_text:
+            line_el = line.split()
+            if len(line_el) == 0:
+                continue
+            if not line.startswith('#'):
+                param_text.append(line)
+
+        # Read hardware parameters
+        radar_list[radar_name] = {}
+        for line in param_text:
+            params = [float(vn) for vn in line.split()]
+            date_str = f"{int(params[2])} {int(params[3])}"  # Combine date and time components
+            date_format = "%Y%m%d %H:%M:%S"
+            start_date = dt.datetime.strptime(date_str, date_format)
+            assert 1980 < start_date.year < 5000, f'Year looks wrong: {start_date.year}'
+            
+            flv = [float(v) for v in params[4:]]
+            hdw_params = dict(zip(parameters, flv))
+
+            assert hdw_params['maxbeams'] < 25, f'maxbeams is > 24 {hdw_params["maxbeams"]}'
+            assert hdw_params['beamsep'] < 5, f'beamsep is > 5 {hdw_params["beamsep"]}'
+            assert hdw_params['boresight'] < 360, f'boresight is >= 360 {hdw_params["boresight"]}'
+
+            radar_list[radar_name][start_date] = hdw_params
+
+    return radar_list
+
+def id_hdw_params_t(date, hdw_params):
+    valid_params = None
+    timestamps = sorted(hdw_params.keys())
+    
+    for i in range(len(timestamps) - 1):
+        if timestamps[i].date() <= date < timestamps[i + 1].date():
+            valid_params = hdw_params[timestamps[i]]
+            break
+
+    return valid_params
+        
 def id_beam_north(hdw_params, center_bm=8, maxdev=10):
     # Find the most northward-pointing beam (if any close to north)
     beam_az = np.arange(hdw_params['maxbeams']) * hdw_params['beamsep'] 

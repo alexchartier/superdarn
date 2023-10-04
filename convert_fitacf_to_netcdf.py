@@ -6,12 +6,10 @@ Converts fitACF files to netCDF files
 import os
 import sys
 import glob
-#import bz2
 import shutil
 import netCDF4
 import jdutil
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 import calendar
 import numpy as np
 from sd_utils import get_radar_params, id_hdw_params_t, get_random_string, get_radar_list
@@ -19,6 +17,7 @@ import pydarn
 import radFov
 import pickle
 import helper
+import concurrent.futures
 
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 SHAPE_MISMATCH_ERROR_CODE = 2
@@ -35,81 +34,73 @@ def main(date_string):
 
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
-    hdw_dat_dir = os.path.join(rstpath, 'tables/superdarn/hdw/')
     
     global date
     date = datetime.strptime(date_string, '%Y%m%d')
 
-
     fitacf_dir = date.strftime(helper.FITACF_DIR_FMT)
     fitacf_nc_dir = date.strftime(helper.FIT_NC_DIR_FMT)
-    
     os.makedirs(fitacf_nc_dir, exist_ok=True)
 
-    # Running raw to NC
     radar_info = get_radar_params(os.getenv('SD_HDWPATH'))
 
-    combine_fitacfs(startTime, endTime, fitDir, fitVersion)
+    # Get all fitACF files for the date
+    fitacf2_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf2")
+    fitacf3_despeck_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*despeck.fitacf3")
 
-    # Loop over fit files in the monthly directories
-    time = startTime
-    while time <= endTime:
-        # Set up directories
-        print('Trying to make %s' % netDir)
-        os.makedirs(netDir, exist_ok=True)
+    # Create a pool of workers for each version
+    print("Converting rawACF to fitacf2 and fitacf3...")
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Submit the conversion tasks to the pools
+        futures = []
+        for fitacf2_file in fitacf2_files:
 
-        # Loop over the files
-        fitFnames = glob.glob(os.path.join(fitDir, FIT_EXT))
-        print('Processing %i %s files in %s on %s' % (len(fitFnames), FIT_EXT, fitDir, time.strftime('%Y/%m')))
-        for fit_fn in fitFnames:
-        
-            # Check the file is big enough to be worth bothering with
-            fn_info = os.stat(fit_fn)
+            fn_info = os.stat(fitacf2_file)
             if fn_info.st_size < MIN_FITACF_FILE_SIZE:
-                print('\n\n%s %1.1f MB\nFile too small - skipping' % (fit_fn, fn_info.st_size / 1E6))
-                continue
-            print('\n\nStarting from %s' % fit_fn)
-
-            fn_head = '.'.join(os.path.basename(fit_fn).split('.')[:-1])
-            out_fn = os.path.join(netDir, '{0}.nc'.format(fn_head))
-            if os.path.isfile(out_fn):
-                if SKIP_EXISTING: 
-                    print('%s exists - skipping' % out_fn)
-                    continue
-                else:
-                    print('%s exists - deleting' % out_fn)
-                    os.remove(out_fn)
-
-            # Convert the fitACF to a netCDF
-            radar_code = os.path.basename(fit_fn).split('.')[1]
-            radar_info_t = id_hdw_params_t(time, radar_info[radar_code])
-
-            status = fit_to_nc(time, fit_fn, out_fn, radar_info_t, fitVersion)
-
-            if status == MULTIPLE_BEAM_DEFS_ERROR_CODE:
-                print('Failed to convert {fitacfFile} because it had multiple beam definitions'.format(fitacfFile = fit_fn))
-                continue
-            elif status == SHAPE_MISMATCH_ERROR_CODE:
-                print('Failed to convert {fitacfFile} because it had mismatched dimensions. Moved fitACF file to {dir}'.format(fitacfFile = fit_fn, dir = time.strftime(helper.PROCESSING_ISSUE_DIR)))
-                continue
-            elif status > 0:
-                print('Failed to convert {fitacfFile}'.format(fitacfFile = fit_fn))
+                print('\n\n%s %1.1f MB\nFile too small - skipping' % (fitacf2_file, fn_info.st_size / 1E6))
                 continue
 
-            print('Wrote output to %s' % out_fn)
-        
-        month = time.strftime('%m')
-        multiBeamLogDir = time.strftime(helper.FIT_NET_LOG_DIR) + month
+            fitacf2_filename = os.path.basename(fitacf2_file)
+
+            # Convert the RAWACF file to FITACF with version 2.5.
+            fitacf2_nc_filename = fitacf2_filename.replace("fitacf2", "fitacf2.nc")
+            netcdf_file = os.path.join(fitacf_nc_dir, fitacf2_nc_filename)
+
+            radar_code = fitacf2_filename.split('.')[1]
+            radar_info_t = id_hdw_params_t(date, radar_info[radar_code])
+            futures.append(executor.submit(convert_fitacf_to_netcdf, date, fitacf2_file, netcdf_file, '2.5'))
+
+        for fitacf3_despeck_file in fitacf3_despeck_files:
+
+            fn_info = os.stat(fitacf3_despeck_file)
+            if fn_info.st_size < MIN_FITACF_FILE_SIZE:
+                print('\n\n%s %1.1f MB\nFile too small - skipping' % (fitacf3_despeck_file, fn_info.st_size / 1E6))
+                continue
+
+            fitacf3_despeck_filename = os.path.basename(fitacf3_despeck_file)
+
+            # Convert the RAWACF file to FITACF with version 2.5.
+            fitacf3_despeck_nc_filename = fitacf3_despeck_filename.replace("fitacf3", "fitacf3.nc")
+            netcdf_file = os.path.join(fitacf_nc_dir, fitacf3_despeck_nc_filename)
+
+            radar_code = fitacf3_despeck_filename.split('.')[1]
+            radar_info_t = id_hdw_params_t(date, radar_info[radar_code])
+            futures.append(executor.submit(convert_fitacf_to_netcdf, date, fitacf3_despeck_file, netcdf_file, '3.0 (despeckled)'))
+
+        # Wait for all tasks to complete
+        concurrent.futures.wait(futures)
+
+
+        month = date.strftime('%m')
+        multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + month
         multiBeamFile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
         if os.path.exists(multiBeamFile):
             subject = '"Multiple Beam Definitions Found - {date}"'.format(date = time.strftime('%Y/%m'))
             body = 'Files with multiple beam definitions have been found. See details in {file}'.format(file = multiBeamFile)
             helper.send_email(subject, body)
 
-        time += relativedelta(months=1)
 
-
-def fit_to_nc(date, in_fname, out_fname, radar_info, fitVersion):
+def convert_fitacf_to_netcdf(date, in_fname, out_fname, radar_info, fitVersion):
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
     out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info, fitVersion)
     if out_vars == MULTIPLE_BEAM_DEFS_ERROR_CODE or out_vars == SHAPE_MISMATCH_ERROR_CODE:
@@ -228,7 +219,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
     
         # Run through each beam record and store 
         for rec in data:
-            time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
+            time = datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
             # slist is the list of range gates with backscatter
             if 'slist' not in rec.keys():
                 os.makedirs(conversionLogDir, exist_ok=True)
@@ -249,7 +240,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
 
                 continue
 
-            time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
+            time = datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'], rec['time.hr'], rec['time.mt'], rec['time.sc'])
             one_obj = np.ones(len(rec['slist'])) 
             mjd = jdutil.jd_to_mjd(jdutil.datetime_to_jd(time))
             bmnum = one_obj * rec['bmnum']
@@ -303,7 +294,7 @@ def add_months(sourcedate, months):
     year = sourcedate.year + month // 12
     month = month % 12 + 1
     day = min(sourcedate.day, calendar.monthrange(year,month)[1])
-    return dt.datetime(year, month, day, sourcedate.hour, sourcedate.minute, sourcedate.second)
+    return datetime(year, month, day, sourcedate.hour, sourcedate.minute, sourcedate.second)
 
 
 def def_vars():
@@ -355,7 +346,7 @@ def def_header_info(in_fname, hdr_vals):
         **{
         'description': 'Geolocated line-of-sight velocities and related parameters from SuperDARN fitACF',
         'fitacf_source': in_fname,
-        'history': 'Created on %s' % dt.datetime.now(),
+        'history': 'Created on %s' % datetime.now(),
         }, 
         **hdr_vals,
     }
@@ -365,23 +356,16 @@ def def_header_info(in_fname, hdr_vals):
 
 if __name__ == '__main__':
 
-    args = sys.argv
+    if len(sys.argv) < 2:
+        print("Usage: python3 convert_fitacf_to_netcdf.py YYYYMMDD")
+        sys.exit(1)
 
-    assert len(args) >= 6, 'Should have 5x args, e.g.:\n' + \
-        'python3 fit_to_nc.py 2014,4,23 2014,4,24 ' + \
-        '/project/superdarn/data/fitacf/%Y/%m/  ' + \
-        '/project/superdarn/data/netcdf/%Y/%m/ 2.5'
+    # Extract the day argument in 'YYYYMMDD' format
+    date_string = sys.argv[1]
 
-    stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
-    etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    if len(args) == 6:
-        fit_dir = args[3]
-        outDir = args[4]
-        fitVersion = args[5]
-    runDir = '/project/superdarn/run/run_%s' % get_random_string(4) 
+    # Check if the day argument is in the correct format
+    if not date_string.isdigit() or len(date_string) != 8:
+        print("Date argument must be in 'YYYYMMDD' format.")
+        sys.exit(1)
 
-    
-    main(stime, etime, fit_dir, outDir, fitVersion)
-
-
-
+    main(date_string)

@@ -129,6 +129,7 @@ def get_three_letter_radar_id(radar_letter):
     # (year, month, day, hour, station identifier). We switched to three-letter
     # identifiers as the number of radar sites grew
     radar_ids = {
+        "x": "tst",
         "g": "gbr",
         "s": "sch",
         "k": "kap",
@@ -147,7 +148,8 @@ def get_three_letter_radar_id(radar_letter):
         "c": "ksr",
         "u": "unw",
         "m": "mcm",
-        "q": "fir" 
+        "q": "fir",
+        "i": "wal"
     }
 
     return radar_ids[radar_letter]

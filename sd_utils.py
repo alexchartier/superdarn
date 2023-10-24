@@ -54,8 +54,7 @@ def get_radar_params_old(hdw_dat_dir):
             radar_list[radar_name][enddate] = hdw_params
 
     return radar_list
-
-    
+  
 def id_hdw_params_t_old(day, hdw_params):
     # return the first hardware params with an end-date after time t
     for enddate, hdw_params_t in hdw_params.items():
@@ -142,6 +141,11 @@ def get_random_string(length):
     result_str = ''.join(random.choice(letters) for i in range(length))
     return result_str
 
+def get_all_radars():
+    hdw_dat_dir = os.getenv('SD_HDWPATH')
+    hdw_dat_files = glob.glob(os.path.join(hdw_dat_dir, 'hdw.dat*'))
+    radar_list = [filename.split('.')[-1] for filename in hdw_dat_files]
+    return radar_list
 
 def get_radar_list(in_dir):
     print('Calculating list of radars')

@@ -14,6 +14,7 @@ import sys
 import time
 import get_rawacfs
 import convert_rawacf_to_fitacf
+import convert_fitacf_to_netcdf
 import os
 import helper
 import download_and_process_fitacfs
@@ -39,12 +40,13 @@ def main(start_date, end_date):
         
         start_time = time.time()
         date_string = date.strftime('%Y%m%d')
+        # download_and_process_fitacfs.main(date, True, True)
         get_rawacfs.main(date_string)
         convert_rawacf_to_fitacf.main(date_string)
-        # convert_fitacf_to_netcdf.main(date_string)
+        convert_fitacf_to_netcdf.main(date_string)
         # convert_fitacf_to meteorwind_netcdf.main(date_string)
         # convert_fitacf_to_grid_netcdf.main(date_string)
-        # delete_rawacfs(date_string)
+        delete_rawacfs(date_string)
         print(f"It took {helper.get_time_string(time.time() - start_time)} to process {date.strftime('%Y-%m-%d')}\n\n")
 
         date += timedelta(days=1)

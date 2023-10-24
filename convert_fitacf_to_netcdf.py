@@ -5,7 +5,7 @@ Converts fitACF files to netCDF files
 """
 import os
 import sys
-import glob
+from glob import glob
 import shutil
 import netCDF4
 import jdutil
@@ -47,62 +47,37 @@ def main(date_string):
     # Get all fitACF files for the date
     fitacf2_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf2")
     fitacf3_despeck_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*despeck.fitacf3")
+    fitacf_files = fitacf2_files + fitacf3_despeck_files
 
-    # Create a pool of workers for each version
-    print("Converting rawACF to fitacf2 and fitacf3...")
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        # Submit the conversion tasks to the pools
-        futures = []
-        for fitacf2_file in fitacf2_files:
+    for fitacf_file in fitacf_files:
 
-            fn_info = os.stat(fitacf2_file)
-            if fn_info.st_size < MIN_FITACF_FILE_SIZE:
-                print('\n\n%s %1.1f MB\nFile too small - skipping' % (fitacf2_file, fn_info.st_size / 1E6))
-                continue
+        fn_info = os.stat(fitacf_file)
+        if fn_info.st_size < MIN_FITACF_FILE_SIZE:
+            print('\n\n%s %1.1f MB\nFile too small - skipping' % (fitacf_file, fn_info.st_size / 1E6))
+            continue
 
-            fitacf2_filename = os.path.basename(fitacf2_file)
+        fitacf_filename = os.path.basename(fitacf_file)
+        fitacf_nc_filename = fitacf_filename + ".nc"
+        netcdf_file = os.path.join(fitacf_nc_dir, fitacf_nc_filename)
 
-            # Convert the RAWACF file to FITACF with version 2.5.
-            fitacf2_nc_filename = fitacf2_filename.replace("fitacf2", "fitacf2.nc")
-            netcdf_file = os.path.join(fitacf_nc_dir, fitacf2_nc_filename)
+        radar_code = fitacf_filename.split('.')[1]
+        radar_info_t = id_hdw_params_t(date, radar_info[radar_code])
+        convert_fitacf_to_netcdf(date, fitacf_file, netcdf_file, radar_info_t)
 
-            radar_code = fitacf2_filename.split('.')[1]
-            radar_info_t = id_hdw_params_t(date, radar_info[radar_code])
-            futures.append(executor.submit(convert_fitacf_to_netcdf, date, fitacf2_file, netcdf_file, '2.5'))
-
-        for fitacf3_despeck_file in fitacf3_despeck_files:
-
-            fn_info = os.stat(fitacf3_despeck_file)
-            if fn_info.st_size < MIN_FITACF_FILE_SIZE:
-                print('\n\n%s %1.1f MB\nFile too small - skipping' % (fitacf3_despeck_file, fn_info.st_size / 1E6))
-                continue
-
-            fitacf3_despeck_filename = os.path.basename(fitacf3_despeck_file)
-
-            # Convert the RAWACF file to FITACF with version 2.5.
-            fitacf3_despeck_nc_filename = fitacf3_despeck_filename.replace("fitacf3", "fitacf3.nc")
-            netcdf_file = os.path.join(fitacf_nc_dir, fitacf3_despeck_nc_filename)
-
-            radar_code = fitacf3_despeck_filename.split('.')[1]
-            radar_info_t = id_hdw_params_t(date, radar_info[radar_code])
-            futures.append(executor.submit(convert_fitacf_to_netcdf, date, fitacf3_despeck_file, netcdf_file, '3.0 (despeckled)'))
-
-        # Wait for all tasks to complete
-        concurrent.futures.wait(futures)
+    month = date.strftime('%m')
+    multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + month
+    multiBeamFile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
+    if os.path.exists(multiBeamFile):
+        subject = '"Multiple Beam Definitions Found - {date}"'.format(date = date.strftime('%Y/%m'))
+        body = 'Files with multiple beam definitions have been found. See details in {file}'.format(file = multiBeamFile)
+        helper.send_email(subject, body)
 
 
-        month = date.strftime('%m')
-        multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + month
-        multiBeamFile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
-        if os.path.exists(multiBeamFile):
-            subject = '"Multiple Beam Definitions Found - {date}"'.format(date = time.strftime('%Y/%m'))
-            body = 'Files with multiple beam definitions have been found. See details in {file}'.format(file = multiBeamFile)
-            helper.send_email(subject, body)
-
-
-def convert_fitacf_to_netcdf(date, in_fname, out_fname, radar_info, fitVersion):
+def convert_fitacf_to_netcdf(date, in_fname, out_fname, radar_info):
+    print(f"Converting {in_fname}...")
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
-    out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info, fitVersion)
+    fit_version = "2.5" if in_fname.endswith("2") else "3.0 (despeckled)"
+    out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info, fit_version)
     if out_vars == MULTIPLE_BEAM_DEFS_ERROR_CODE or out_vars == SHAPE_MISMATCH_ERROR_CODE:
         return out_vars
 

@@ -44,7 +44,7 @@ SANDBOX_DEPOSIT_URL = 'https://sandbox.zenodo.org/api/deposit/depositions'
 ZENODO_TOKEN = 'RT4wr3kTsZkEgwWC4r99VTytmGqzULUzloRqn8nVirg2e5nGBYxw4Ohy5FUf'
 ZENODO_SANDBOX_TOKEN = '9FWXXWi1NYeEo6c7zarVtOEOzUkPwiwgVNJ6FD2Wyzecf3PNrs1HKKnrDjYS'
 
-GLOBUS_SUPERDARN_ENDPOINT = 'c02cb494-1515-11e9-9f9f-0a06afd4a22e'
+GLOBUS_SUPERDARN_ENDPOINT = '8e844226-2eea-479c-b5e4-bac908b725bc'
 
 def send_email(subject, body, addresses = EMAIL_ADDRESSES):
     os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = body, sub = subject, addr = addresses))

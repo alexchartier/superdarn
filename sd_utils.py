@@ -64,7 +64,7 @@ def id_hdw_params_t_old(day, hdw_params):
 
 def get_radar_params(hdw_dat_dir):
     # Pull out all the time/beam/radar name info from hdw_dat_dir   
-    filenames = glob.glob(os.path.join(hdw_dat_dir, '*'))
+    filenames = glob.glob(os.path.join(hdw_dat_dir, 'hdw.dat*'))
     assert len(filenames) > 0, 'No HDW files found in: %s' % hdw_dat_dir
 
     parameters = [

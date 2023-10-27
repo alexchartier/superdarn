@@ -174,85 +174,91 @@ def getMirrorFileList():
 
         if year >= 2005:
             numTries = 1
-            fileSize = 0
-            while fileSize < MIN_FILE_SIZE:
-                print('{0}: Getting mirror rawACF data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M:%S'), year, numTries))
-                if numTries >= MAX_NUM_TRIES:
-                    failedToGrabData(year)
-                    break
+            print('{0}: Getting mirror rawACF data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M:%S'), year, numTries))
+            if numTries >= MAX_NUM_TRIES:
+                failedToGrabData(year)
+                break
 
-                # Get a list of all rawACF files on Globus for the given year and store them in a file
-                filename_raw_new = '{0}/{1}_MirrorFilesRawNew.txt'.format(MIRROR_FILE_LIST_DIR, year)
-                filename_raw = '{0}/{1}_MirrorFilesRaw.txt'.format(MIRROR_FILE_LIST_DIR, year)
+            # Get a list of all rawACF files on Globus for the given year and store them in a file
+            filename_raw_new = '{0}/{1}_MirrorFilesRawNew.txt'.format(MIRROR_FILE_LIST_DIR, year)
+            filename_raw = '{0}/{1}_MirrorFilesRaw.txt'.format(MIRROR_FILE_LIST_DIR, year)
 
-                ssh_command = f"ssh bas 'ls -R /sddata/raw/{year}'"
-                result = subprocess.run(ssh_command, shell=True, capture_output=True, text=True)
+            ssh_command = f"ssh bas 'ls -R /sddata/raw/{year}'"
+            result = subprocess.run(ssh_command, shell=True, capture_output=True, text=True)
 
-                # Check if the command was successful
-                if result.returncode == 0:
-                    # Save the output to a text file
-                    with open(filename_raw_new, 'w') as file:
-                        file.write(result.stdout)
-                else:
-                    print("Error:", result.stderr)
+            # Check if the command was successful
+            if result.returncode == 0:
+                # Save the output to a text file
+                with open(filename_raw_new, 'w') as file:
+                    file.write(result.stdout)
+            else:
+                print("Error:", result.stderr)
+                numTries += 1
 
+            try:
                 with open(filename_raw, 'r') as file1:
                     original_list = file1.read()
+            except FileNotFoundError:
+                print(f"The file {filename_raw} does not exist.")
+                original_list = ''
 
-                # Read the content of the second file
-                with open(filename_raw_new, 'r') as file2:
-                    new_list = file2.read()
+            # Read the content of the second file
+            with open(filename_raw_new, 'r') as file2:
+                new_list = file2.read()
 
-                if original_list != new_list:
-                    if os.path.isfile(filename_raw):
-                        print('Overwriting existing {0} rawACF list file'.format(year))
-                        os.remove(filename_raw)
-                    os.rename(filename_raw_new, filename_raw)
-                    years_to_check.append(year)
-                else:
-                    os.remove(filename_raw_new)
+            if original_list != new_list:
+                if os.path.isfile(filename_raw):
+                    print('Overwriting existing {0} rawACF list file'.format(year))
+                    os.remove(filename_raw)
+                os.rename(filename_raw_new, filename_raw)
+                years_to_check.append(year)
+            else:
+                os.remove(filename_raw_new)
 
 
         if year <= 2006:
             numTries = 1
-            fileSize = 0
-            while fileSize < MIN_FILE_SIZE:
-                print('{0}: Getting Mirror DAT data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M:%S'), year, numTries))
-                if numTries >= MAX_NUM_TRIES:
-                    failedToGrabData(year)
-                    break
+            print('{0}: Getting Mirror DAT data for {1} - attempt #{2}'.format(time.strftime('%Y-%m-%d %H:%M:%S'), year, numTries))
+            if numTries >= MAX_NUM_TRIES:
+                failedToGrabData(year)
+                break
 
-                # Get a list of all DAT files on the mirror for the given year and store them in a file
-                filename_dat_new = '{0}/{1}_MirrorFilesDatNew.txt'.format(MIRROR_FILE_LIST_DIR, year)
-                filename_dat = '{0}/{1}_MirrorFilesDat.txt'.format(MIRROR_FILE_LIST_DIR, year)
+            # Get a list of all DAT files on the mirror for the given year and store them in a file
+            filename_dat_new = '{0}/{1}_MirrorFilesDatNew.txt'.format(MIRROR_FILE_LIST_DIR, year)
+            filename_dat = '{0}/{1}_MirrorFilesDat.txt'.format(MIRROR_FILE_LIST_DIR, year)
 
-                ssh_command = f"ssh bas 'ls -R /sddata/dat/{year}'"
-                result = subprocess.run(ssh_command, shell=True, capture_output=True, text=True)
+            ssh_command = f"ssh bas 'ls -R /sddata/dat/{year}'"
+            result = subprocess.run(ssh_command, shell=True, capture_output=True, text=True)
 
-                # Check if the command was successful
-                if result.returncode == 0:
-                    # Save the output to a text file
-                    with open(filename_dat_new, 'w') as file:
-                        file.write(result.stdout)
-                else:
-                    print("Error:", result.stderr)
+            # Check if the command was successful
+            if result.returncode == 0:
+                # Save the output to a text file
+                with open(filename_dat_new, 'w') as file:
+                    file.write(result.stdout)
+            else:
+                print("Error:", result.stderr)
+                numTries += 1
 
+            try:
                 with open(filename_dat, 'r') as file1:
                     original_list = file1.read()
+            except FileNotFoundError:
+                print(f"The file {filename_dat} does not exist.")
+                original_list = ''
+            
+            # Read the content of the second file
+            with open(filename_dat_new, 'r') as file2:
+                new_list = file2.read()
 
-                # Read the content of the second file
-                with open(filename_dat_new, 'r') as file2:
-                    new_list = file2.read()
-
-                if original_list != new_list:
-                    if os.path.isfile(filename_raw):
-                        print('Overwriting existing {0} rawACF list file'.format(year))
-                        os.remove(filename_dat)
-                    os.rename(filename_dat_new, filename_dat)
-                    years_to_check.append(year)
-                else:
-                    os.remove(filename_dat_new)
-        
+            if original_list != new_list:
+                if os.path.isfile(filename_dat):
+                    print('Overwriting existing {0} rawACF list file'.format(year))
+                    os.remove(filename_dat)
+                os.rename(filename_dat_new, filename_dat)
+                years_to_check.append(year)
+            else:
+                os.remove(filename_dat_new)
+    
         year += 1
 
     # Create an empty dict to store all radars for each date

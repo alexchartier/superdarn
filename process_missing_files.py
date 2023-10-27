@@ -173,8 +173,8 @@ def main(start_date, end_date, file_types):
         file_types = VALID_FILE_TYPES
     elif not file_types:
         print('\nFile type flag is used, but no file types are specified.\nExample usage:\n')
-        print('   python3 process_missing_files.py 20221022 20220901')
-        print('   python3 process_missing_files.py 20221022 20220901 -t fitacf meteorwind_nc\n')
+        print('   python3 process_missing_files.py 20220901 20221022')
+        print('   python3 process_missing_files.py 20220901 20221022 -t fitacf meteorwind_nc\n')
         return
     else:
         file_types = [file_type.lower() for file_type in file_types]
@@ -188,10 +188,10 @@ def main(start_date, end_date, file_types):
             return
         
     global rawacf_dir, fitacf_dir, fit_nc_dir, meteorwind_dir, meteorwind_nc_dir, grid_dir, grid_nc_dir, date
-
+    
     date = start_date
-    while date >= end_date:
-        print(f'Checking files for {date.strftime("%Y-%m-%d")}...')
+    while date <= end_date:
+        # print(f'Checking files for {date.strftime("%Y-%m-%d")}...')
 
         # Populate the directory paths for the current date
         rawacf_dir = date.strftime(helper.RAWACF_DIR_FMT)
@@ -202,6 +202,7 @@ def main(start_date, end_date, file_types):
         grid_dir = date.strftime(helper.GRID_DIR_FMT)
         grid_nc_dir = date.strftime(helper.GRID_NC_DIR_FMT)
 
+        # TODO: Update to look at mirror_data_inventory.json instead of globus
         globus_files = get_globus_file_list()
         local_files = get_local_file_list(file_types)
         missing_files = {}
@@ -217,17 +218,18 @@ def main(start_date, end_date, file_types):
                 if not file_exists:
                     missing_files[file_type].append(globus_file)
 
-        # TODO: Remove this block
-        # if missing_files:
-        #     print(f'Missing files for {date.strftime("%Y-%m-%d")} on the local system:')
-        #     for file_type, files in missing_files.items():
-        #         if files:
-        #             print(f'{file_type}: {files}')
+        # TODO: Update to only print if the -v flag is passed in
+        for file_type, files in missing_files.items():
+            if files:
+                print(f'Missing files for {date.strftime("%Y-%m-%d")} on the local system:')
+                for file_type, files in missing_files.items():
+                    if files:
+                        print(f'{file_type}: {files}')
 
-        produce_missing_files(missing_files)
+        # produce_missing_files(missing_files)
 
-        # date -= dt.timedelta(days=1)
-        date -= relativedelta(months=1)
+        date += dt.timedelta(days=1)
+        # date += relativedelta(months=1)
 
 
 if __name__ == '__main__':

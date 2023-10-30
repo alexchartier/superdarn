@@ -82,7 +82,7 @@ def main():
     with open(outputFile, 'w') as outfile:
         json.dump(data, outfile)
     
-    totalTime = helper.getTimeString(time.time() - startTime)
+    totalTime = helper.get_time_string(time.time() - startTime)
     emailSubject = '"Data Status Check Complete"'
     emailBody    = '"Finished checking Globus vs Zenodo data.\nTotal check runtime: {0}\nNew JSON file created: {1}"'.format(totalTime, outputFile)
     helper.send_email(emailSubject, emailBody)

@@ -91,7 +91,7 @@ def main():
     
     totalTime = helper.get_time_string(time.time() - startTime)
     emailSubject = '"Data Status Check Complete"'
-    emailBody    = '"Finished checking Globus vs Zenodo data.\nTotal check runtime: {0}\nNew JSON file created: {1}"'.format(totalTime, outputFile)
+    emailBody    = '"Finished checking Globus vs Zenodo data.\nTotal check runtime: {0}\nNew JSON file created: {1}"'.format(totalTime, output_file)
     helper.send_email(emailSubject, emailBody)
 
     if REMOVE_REMOTE_FILE_LIST:
@@ -102,7 +102,7 @@ def create_new_inventory_file():
     filtered_files = [f for f in files if f.endswith("_data_status.json")]
     sorted_files = sorted(filtered_files)
     latest_inventory_file = sorted_files[-1]
-    new_filename = f'{END_DATE.strftime('%Y%m%d')}_data_status.json'
+    new_filename = '{0}_data_status.json'.format(END_DATE.strftime('%Y%m%d'))
     shutil.copy(os.path.join(DATA_STATUS_DIR, latest_inventory_file), os.path.join(DATA_STATUS_DIR, new_filename))
     return os.path.join(DATA_STATUS_DIR, new_filename)
 

@@ -17,6 +17,7 @@ __status__ = "Development"
 
 import datetime as dt
 import os
+import shutil
 import subprocess
 import time
 import helper
@@ -54,6 +55,8 @@ def main():
     getZenodoFileList()
 
     radarList = sd_utils.get_all_radars()
+    
+    output_file = create_new_inventory_file()
 
     date = START_DATE
     data = {}
@@ -65,7 +68,7 @@ def main():
 
         day = date.strftime('%Y%m%d')
         data[day] = []
-        print('{0} - Comparing data between Globus and Zenodo on {1}'.format(time.strftime('%Y-%m-%d %H:%M'), day))
+        print('{0} - Comparing data between the mirror and Zenodo on {1}'.format(time.strftime('%Y-%m-%d %H:%M'), day))
         for radar in radarList:
             mirrorDataExists = getMirrorData(date, radar)
             zenodoDataExists = getZenodoData(date, radar)
@@ -76,11 +79,15 @@ def main():
                 'result': result
             })
                         
-        date += dt.timedelta(days=1)
-    
-    outputFile = '{0}/{1}_data_status.json'.format(DATA_STATUS_DIR, END_DATE.strftime('%Y%m%d'))
-    with open(outputFile, 'w') as outfile:
-        json.dump(data, outfile)
+        with open(output_file, 'r') as infile:
+            existing_data = json.load(infile)
+
+        existing_data[day] = data[day]
+
+        with open(output_file, 'w') as outfile:
+            json.dump(existing_data, outfile)
+
+
     
     totalTime = helper.get_time_string(time.time() - startTime)
     emailSubject = '"Data Status Check Complete"'
@@ -90,6 +97,14 @@ def main():
     if REMOVE_REMOTE_FILE_LIST:
         os.system('rm -rf {0}'.format(MIRROR_FILE_LIST_DIR))
     
+def create_new_inventory_file():
+    files = os.listdir(DATA_STATUS_DIR)
+    filtered_files = [f for f in files if f.endswith("_data_status.json")]
+    sorted_files = sorted(filtered_files)
+    latest_inventory_file = sorted_files[-1]
+    new_filename = f'{END_DATE.strftime('%Y%m%d')}_data_status.json'
+    shutil.copy(os.path.join(DATA_STATUS_DIR, latest_inventory_file), os.path.join(DATA_STATUS_DIR, new_filename))
+    return os.path.join(DATA_STATUS_DIR, new_filename)
 
 def get_result(mirror, zenodo):
     # Get a numerical result based on the Globus and Zenodo values as follows:
@@ -139,6 +154,9 @@ def getZenodoData(date, radar):
 def getZenodoFileList():
     os.makedirs(ZENODO_FILE_LIST_DIR, exist_ok=True)
 
+    with open('{0}/zenodo_data_inventory.json'.format(ZENODO_FILE_LIST_DIR), 'r') as infile:
+        existing_zenodo_data = json.load(infile)
+
     zenodoData = {}
 
     date = START_DATE
@@ -157,6 +175,9 @@ def getZenodoFileList():
             files = ''
 
         zenodoData[month] = files
+
+        if existing_zenodo_data[month] != zenodoData[month] and date.year not in years_to_check:
+            years_to_check.append(date.year)
 
         date += relativedelta(months=1)
 
@@ -211,7 +232,8 @@ def getMirrorFileList():
                     print('Overwriting existing {0} rawACF list file'.format(year))
                     os.remove(filename_raw)
                 os.rename(filename_raw_new, filename_raw)
-                years_to_check.append(year)
+                if year not in years_to_check:
+                    years_to_check.append(year)
             else:
                 os.remove(filename_raw_new)
 
@@ -255,7 +277,8 @@ def getMirrorFileList():
                     print('Overwriting existing {0} rawACF list file'.format(year))
                     os.remove(filename_dat)
                 os.rename(filename_dat_new, filename_dat)
-                years_to_check.append(year)
+                if year not in years_to_check:
+                    years_to_check.append(year)
             else:
                 os.remove(filename_dat_new)
     

@@ -100,7 +100,7 @@ def download_files_from_bas(rawDir):
     os.makedirs(rsyncLogDir, exist_ok=True)
     rsyncLogFilename = f'BAS_rsync_{dateString}.out'
     fullLogFilename = os.path.join(rsyncLogDir, rsyncLogFilename)
-    rsyncCommand = f'nohup rsync -rv apl@{helper.BAS_SERVER}:{basRawDir}/{dateString}*.rawacf.bz2 {rawDir} >& {fullLogFilename}'
+    rsyncCommand = f'nohup rsync -av --ignore-errors --log-file={fullLogFilename} apl@{helper.BAS_SERVER}:{basRawDir}/{dateString}*.rawacf.bz2 {rawDir}'
     rsyncProcess = subprocess.Popen(rsyncCommand, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     rsyncExitCode = rsyncProcess.wait()
 
@@ -110,9 +110,9 @@ def download_files_from_bas(rawDir):
         # Send an email and end the script if rsync didn't succeed
         emailSubject = f'"Unsuccessful attempt to copy {dateString} BAS rawACF data"'
         emailBody = f'"Failed to copy {dateString} rawACFs from BAS with exit code {rsyncExitCode}. \nSee {fullLogFilename} for more details."'
-        helper.send_email(emailSubject, emailBody)
+        # helper.send_email(emailSubject, emailBody)
         print(emailBody)
-        sys.exit('{message}'.format(message=emailBody))
+        #sys.exit('{message}'.format(message=emailBody))
 
 def combine_source_files():
     dateString = date.strftime('%Y%m%d')

@@ -85,6 +85,12 @@ def get_globus_file_list():
         remote_data = json.load(f)
     return remote_data.get(day, [])
 
+def get_mirror_file_list():
+    day = date.strftime('%Y%m%d')
+    with open(f'{helper.MIRROR_FILE_LIST_DIR}/mirror_data_inventory.json') as f:
+        remote_data = json.load(f)
+    return remote_data.get(day, [])
+
 # NEXT: Test this with already existing fitACF files to confirm it's combining them properly
 def combine_files(file_list, fitVersion):
     file_dict = {}
@@ -204,12 +210,13 @@ def main(start_date, end_date, file_types):
 
         # TODO: Update to look at mirror_data_inventory.json instead of globus
         globus_files = get_globus_file_list()
+        mirror_files = get_mirror_file_list()
         local_files = get_local_file_list(file_types)
         missing_files = {}
 
         for file_type, files in local_files.items():
             missing_files[file_type] = []
-            for globus_file in globus_files:
+            for globus_file in mirror_files:
                 file_exists = False
                 for local_file in files:
                     if globus_file in local_file:

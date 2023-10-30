@@ -45,8 +45,8 @@ def main(date_string):
     radar_info = get_radar_params(os.getenv('SD_HDWPATH'))
 
     # Get all fitACF files for the date
-    fitacf2_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf2")
-    fitacf3_despeck_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*despeck.fitacf3")
+    fitacf2_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*cv*.fitacf2")
+    fitacf3_despeck_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*cv*.despeck.fitacf3")
     fitacf_files = fitacf2_files + fitacf3_despeck_files
 
     for fitacf_file in fitacf_files:
@@ -65,8 +65,8 @@ def main(date_string):
         convert_fitacf_to_netcdf(date, fitacf_file, netcdf_file, radar_info_t)
 
     month = date.strftime('%m')
-    multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + month
-    multiBeamFile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
+    multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + "/" + month
+    multiBeamFile = '{0}/multi_beam_defs_{1}.log'.format(multiBeamLogDir, date.strftime('%Y%m'))
     if os.path.exists(multiBeamFile):
         subject = '"Multiple Beam Definitions Found - {date}"'.format(date = date.strftime('%Y/%m'))
         body = 'Files with multiple beam definitions have been found. See details in {file}'.format(file = multiBeamFile)
@@ -78,6 +78,7 @@ def convert_fitacf_to_netcdf(date, in_fname, out_fname, radar_info):
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
     fit_version = "2.5" if in_fname.endswith("2") else "3.0 (despeckled)"
     out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info, fit_version)
+    breakpoint()
     if out_vars == MULTIPLE_BEAM_DEFS_ERROR_CODE or out_vars == SHAPE_MISMATCH_ERROR_CODE:
         return out_vars
 
@@ -114,13 +115,13 @@ def convert_fitacf_to_netcdf(date, in_fname, out_fname, radar_info):
 def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
     try:
         day = in_fname.split('.')[0].split('/')[-1]
-        month = day[:-2] 
+        month = day[-4:-2] 
         
         # Keep track of fitACF files that have multiple beam definitions in a
         # monthly log file
-        multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + month
-        multiBeamLogfile = '{dir}/multi_beam_defs_{m}.log'.format(dir = multiBeamLogDir, m = month)
-
+        multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + "/" + month
+        multiBeamLogfile = '{0}/multi_beam_defs_{1}.log'.format(multiBeamLogDir, date.strftime("%Y%m"))
+        
         # Store conversion info like returns outside FOV, missing slist, etc 
         # for each conversion
         conversionLogDir = '{dir}/{d}'.format(dir = multiBeamLogDir, d = day)
@@ -151,7 +152,8 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                 os.makedirs(multiBeamLogDir, exist_ok=True)
                 
                 # Log the multiple beams error in the monthly mutli beam def log
-                logText = '{fitacfFullFile} has {numBeamDefs} beam definitions - skipping file conversion.\n'.format(fitacfFullFile = in_fname, numBeamDefs = len(val))
+                logText = f'{in_fname} has {len(val)} beam definitions - skipping file conversion.\n'
+                print(logText)
                 
                 with open(multiBeamLogfile, "a+") as fp: 
                     fp.write(logText)

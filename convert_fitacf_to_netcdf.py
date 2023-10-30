@@ -45,8 +45,8 @@ def main(date_string):
     radar_info = get_radar_params(os.getenv('SD_HDWPATH'))
 
     # Get all fitACF files for the date
-    fitacf2_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*cv*.fitacf2")
-    fitacf3_despeck_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*cv*.despeck.fitacf3")
+    fitacf2_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*.fitacf2")
+    fitacf3_despeck_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*.despeck.fitacf3")
     fitacf_files = fitacf2_files + fitacf3_despeck_files
 
     for fitacf_file in fitacf_files:
@@ -78,7 +78,7 @@ def convert_fitacf_to_netcdf(date, in_fname, out_fname, radar_info):
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
     fit_version = "2.5" if in_fname.endswith("2") else "3.0 (despeckled)"
     out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info, fit_version)
-    breakpoint()
+
     if out_vars == MULTIPLE_BEAM_DEFS_ERROR_CODE or out_vars == SHAPE_MISMATCH_ERROR_CODE:
         return out_vars
 

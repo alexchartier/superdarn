@@ -31,45 +31,46 @@ def main(
     comps = table_of_components()
 
     # generate the Oberheide figure
-    wind = []
     lsts = [0, 6, 12, 18]
-    dirn = 'v'
-    for lst in lsts:
-        wind.append(gen_oberheide_fig13(lats, lons, alt, month, model, comps, lst=lst, dirn=dirn))
+    wind_dirs = {'u': 'Zonal', 'v': 'Meridional'}
+    for dirn, wind_str in wind_dirs.items():
+        wind = []
+        for lst in lsts:
+            wind.append(gen_oberheide_fig13(lats, lons, alt, month, model, comps, lst=lst, dirn=dirn))
 
-    fig, ax = plt.subplots(1, 4, subplot_kw={'projection': ccrs.PlateCarree()})
-    fig.set_figheight(4)
-    fig.set_figwidth(16)
-    plt.set_cmap('jet')
-    for ind, lst in enumerate(lsts):
-        im = ax[ind].contourf(lons, lats, wind[ind], np.linspace(-57, 57, 11))
-        ax[ind].coastlines()
+        fig, ax = plt.subplots(1, 4, subplot_kw={'projection': ccrs.PlateCarree()})
+        fig.set_figheight(4)
+        fig.set_figwidth(16)
+        plt.set_cmap('jet')
+        for ind, lst in enumerate(lsts):
+            im = ax[ind].contourf(lons, lats, wind[ind], np.linspace(-57, 57, 11))
+            ax[ind].coastlines()
 
-    fig.subplots_adjust(right=0.8)
-    cbar_ax = fig.add_axes([0.15, 0.2, 0.6, 0.05])
-    cbar = fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
-    wind_str = {'u': 'Zonal', 'v': 'Meridional'}
-    cbar.set_label('%s wind (m/s)' % wind_str[dirn])
+        fig.subplots_adjust(right=0.8)
+        cbar_ax = fig.add_axes([0.15, 0.2, 0.6, 0.05])
+        cbar = fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
+        cbar.set_label('%s wind (m/s)' % wind_str)
 
-    plt.show()
+        plt.show()
 
 
-    """
-    wind = winds_at_ut(lats, lons, alt, hour, month, model, comps)
+    wind = summed_wind_components_at_ut(lats, lons, alt, hour, month, model, comps)
     fig, ax = plt.subplots(2, 1)
-    a1 = ax[0].contourf(lons, lats, wind['u'])
-    a2 = ax[1].contourf(lons, lats, wind['v']) 
-    fig.colorbar(a1, )
-    fig.colorbar(a2, )
+    ct = 0
+    axc = []
+    cbar = []
+    for dirn, wind_str in wind_dirs.items():
+        axc.append(ax[ct].contourf(lons, lats, wind[dirn]))
+        cbar.append(fig.colorbar(axc[ct]))
+        cbar[ct].set_label('\n%s wind (m/s)' % wind_str, rotation=90)
+        ct += 1
     plt.show()
 
-    """
 
 def gen_oberheide_fig13(lats, lons, alt, month, model, comps, lst=18, dirn='u'):
     """
     compare against https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/2011JA016784
     """
-    
     # Calculate the wind
     wind = np.zeros((len(lats), len(lons)))
     hours = lst - lons / 360 * 24
@@ -83,7 +84,7 @@ def gen_oberheide_fig13(lats, lons, alt, month, model, comps, lst=18, dirn='u'):
     return wind
 
 
-def winds_at_ut(lats, lons, alt, hour, month, model, comps):
+def summed_wind_components_at_ut(lats, lons, alt, hour, month, model, comps):
     # Calculate the wind
     zeros = np.zeros((len(lats), len(lons)))
     wind = {'u': zeros.copy(), 'v': zeros.copy()}  

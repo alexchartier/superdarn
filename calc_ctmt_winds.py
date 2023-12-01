@@ -33,8 +33,9 @@ def main(
     # generate the Oberheide figure
     wind = []
     lsts = [0, 6, 12, 18]
+    dirn = 'v'
     for lst in lsts:
-        wind.append(gen_oberheide_fig13(lats, lons, alt, month, model, comps, lst=lst, dirn='v'))
+        wind.append(gen_oberheide_fig13(lats, lons, alt, month, model, comps, lst=lst, dirn=dirn))
 
     fig, ax = plt.subplots(1, 4, subplot_kw={'projection': ccrs.PlateCarree()})
     fig.set_figheight(4)
@@ -46,7 +47,10 @@ def main(
 
     fig.subplots_adjust(right=0.8)
     cbar_ax = fig.add_axes([0.15, 0.2, 0.6, 0.05])
-    fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
+    cbar = fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
+    wind_str = {'u': 'Zonal', 'v': 'Meridional'}
+    cbar.set_label('%s wind (m/s)' % wind_str[dirn])
+
     plt.show()
 
 
@@ -92,13 +96,17 @@ def winds_at_ut(lats, lons, alt, hour, month, model, comps):
     return wind
 
 
-def calc_wind(model, lat, lon, alt, hour, month, component, direction, diurnal_semidiurnal='d'):
+def calc_wind(model, lat, lon, alt, t, month, component, direction, diurnal_semidiurnal='d'):
     """ 
     model: loaded diurnal or semidiurnal file
     lat: scalar or vector latitude (must be subset of model['lat'])
     lon: scalar or vector longitudes
+    alt: scalar in km
+    t: scalar UT in decimal hours
+    month: scalar
     component: 'e', 'w', 's' for east, west or stationary propagation + 0 - 4 for wavenumber
     direction: 'u' or 'v' (zonal or meridional, aka east or north)
+    diurnal_semidiurnal: either 'd' or 's'
 
     TODO: be careful about the meaning of the output (could be eastward, westward, northward or upward)
     """
@@ -139,15 +147,18 @@ def calc_wind(model, lat, lon, alt, hour, month, component, direction, diurnal_s
     else:
         raise Exception("Only 'd'/'s' diurnal/semidiurnal values supported")
 
-    # wavenumber multiplier
-    wn_multiplier = int(component[1])
-    assert np.abs(wn_multiplier) < 5, 'wavenumbers <= 4 supported'
+    # wavenumber 
+    s = int(component[1])
+    assert np.abs(s) < 5, 'wavenumbers <= 4 supported'
 
-    # Phase (UT of max at the specified lon).
-    phase_at_lon = phase + dirn_multiplier * wn_multiplier * lon / 360 * 24    
+    # # Phase (UT of max at the specified lon).
+    # phase_at_lon = phase + dirn_multiplier * s * lon / 360 * 24    
 
     # Wind values at the requested locations
-    wind = amp * np.cos((phase_at_lon - hour * ds_multiplier)  / 24 * np.pi * 2)  
+    # wind = amp * np.cos((phase_at_lon - hour * ds_multiplier)  / 24 * np.pi * 2)  
+    wind = amp * np.cos(ds_multiplier * np.pi / 12. * t \
+                      - dirn_multiplier * s * lon * np.pi / 180. \
+                      - phase * ds_multiplier * np.pi / 12)
 
     return wind, phase, amp
 

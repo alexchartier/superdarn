@@ -84,8 +84,10 @@ def main():
 
         existing_data[day] = data[day]
 
-        with open(output_file, 'w') as outfile:
-            json.dump(existing_data, outfile)
+        date += dt.timedelta(days=1)
+
+    with open(output_file, 'w') as outfile:
+        json.dump(existing_data, outfile)
 
 
     

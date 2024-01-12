@@ -67,10 +67,10 @@ def main(date_string):
     month = date.strftime('%m')
     multiBeamLogDir = date.strftime(helper.FIT_NET_LOG_DIR) + "/" + month
     multiBeamFile = '{0}/multi_beam_defs_{1}.log'.format(multiBeamLogDir, date.strftime('%Y%m'))
-    if os.path.exists(multiBeamFile):
-        subject = '"Multiple Beam Definitions Found - {date}"'.format(date = date.strftime('%Y/%m'))
-        body = 'Files with multiple beam definitions have been found. See details in {file}'.format(file = multiBeamFile)
-        helper.send_email(subject, body)
+    # if os.path.exists(multiBeamFile):
+    #     subject = '"Multiple Beam Definitions Found - {date}"'.format(date = date.strftime('%Y/%m'))
+    #     body = 'Files with multiple beam definitions have been found. See details in {file}'.format(file = multiBeamFile)
+    #     helper.send_email(subject, body)
 
 
 def convert_fitacf_to_netcdf(date, in_fname, out_fname, radar_info):

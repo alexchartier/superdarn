@@ -44,8 +44,8 @@ def main(start_date, end_date):
         get_rawacfs.main(date_string)
         convert_rawacf_to_fitacf.main(date_string)
         convert_fitacf_to_netcdf.main(date_string)
-        # convert_fitacf_to meteorwind_netcdf.main(date_string)
         # convert_fitacf_to_grid_netcdf.main(date_string)
+        # convert_fitacf_to meteorwind_netcdf.main(date_string)
         delete_rawacfs(date_string)
         print(f"It took {helper.get_time_string(time.time() - start_time)} to process {date.strftime('%Y-%m-%d')}\n\n")
 

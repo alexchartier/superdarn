@@ -95,7 +95,7 @@ def download_files_from_bas(rawDir):
         sys.exit('{message}'.format(message=emailBody))
 
     dateString = date.strftime('%Y%m%d')
-    print(f'Downloading {dateString} rawACFs from BAS')
+    print(f'{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Downloading {dateString} rawACFs from BAS')
     rsyncLogDir = os.path.join(helper.LOG_DIR, 'BAS_rsync_logs', date.strftime('%Y'))
     os.makedirs(rsyncLogDir, exist_ok=True)
     rsyncLogFilename = f'BAS_rsync_{dateString}.out'

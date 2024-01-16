@@ -20,7 +20,7 @@ MIN_FITACF_FILE_SIZE = 1E5 # bytes
 clobber = False
 
 def main(date_string):
-    print(f'Starting to convert {date_string} fitACFs to GRID netCDF')
+    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to GRID netCDF')
 
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'

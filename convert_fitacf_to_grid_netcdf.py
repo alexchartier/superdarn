@@ -1,5 +1,5 @@
 import pydarn
-import glob
+from glob import glob
 import matplotlib.pyplot as plt
 from matplotlib import ticker, cm, colors
 import numpy as np
@@ -17,8 +17,6 @@ wgs84 = nv.FrameE(name='WGS84')
 
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
 
-# Global date variable
-date = None
 clobber = False
 
 def main(date_string):
@@ -27,7 +25,6 @@ def main(date_string):
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
     
-    global date
     date = datetime.strptime(date_string, '%Y%m%d')
 
     fitacf_dir = date.strftime(helper.FITACF_DIR_FMT)
@@ -55,7 +52,7 @@ def main(date_string):
         grid_file = os.path.join(grid_dir, grid_filename)
         grid_nc_filename = fitacf_filename + ".grid.nc"
         grid_nc_file = os.path.join(grid_nc_dir, grid_nc_filename)
-        
+
         convert_fit_to_grid_nc(date, fitacf_file, grid_file, grid_nc_file, hdw_dat_dir, clobber=clobber)
 
 

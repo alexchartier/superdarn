@@ -82,7 +82,13 @@ def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
 
     fit_version = "-fitacf2" if version == 2.5 else "-fitacf3"    
     command = f"make_fit {fit_version} {rawacf_file} > {fitacf_file}"
-    subprocess.run(command, shell=True)
+    
+    try:
+        subprocess.run(command, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}\n(Probably segmentation fault?)")
+        print("Exiting convert_rawacf_to_fitacf.py.")
+        sys.exit(1)
 
 def combine_fitacfs(date_string):
     """
@@ -107,7 +113,12 @@ def combine_fitacfs(date_string):
         # Concatenate files into a daily file
         daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fitacf2")
         command = f"cat {' '.join(site_fitacf2_files)} > {daily_filename}"
-        subprocess.run(command, shell=True)
+        try:
+            subprocess.run(command, shell=True, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error: {e}")
+            print("Error in concatenating fitacf2 files. Exiting script.")
+            sys.exit(1)
 
         for source_file in site_fitacf2_files:
             os.remove(source_file)
@@ -121,7 +132,12 @@ def combine_fitacfs(date_string):
         # Concatenate files into a daily file
         daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fitacf3")
         command = f"cat {' '.join(site_fitacf3_files)} > {daily_filename}"
-        subprocess.run(command, shell=True)
+        try:
+            subprocess.run(command, shell=True, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error: {e}")
+            print("Error in concatenating fitacf3 files. Exiting script.")
+            sys.exit(1)
 
         for source_file in site_fitacf3_files:
             os.remove(source_file)
@@ -141,7 +157,12 @@ def perform_speck_removal(input_file):
 
     # Perform speck removal
     command = f"fit_speck_removal -quiet {input_file} > {output_file}"
-    subprocess.run(command, shell=True)
+    try:
+        subprocess.run(command, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}\n(Probably segmentation fault?)")
+        print("Exiting convert_rawacf_to_fitacf.py.")
+        sys.exit(1)
 
 def unpack_bz2_and_remove(input_file):
     """

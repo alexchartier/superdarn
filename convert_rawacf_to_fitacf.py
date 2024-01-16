@@ -75,15 +75,19 @@ def main(date_string):
     combine_fitacfs(date_string)
     
     print("Producing despeckled versions of fitacf3 files...")
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3")
-        futures = executor.map(perform_speck_removal, fitacf3_files)
+    fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3")
+    for fitacf3_file in fitacf3_files:
+        perform_speck_removal(fitacf3_file)
 
-        # Remove any None values from the futures list
-        futures = [f for f in futures if f is not None]
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
+    #     fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3")
+    #     futures = executor.map(perform_speck_removal, fitacf3_files)
 
-        # Wait for all tasks to complete
-        concurrent.futures.wait(futures)
+    #     # Remove any None values from the futures list
+    #     futures = [f for f in futures if f is not None]
+
+    #     # Wait for all tasks to complete
+    #     concurrent.futures.wait(futures)
 
 def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
     """
@@ -100,10 +104,9 @@ def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
     
     try:
         subprocess.run(command, shell=True, check=True)
+        print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created : {fitacf_file}')
     except subprocess.CalledProcessError as e:
-        print(f"Error: {e}\n(Probably segmentation fault?)")
-        print("Exiting convert_rawacf_to_fitacf.py.")
-        sys.exit(1)
+        print(f"Error: {e}")
 
 def combine_fitacfs(date_string):
     """
@@ -130,10 +133,9 @@ def combine_fitacfs(date_string):
         command = f"cat {' '.join(site_fitacf2_files)} > {daily_filename}"
         try:
             subprocess.run(command, shell=True, check=True)
+            print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created : {daily_filename}')
         except subprocess.CalledProcessError as e:
             print(f"Error: {e}")
-            print("Error in concatenating fitacf2 files. Exiting script.")
-            sys.exit(1)
 
         for source_file in site_fitacf2_files:
             os.remove(source_file)
@@ -149,10 +151,9 @@ def combine_fitacfs(date_string):
         command = f"cat {' '.join(site_fitacf3_files)} > {daily_filename}"
         try:
             subprocess.run(command, shell=True, check=True)
+            print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created : {daily_filename}')
         except subprocess.CalledProcessError as e:
             print(f"Error: {e}")
-            print("Error in concatenating fitacf3 files. Exiting script.")
-            sys.exit(1)
 
         for source_file in site_fitacf3_files:
             os.remove(source_file)
@@ -174,10 +175,10 @@ def perform_speck_removal(input_file):
     command = f"fit_speck_removal -quiet {input_file} > {output_file}"
     try:
         subprocess.run(command, shell=True, check=True)
+        print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created : {output_file}')
     except subprocess.CalledProcessError as e:
-        print(f"Error: {e}\n(Probably segmentation fault?)")
-        print("Exiting convert_rawacf_to_fitacf.py.")
-        sys.exit(1)
+        print(f"Error: {e}")
+
 
 def unpack_bz2_and_remove(input_file):
     """

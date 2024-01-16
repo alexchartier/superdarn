@@ -15,6 +15,8 @@ import time
 import get_rawacfs
 import convert_rawacf_to_fitacf
 import convert_fitacf_to_netcdf
+import convert_fitacf_to_grid_netcdf
+import convert_fitacf_to_meteorwind_netcdf
 import os
 import helper
 import download_and_process_fitacfs
@@ -44,8 +46,8 @@ def main(start_date, end_date):
         get_rawacfs.main(date_string)
         convert_rawacf_to_fitacf.main(date_string)
         convert_fitacf_to_netcdf.main(date_string)
-        # convert_fitacf_to_grid_netcdf.main(date_string)
-        # convert_fitacf_to meteorwind_netcdf.main(date_string)
+        convert_fitacf_to_grid_netcdf.main(date_string)
+        convert_fitacf_to_meteorwind_netcdf.main(date_string)
         delete_rawacfs(date_string)
         print(f"It took {helper.get_time_string(time.time() - start_time)} to process {date.strftime('%Y-%m-%d')}\n\n")
 
@@ -71,6 +73,7 @@ def delete_rawacfs(date_string):
             os.remove(file_path)
         except Exception as e:
             print(f"Error removing {file_path}: {e}")
+
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:

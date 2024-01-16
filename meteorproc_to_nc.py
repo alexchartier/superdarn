@@ -13,6 +13,11 @@ def convert_winds(
     startTime, endTime, indir, outdir,
     hdw_dat_dir='/project/superdarn/software/rst/tables/superdarn/hdw/',
 ):
+    
+    rstpath = os.getenv('RSTPATH')
+    assert rstpath, 'RSTPATH environment variable needs to be set'
+    hdw_dat_dir = os.getenv('SD_HDWPATH')
+    
     radar_prm = get_radar_params(hdw_dat_dir)   
     step = relativedelta(months=1)
 

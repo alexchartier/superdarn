@@ -19,7 +19,7 @@ def main(date_string):
     meteorproc_exe='/project/superdarn/software/rst/bin/meteorproc'
     cfit_exe='/project/superdarn/software/rst/bin/make_cfit'
     
-    print(f'Starting to convert {date_string} fitACFs to Meteorwind netCDF')
+    print(f'{dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to Meteorwind netCDF')
 
     date = dt.strptime(date_string, '%Y%m%d')
 

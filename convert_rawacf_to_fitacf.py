@@ -19,7 +19,7 @@ def main(date_string):
     global date
     date = datetime.strptime(date_string, '%Y%m%d')
 
-    print(f'Starting to convert {date_string} rawACF files to fitACF')
+    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} rawACF files to fitACF')
 
     rawacf_dir = date.strftime(helper.RAWACF_DIR_FMT)
     fitacf_dir = date.strftime(helper.FITACF_DIR_FMT)

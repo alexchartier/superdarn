@@ -30,7 +30,7 @@ SKIP_EXISTING = True
 date = None
 
 def main(date_string):
-    print(f'Starting to convert {date_string} fitACFs to netCDF')
+    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to netCDF')
 
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'

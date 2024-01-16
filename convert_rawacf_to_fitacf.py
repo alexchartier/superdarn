@@ -36,25 +36,40 @@ def main(date_string):
     rawacf_files = glob(f"{os.path.join(rawacf_dir, date_string)}.*rawacf")
 
     # Create a pool of workers for each version
-    print("Converting rawACF to fitacf2 and fitacf3...")
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        # Submit the conversion tasks to the pools
-        futures = []
-        for rawacf_file in rawacf_files:
-            rawacf_filename = os.path.basename(rawacf_file)
+    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Converting rawACF to fitacf2 and fitacf3...')
+    for rawacf_file in rawacf_files:
+        rawacf_filename = os.path.basename(rawacf_file)
 
-            # Convert the RAWACF file to FITACF with version 2.5.
-            fitacf_filename = rawacf_filename.replace("rawacf", "fitacf2")
-            fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
-            futures.append(executor.submit(convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 2.5))
+        # Convert the RAWACF file to FITACF with version 2.5.
+        fitacf_filename_2 = rawacf_filename.replace("rawacf", "fitacf2")
+        fitacf_file_2 = os.path.join(fitacf_dir, fitacf_filename_2)
+        convert_rawacf_to_fitacf(rawacf_file, fitacf_file_2, 2.5)
 
-            # Convert the RAWACF file to FITACF with version 3.0.
-            fitacf_filename = rawacf_filename.replace("rawacf", "fitacf3")
-            fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
-            futures.append(executor.submit(convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 3.0))
+        # Convert the RAWACF file to FITACF with version 3.0.
+        fitacf_filename_3 = rawacf_filename.replace("rawacf", "fitacf3")
+        fitacf_file_3 = os.path.join(fitacf_dir, fitacf_filename_3)
+        convert_rawacf_to_fitacf(rawacf_file, fitacf_file_3, 3.0)
 
-        # Wait for all tasks to complete
-        concurrent.futures.wait(futures)
+    # Remove multithreading because it caused issues when there were
+    # segmentation faults during make_fit for bad files
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
+    #     # Submit the conversion tasks to the pools
+    #     futures = []
+    #     for rawacf_file in rawacf_files:
+    #         rawacf_filename = os.path.basename(rawacf_file)
+
+    #         # Convert the RAWACF file to FITACF with version 2.5.
+    #         fitacf_filename = rawacf_filename.replace("rawacf", "fitacf2")
+    #         fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
+    #         futures.append(executor.submit(convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 2.5))
+
+    #         # Convert the RAWACF file to FITACF with version 3.0.
+    #         fitacf_filename = rawacf_filename.replace("rawacf", "fitacf3")
+    #         fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
+    #         futures.append(executor.submit(convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 3.0))
+
+    #     # Wait for all tasks to complete
+    #     concurrent.futures.wait(futures)
     
     print("Combining fitacf2 and fitacf3 into daily files...")
     combine_fitacfs(date_string)

@@ -20,7 +20,8 @@ MIN_FITACF_FILE_SIZE = 1E5 # bytes
 clobber = False
 
 def main(date_string):
-    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to GRID netCDF')
+    print(f'\n{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to GRID netCDF')
+    print("===================================================")
 
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
@@ -78,7 +79,7 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     if status == 1:
         return 1
 
-    #print('Trying to produce %s' % out_fname)
+    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {grid_fname}')
 
     # Check the grid file is big enough to be worth bothering with
     fn_info = os.stat(grid_fname)
@@ -166,7 +167,7 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     header_info = def_header_info(fit_fname, convert_cmd, hdr_vals)
     write_nc(out_fname, header_info, dim_defs, var_defs, out_vars)
 
-    print('Wrote to %s' % out_fname)
+    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {out_fname}')
 
 
 def angle_between(x, y, deg=True):

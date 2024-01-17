@@ -8,6 +8,7 @@ from sd_utils import get_random_string, get_radar_list, id_beam_north, id_hdw_pa
 import sys
 import netCDF4
 import helper
+import subprocess
 
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
 
@@ -19,7 +20,8 @@ def main(date_string):
     meteorproc_exe='/project/superdarn/software/rst/bin/meteorproc'
     cfit_exe='/project/superdarn/software/rst/bin/make_cfit'
     
-    print(f'{dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to Meteorwind netCDF')
+    print(f'\n{dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to Meteorwind netCDF')
+    print("===================================================")
 
     date = dt.strptime(date_string, '%Y%m%d')
 
@@ -94,15 +96,21 @@ def convert_fitacf_to_meteorwind(
 ):
     
     # Convert fit to cfit
-    os.system('%s %s > %s' % (cfit_exe, fit_fname, cfit_fname))
+    cfit_cmd = '%s %s > %s' % (cfit_exe, fit_fname, cfit_fname)
+    try:
+        subprocess.run(cfit_cmd, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}")
 
     # Convert cfit to  wind
     os.makedirs(os.path.dirname(wind_fname), exist_ok=True)
-    cmd = '%s -mz %s %s > %s' % \
-        (meteorproc_exe, mz_flag, cfit_fname, wind_fname)
-    print(cmd)
-    os.system(cmd)
-    print('Written to %s' % wind_fname)
+    meteorwind_cmd = '%s -mz %s %s > %s' % (meteorproc_exe, mz_flag, cfit_fname, wind_fname)
+
+    try:
+        subprocess.run(meteorwind_cmd, shell=True, check=True)
+        print(f'{dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {wind_fname}')
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}")
     
 
 def convert_meteorwind_to_netcdf(date, radar_prm):
@@ -185,7 +193,9 @@ def convert_meteorwind_to_netcdf(date, radar_prm):
                     var[:] = v 
                     var.units = defs['units']
                     var.long_name = defs['long_name']
-            print('Wrote to %s' % out_fname)
+
+            print(f'{dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {out_fname}')
+
                 
 
 def set_header(rootgrp, header_info) :

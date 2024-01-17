@@ -1,7 +1,7 @@
 """
-upload_nc_to_zenodo.py
+upload_fitacf_nc_to_zenodo.py
 
-Upload SuperDARN netCDF files to Zenodo
+Upload SuperDARN fitACF files to Zenodo in netCDF format
 
 Terms:
     Zenodo - https://zenodo.org
@@ -11,15 +11,16 @@ Terms:
 """  
 import sys, os
 import requests
-import datetime as dt
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import helper
 import json
 import glob
 import time
+from calendar import monthrange
     
 __author__ = "Jordan Wiker"
-__copyright__ = "Copyright 2023, JHUAPL"
+__copyright__ = "Copyright 2024, JHUAPL"
 __version__ = "1.0.0"
 __maintainer__ = "Jordan Wiker"
 __email__ = "jordan.wiker@jhuapl.edu"
@@ -31,32 +32,68 @@ chartierORCID = '0000-0002-4215-031X'
 aplAffiliation = 'JHU/APL'
 keywords = 'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, netcdf, aeronomy, cedar, gem, radar, OTHR'
 
-USE_SANDBOX = False
+# TODO: Switch to false
+USE_SANDBOX = True
 
-def main(date):
+def main(date_string):
 
+    date = datetime.strptime(date_string, '%Y%m%d')
+    print(f'Starting to upload {date.strftime("%Y-%m")} netCDF files to Zenodo')
     startTime = time.time()
-    emailSubject = '"Starting Zenodo Upload"'
-    emailBody = '"Starting to upload {0} netCDF files to Zenodo"'.format(date.strftime('%Y-%m'))
-    helper.send_email(emailSubject, emailBody)
 
-    upload_to_zenodo(USE_SANDBOX, date)
+    directory = "/project/superdarn/data/netcdf"
+    year = 2022  # Replace with the desired year
+
+    for month in range(1, 13):
+        days_in_month = monthrange(year, month)[1]
+        
+        for day in range(1, days_in_month + 1):
+            pattern = f"{year}{month:02d}{day:02d}"
+            files_found = [f for f in os.listdir(f"{directory}/{year}/{month:02d}") if f.startswith(pattern)]
+
+            if not files_found:
+                print(f"No files found for {pattern}")
+            else:
+                print(f"Files found for {pattern}:")
+                for file in files_found:
+                    print(file)
+
+    if has_files_for_each_day(date):
+        upload_to_zenodo(USE_SANDBOX, date)
+    else:
+        print(f'There\'s at least one day without any files in {date.strftime(helper.FIT_NC_DIR_FMT)}')
 
     totalTime = helper.getTimeString(time.time() - startTime)
     emailSubject = '"Finished Zenodo Upload"'
     emailBody = '"Finished uploading {0} netCDF files\nTotal time: {1}"'.format(date.strftime('%Y-%m'), totalTime)
     helper.send_email(emailSubject, emailBody)
     
+    
+def has_files_for_each_day(date):
+    uploadDir = date.strftime(helper.FIT_NC_DIR_FMT)
+
+    year, month = date.year, date.month
+    days_in_month = monthrange(year, month)[1]
+
+    for day in range(1, days_in_month + 1):
+        pattern = f"{year}{month:02d}{day:02d}"
+        files_found = [f for f in os.listdir(f"{uploadDir}/{year}/{month:02d}") if f.startswith(pattern)]
+
+        if not files_found:
+            return False
+
+    return True
+
 
 def upload_to_zenodo(sandbox, date):
   
     accessToken = helper.ZENODO_SANDBOX_TOKEN if sandbox else helper.ZENODO_TOKEN
     depositURL = helper.SANDBOX_DEPOSIT_URL if sandbox else helper.DEPOSIT_URL
 
-    uploadDir = date.strftime(helper.NETCDF_DIR_FMT)
+    uploadDir = date.strftime(helper.FIT_NC_DIR_FMT)
     
     if date.year > helper.LATEST_PUBLIC_DATA:
-        fileList = glob.glob(os.path.join(uploadDir, '*wal**.nc'))
+        fileList = glob.glob(os.path.join(uploadDir, '*wal*.nc'))
     else:
         fileList = glob.glob(os.path.join(uploadDir, '*.nc'))
 
@@ -64,7 +101,7 @@ def upload_to_zenodo(sandbox, date):
         print('No files to upload in {0}'.format(uploadDir))
         return 1
     else:
-        print('Uploading {0} {1} files to Zenodo'.format(len(fileList), date.strftime('%Y-%m')))
+        print(f'Uploading {len(fileList)} {date.strftime("%Y-%m")} files to Zenodo')
     
     headers = {"Content-Type": "application/json"}
     params = {'access_token': accessToken}
@@ -161,14 +198,17 @@ def upload_to_zenodo(sandbox, date):
 
 
 if __name__ == '__main__':
-    args = sys.argv
-    
-    if len(args) < 2:
-        # If no date was passed in, process the previous month
-        today = dt.datetime.now()
-        date = today - relativedelta(months=1)
-    else:
-        date = args[1]
-    
-    main(date)
+    if len(sys.argv) < 2:
+        print("Usage: python3 upload_fitacf_nc_to_zenodo.py YYYYMMDD")
+        sys.exit(1)
+
+    # Extract the day argument in 'YYYYMMDD' format
+    date_string = sys.argv[1]
+
+    # Check if the day argument is in the correct format
+    if not date_string.isdigit() or len(date_string) != 8:
+        print("Date argument must be in 'YYYYMMDD' format.")
+        sys.exit(1)
+
+    main(date_string)
 

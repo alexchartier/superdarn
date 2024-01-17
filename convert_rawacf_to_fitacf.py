@@ -29,14 +29,14 @@ def main(date_string):
     rawacf_bz2_files = glob(f"{os.path.join(rawacf_dir, date_string)}.*rawacf.bz2")
 
     # Unpack all compressed files
-    print("Unpacking compressed rawACF files...")
+    print("\nUnpacking compressed rawACF files...\n===========================================")
     with concurrent.futures.ThreadPoolExecutor() as executor:
         executor.map(unpack_bz2_and_remove, rawacf_bz2_files)
 
     rawacf_files = glob(f"{os.path.join(rawacf_dir, date_string)}.*rawacf")
 
     # Create a pool of workers for each version
-    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Converting rawACF to fitacf2 and fitacf3...')
+    print(f'\n{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Converting rawACF to fitacf2 and fitacf3...\n===========================================')
     for rawacf_file in rawacf_files:
         rawacf_filename = os.path.basename(rawacf_file)
 
@@ -104,7 +104,7 @@ def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
     
     try:
         subprocess.run(command, shell=True, check=True)
-        print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created : {fitacf_file}')
+        print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {fitacf_file}')
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
 
@@ -133,7 +133,7 @@ def combine_fitacfs(date_string):
         command = f"cat {' '.join(site_fitacf2_files)} > {daily_filename}"
         try:
             subprocess.run(command, shell=True, check=True)
-            print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created : {daily_filename}')
+            print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {daily_filename}')
         except subprocess.CalledProcessError as e:
             print(f"Error: {e}")
 
@@ -151,7 +151,7 @@ def combine_fitacfs(date_string):
         command = f"cat {' '.join(site_fitacf3_files)} > {daily_filename}"
         try:
             subprocess.run(command, shell=True, check=True)
-            print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created : {daily_filename}')
+            print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {daily_filename}')
         except subprocess.CalledProcessError as e:
             print(f"Error: {e}")
 
@@ -175,7 +175,7 @@ def perform_speck_removal(input_file):
     command = f"fit_speck_removal -quiet {input_file} > {output_file}"
     try:
         subprocess.run(command, shell=True, check=True)
-        print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created : {output_file}')
+        print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {output_file}')
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
 

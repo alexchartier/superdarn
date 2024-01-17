@@ -30,8 +30,8 @@ SKIP_EXISTING = True
 date = None
 
 def main(date_string):
-    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to netCDF')
-
+    print(f'\n{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to netCDF')
+    print("===================================================")
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
     
@@ -74,7 +74,7 @@ def main(date_string):
 
 
 def convert_fitacf_to_netcdf(date, in_fname, out_fname, radar_info):
-    print(f"Converting {in_fname}...")
+    # print(f"Converting {in_fname}...")
     # fitACF to netCDF using davitpy FOV calc  - no dependence on fittotxt
     fit_version = "2.5" if in_fname.endswith("2") else "3.0 (despeckled)"
     out_vars, hdr_vals = convert_fitacf_data(date, in_fname, radar_info, fit_version)
@@ -108,6 +108,8 @@ def convert_fitacf_to_netcdf(date, in_fname, out_fname, radar_info):
 
             var.units = defs['units']
             var.long_name = defs['long_name']
+    
+    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {out_fname}')
 
     return 0
 

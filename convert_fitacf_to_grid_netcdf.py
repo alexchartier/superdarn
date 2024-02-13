@@ -38,18 +38,17 @@ def main(date_string):
     hdw_dat_dir = os.getenv('SD_HDWPATH')
 
     # Get all fitACF3 files for the date (not including despeckled)
-    # TODO: Confirm this gets all fitacf3 files but not despeck.fitacf3 files
-    fitacf_files = glob(os.path.join(fitacf_dir, f"{date_string}.*[^despeck].fitacf3"))
+    fitacf_files = [filename for filename in glob(os.path.join(fitacf_dir, f"{date_string}*.fitacf3")) if 'despeck' not in filename]
 
     for fitacf_file in fitacf_files:
 
         fn_info = os.stat(fitacf_file)
         if fn_info.st_size < MIN_FITACF_FILE_SIZE:
-            print('\n\n%s %1.1f MB\nFile too small - skipping' % (fitacf_file, fn_info.st_size / 1E6))
+            print('    %s %1.1f MB\n    File too small - skipping' % (fitacf_file, fn_info.st_size / 1E6))
             continue
 
         fitacf_filename = os.path.basename(fitacf_file)
-        grid_filename = fitacf_filename + ".nc"
+        grid_filename = fitacf_filename + ".grid"
         grid_file = os.path.join(grid_dir, grid_filename)
         grid_nc_filename = fitacf_filename + ".grid.nc"
         grid_nc_file = os.path.join(grid_nc_dir, grid_nc_filename)
@@ -84,7 +83,14 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     # Check the grid file is big enough to be worth bothering with
     fn_info = os.stat(grid_fname)
     if fn_info.st_size < MIN_FITACF_FILE_SIZE:
-        print('\n\n%s %1.1f MB\nFile too small - skipping' % (grid_fname, fn_info.st_size / 1E6))
+        print('    %s %1.1f MB\n    File too small - ' % (grid_fname, fn_info.st_size / 1E6))
+        
+        try:
+            os.remove(grid_fname)
+            print('    %s deleted.' % os.path.basename(grid_fname))
+        except OSError as e:
+            print('    Error deleting %s: %s' % (os.path.basename(grid_fname), e))
+        
         return 1
 
     # load
@@ -115,11 +121,11 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
             out_vars[vn] = np.append(out_vars[vn], data[vn])
 
         # Create the MJD start and end time vectors
-        stime = dt.datetime(
+        stime = datetime(
             int(data['start.year']), int(data['start.month']), int(data['start.day']),
             int(data['start.hour']), int(data['start.minute']), int(data['start.second']),
         )
-        etime = dt.datetime(
+        etime = datetime(
             int(data['end.year']), int(data['end.month']), int(data['end.day']),
             int(data['end.hour']), int(data['end.minute']), int(data['end.second']),
         )
@@ -130,7 +136,7 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
             jdutil.jd_to_mjd(jdutil.datetime_to_jd(etime)) * shape)
     
     # Check there's something to write
-    if out_vars['mjd_start'] == []:
+    if not np.any(out_vars['mjd_start']):
         print('No valid data in %s - not writing %s' % (grid_fname, out_fname))
         return
 
@@ -276,7 +282,7 @@ def def_header_info(in_fname, convert_cmd, hdr_vals):
         'description': 'Gridded, median-filtered "line-of-sight" ExB velocities and related parameters from SuperDARN. Reference altitude of 300 km assumed. Ground scatter removed.',
         'fitacf_source': in_fname,
         'make_grid call': convert_cmd, 
-        'history': 'Created on %s' % dt.datetime.now(),
+        'history': 'Created on %s' % datetime.now(),
         },
         **hdr_vals,
     }
@@ -298,7 +304,7 @@ def fit_to_grid(fit_fname, grid_fname, convert_cmd,
     # Check the input is big enough to be worth bothering with
     fn_info = os.stat(fit_fname)
     if fn_info.st_size < MIN_FITACF_FILE_SIZE:
-        print('\n\n%s %1.1f MB\nFile too small - skipping' % (fit_fname, fn_info.st_size / 1E6))
+        print('    %s %1.1f MB\n    File too small - skipping' % (fit_fname, fn_info.st_size / 1E6))
         return 1
 
     if os.path.isfile(grid_fname):

@@ -23,7 +23,7 @@ def main(date_string):
     print(f'\n{dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to Meteorwind netCDF')
     print("===================================================")
 
-    date = dt.strptime(date_string, '%Y%m%d')
+    date = dt.datetime.strptime(date_string, '%Y%m%d')
 
     fitacf_dir = date.strftime(helper.FITACF_DIR_FMT)
     meteorwind_dir = date.strftime(helper.METEORWIND_DIR_FMT)

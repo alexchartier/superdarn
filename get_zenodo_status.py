@@ -35,7 +35,8 @@ MAX_NUM_TRIES = 10
 REMOVE_REMOTE_FILE_LIST = False
 
 START_DATE = dt.datetime(1993,9,29)
-END_DATE = dt.datetime.now()
+END_DATE = dt.datetime(1993,12,31)
+#END_DATE = dt.datetime.now()
 
 BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
 GLOBUS_FILE_LIST_DIR = '/project/superdarn/data/data_status/Globus_files'
@@ -60,6 +61,8 @@ def main():
 
     date = START_DATE
     data = {}
+    existing_data = {}
+    
     while date <= END_DATE:
         if date.year not in years_to_check:
             # This year's mirror data hasn't changed since the last check, so skip it
@@ -177,8 +180,8 @@ def getZenodoFileList():
             files = ''
 
         zenodoData[month] = files
-
-        if existing_zenodo_data[month] != zenodoData[month] and date.year not in years_to_check:
+        
+        if month in existing_zenodo_data and existing_zenodo_data[month] != zenodoData[month] and date.year not in years_to_check:
             years_to_check.append(date.year)
 
         date += relativedelta(months=1)

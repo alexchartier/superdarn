@@ -35,8 +35,7 @@ MAX_NUM_TRIES = 10
 REMOVE_REMOTE_FILE_LIST = False
 
 START_DATE = dt.datetime(1993,9,29)
-END_DATE = dt.datetime(1993,12,31)
-#END_DATE = dt.datetime.now()
+END_DATE = dt.datetime.now()
 
 BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
 GLOBUS_FILE_LIST_DIR = '/project/superdarn/data/data_status/Globus_files'
@@ -157,8 +156,10 @@ def getZenodoData(date, radar):
 
 
 def getZenodoFileList():
+
     os.makedirs(ZENODO_FILE_LIST_DIR, exist_ok=True)
 
+    print('Loading existing Zenodo inventory file\n=================================\n')
     with open('{0}/zenodo_data_inventory.json'.format(ZENODO_FILE_LIST_DIR), 'r') as infile:
         existing_zenodo_data = json.load(infile)
 
@@ -167,7 +168,7 @@ def getZenodoFileList():
     date = START_DATE
     while date <= END_DATE:
         month = date.strftime('%Y-%b')
-        print('{0}: Getting Zenodo data for {1}'.format(time.strftime('%Y-%m-%d %H:%M'), month))
+        print('{0}: Getting Zenodo netCDF data for {1}'.format(time.strftime('%Y-%m-%d %H:%M'), month))
 
         response = requests.get('https://zenodo.org/api/records',
                         params={'q': '"SuperDARN data in netCDF format ({0})"'.format(month),
@@ -179,13 +180,22 @@ def getZenodoFileList():
         else:
             files = ''
 
+        print(f'Adding {len(files)} to zenodoData dictionary for {month}')
         zenodoData[month] = files
         
-        if month in existing_zenodo_data and existing_zenodo_data[month] != zenodoData[month] and date.year not in years_to_check:
+        zenodo_data_exists = month in existing_zenodo_data
+
+        zenodo_data_changed = existing_zenodo_data.get(month) != zenodoData.get(month)
+        year_not_checked = date.year not in years_to_check
+
+        if ((zenodo_data_exists and zenodo_data_changed) or not (zenodo_data_exists)) and year_not_checked:
+            print(f'{month} data already exists: {zenodo_data_exists}')
+            print(f'Adding {date.year} to years to process')
             years_to_check.append(date.year)
 
         date += relativedelta(months=1)
 
+    # Update the Zenodo inventory file
     outputFile = '{0}/zenodo_data_inventory.json'.format(ZENODO_FILE_LIST_DIR)
     with open(outputFile, 'w') as outfile:
         json.dump(zenodoData, outfile)
@@ -194,6 +204,7 @@ def getZenodoFileList():
 def getMirrorFileList():
 
     os.makedirs(MIRROR_FILE_LIST_DIR, exist_ok=True)
+    print('Getting rawACF file list from BAS\n=================================\n')
 
     year = START_DATE.year
     while year <= END_DATE.year:

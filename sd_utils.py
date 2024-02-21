@@ -9,6 +9,7 @@ import re
 
 def get_radar_params(hdw_dat_dir):
     # Pull out all the time/beam/radar name info from hdw_dat_dir   
+    hdw_dat_dir = os.path.expanduser(hdw_dat_dir)
     filenames = glob.glob(os.path.join(hdw_dat_dir, '*'))
     assert len(filenames) > 0, 'No HDW files found in: %s' % hdw_dat_dir
 
@@ -103,6 +104,7 @@ def get_random_string(length):
 
 def get_radar_list(in_dir):
     print('Calculating list of radars')
+    in_dir = os.path.expanduser(in_dir)
     assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
     flist = glob.glob(os.path.join(in_dir, '*.bz2'))
 

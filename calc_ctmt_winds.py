@@ -15,8 +15,8 @@ import cartopy.crs as ccrs
 
 def main(
     # diurnal and semidiurnal tidal filenames
-    in_fn_sd = '~/Downloads/ctmt_semidiurnal_2002_2008.nc', 
-    in_fn_d = '~/Downloads/ctmt_diurnal_2002_2008.nc', 
+    in_fn_sd = '~/data/ctmt/ctmt_semidiurnal_2002_2008.nc', 
+    in_fn_d = '~/data/ctmt/ctmt_diurnal_2002_2008.nc', 
 
     # Location
     lats = np.arange(-90, 95, 5),
@@ -25,6 +25,8 @@ def main(
     hour = 15, 
     month = 9, 
 ):
+    calc_full_wind(lats, lons, alt, in_fn_d, in_fn_sd)
+
 
     # Load the files
     model = {'d':nc_utils.ncread_vars(in_fn_d), 's':nc_utils.ncread_vars(in_fn_sd)}
@@ -36,7 +38,7 @@ def main(
     for dirn, wind_str in wind_dirs.items():
         wind = []
         for lst in lsts:
-            wind.append(gen_oberheide_fig13(lats, lons, alt, month, model, comps, lst=lst, dirn=dirn))
+            wind.append(calc_wind_component(lats, lons, alt, month, model, comps, lst=lst, dirn=dirn))
 
         fig, ax = plt.subplots(1, 4, subplot_kw={'projection': ccrs.PlateCarree()})
         fig.set_figheight(4)
@@ -67,10 +69,49 @@ def main(
     plt.show()
 
 
-def gen_oberheide_fig13(lats, lons, alt, month, model, comps, lst=18, dirn='u'):
+def calc_full_wind(lats, lons, alt, in_fn_d, in_fn_sd):
+
+    months = np.arange(1, 13)
+    lsts = np.arange(0, 25) 
+
+    model = {'d':nc_utils.ncread_vars(in_fn_d), 's':nc_utils.ncread_vars(in_fn_sd)}
+    comps = table_of_components()
+    dirns = 'u', 'v'
+
+    wind_array = np.zeros((len(months), len(lsts), len(dirns), len(lats), len(lons)))
+    for im, month in enumerate(months):
+        for il, lst in enumerate(lsts):
+            for idn, dirn in enumerate(dirns):
+                wind_component = calc_wind_component(lats, lons, alt, month, model, comps, lst=lst, dirn=dirn)
+                wind_array[im, il, idn, :, :] = wind_component
+
+    wind = {
+        'wind': wind_array, 
+        'months': months, 
+        'lsts': lsts, 
+        'dirns': dirns, 
+        'lats': lats, 
+        'lons': lons, 
+        'alt': alt,
+    }
+
+    return wind
+
+
+def calc_wind_component(lats, lons, alt, month, model, comps, lst=18, dirn='u'):
     """
     compare against https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/2011JA016784
+
+    lats: list of latitudes (deg)
+    lons: list of longitudes (deg)
+    alt: reference altitude (km)
+    month: 1-12 
+    model: Jens' netCDFs loaded into a dict
+    comps: dict of wave components (diurnal and semidiurnal - see table_of_components())
+    lst: local solar time
+    dirn: 'u' or 'v' (zonal/meridional)
     """
+
     # Calculate the wind
     wind = np.zeros((len(lats), len(lons)))
     hours = lst - lons / 360 * 24

@@ -61,13 +61,12 @@ def fit_model(year, lats, lons, alt, month, model_coeffs, in_fn_fmt_wind, radar_
     
     time = dt.datetime(year, month, 1)
 
-    sd_wind = load_sd_wind(year, month, in_fn_fmt_wind, radar_list)
+    wind = load_sd_wind(year, month, in_fn_fmt_wind, radar_list)
+
+    # 2 lines just an example
+    model = calc_ctmt_winds.calc_full_wind(lats, lons, alt, model_coeffs)
+    wind = get_ctmt_wind_at_sd_locs(model, month, wind)  
     breakpoint()
-
-
-    # first guess is just the CTMT realization for that month
-    #model = calc_ctmt_winds.calc_full_wind(lats, lons, alt, model_coeffs)
-    #mean_wind = calc_monthly_mean_wind(model, time, time, in_fn_fmt_wind, radar_list)  # this is the modeled and observed wind
 
     # Now create a cost function to minimize from there
     components = calc_ctmt_winds.table_of_components() 
@@ -102,7 +101,77 @@ def fit_model(year, lats, lons, alt, month, model_coeffs, in_fn_fmt_wind, radar_
     
     X = minimize(cost_function, X0, method='nelder-mead')
     
-    breakpoint()
+
+def load_sd_wind(year, month, in_fn_fmt_wind, radar_list):
+    """ 
+    loads a month of SuperDARN wind data 
+    See also: plot_median_wind()
+    """
+    wind = {}
+    for radarcode in radar_list.keys():
+        wind[radarcode] = {}
+        zeroarr = np.zeros((31, 24)) * np.nan
+        wind[radarcode]['obs_daily'] = zeroarr.copy()
+        wind[radarcode]['obs_sdev_daily'] = zeroarr.copy()
+        wind[radarcode]['hour'] = hr
+        time = dt.datetime(year, month, 1)
+        dayct = 0
+        while time.month == month:
+            
+            # Load the SuperDARN wind
+            try:
+                sd = nc_utils.load_nc(time.strftime(in_fn_fmt_wind.format(radarcode)))
+            except:
+                time += dt.timedelta(days=1)
+                continue
+
+            hridx = np.isin(hr, sd.variables['hour'][:])
+            wind[radarcode]['obs_daily'][dayct, hridx] = sd.variables['Vx'][:]
+            wind[radarcode]['obs_sdev_daily'][dayct, hridx] = sd.variables['sdev_Vx'][:]
+            wind[radarcode]['lat'] = sd.lat
+            wind[radarcode]['lon'] = sd.lon
+            wind[radarcode]['boresight'] = float(sd.boresight.split()[0])
+            time += dt.timedelta(days=1)
+            dayct += 1
+
+        # Calculate the median and median abs deviation
+        wind[radarcode]['obs_med'] = np.nanmedian(wind[radarcode]['obs_daily'], axis=0)
+        wind[radarcode]['obs_MAD'] = np.nanmedian(np.abs(
+            wind[radarcode]['obs_daily'] - np.nanmedian(wind[radarcode]['obs_daily'])), axis=0)
+
+    # throw out the empties
+    for radarcode in radar_list.keys():
+        if np.isfinite(wind[radarcode]['obs_daily']).sum() == 0:
+            wind.pop(radarcode)
+
+    return wind
+
+    
+def get_ctmt_wind_at_sd_locs(model, month, wind):
+    """ Calculate the model wind in the boresight direction at the radar locations 
+    TODO: break out the SuperDARN data-load from this
+    """
+    # Setup interpolators
+    interp_fn_U = RegularGridInterpolator(
+        (model['lsts'], model['lats'], model['lons']), 
+        np.squeeze(model['wind'][model['months']==month, :, 0, :, :]),
+    )
+    interp_fn_V = RegularGridInterpolator(
+        (model['lsts'], model['lats'], model['lons']), 
+        np.squeeze(model['wind'][model['months']==month, :, 1, :, :]),
+    )
+
+    """ Get the model wind at the radar locs """
+    for radarcode, vals in wind.items():
+        """ get the model and observed winds into a structure """
+        model_boresight_wind = calc_boresight_wind(vals['lat'], vals['lon'], vals['boresight'], interp_fn_U, interp_fn_V)
+        wind[radarcode]['model'] = model_boresight_wind
+
+    return wind
+
+
+def calc_err(wind):
+    """ TODOO: run through the stations and calculate MAD-weighted errors (maybe MAD**2) """
 
 
 def error_analysis(year, lats, lons, alt, model_coeffs, in_fn_fmt_wind, radar_list):
@@ -113,7 +182,6 @@ def error_analysis(year, lats, lons, alt, model_coeffs, in_fn_fmt_wind, radar_li
     """ Load the model """
     model = calc_ctmt_winds.calc_full_wind(lats, lons, alt, model_coeffs)
 
-    
     # NB: the 'obs' values can change between the following two versions, 
     # as points >3 standard deviations from the model are kicked from the analysis 
 
@@ -138,108 +206,6 @@ def error_analysis(year, lats, lons, alt, model_coeffs, in_fn_fmt_wind, radar_li
     print('*** Errors vs right month model *** ')
     wind_errs_right_month = calc_station_avg_errs(wind_vs_right_month, radar_list)
    
-
-def load_sd_wind(year, month, in_fn_fmt_wind, radar_list):
-    """ 
-    loads a month of SuperDARN wind data 
-    See also: plot_median_wind()
-    """
-    hours = np.arange(0, 24)
-    wind = {}
-    for radarcode in radar_list.keys():
-        wind[radarcode] = {}
-        zeroarr = np.zeros((31, 24)) * np.nan
-        wind[radarcode]['obs_daily'] = zeroarr.copy()
-        wind[radarcode]['obs_sdev_daily'] = zeroarr.copy()
-        wind[radarcode]['hour'] = hours
-        time = dt.datetime(year, month, 1)
-        dayct = 0
-        while time.month == month:
-            
-            # Load the SuperDARN wind
-            try:
-                sd = nc_utils.load_nc(time.strftime(in_fn_fmt_wind.format(radarcode)))
-            except:
-                time += dt.timedelta(days=1)
-                continue
-
-            hridx = np.isin(hours, sd.variables['hour'][:])
-            wind[radarcode]['obs_daily'][dayct, hridx] = sd.variables['Vx'][:]
-            wind[radarcode]['obs_sdev_daily'][dayct, hridx] = sd.variables['sdev_Vx'][:]
-            wind[radarcode]['lat'] = sd.lat
-            wind[radarcode]['lon'] = sd.lon
-            wind[radarcode]['boresight'] = np.rad2deg(float(sd.boresight.split()[0]))
-            time += dt.timedelta(days=1)
-            dayct += 1
-
-        # Calculate the median and median abs deviation
-        wind[radarcode]['obs_med'] = np.nanmedian(wind[radarcode]['obs_daily'], axis=0)
-        wind[radarcode]['obs_MAD'] = np.nanmedian(np.abs(
-            wind[radarcode]['obs_daily'] - np.nanmedian(wind[radarcode]['obs_daily'])), axis=0)
-
-    return wind
-
-    
-def calc_monthly_mean_wind(model, model_time, sd_wind):
-    """ Calculate the mean model and observed wind at the radar locations 
-    TODO: break out the SuperDARN data-load from this
-    """
-
-    assert obs_start_time.day == 1, 'Start from the 1st of the month'
-
-    # Setup interpolators
-    interp_fn_U = RegularGridInterpolator(
-        (model['lsts'], model['lats'], model['lons']), 
-        np.squeeze(model['wind'][model['months']==model_time.month, :, 0, :, :]),
-    )
-    interp_fn_V = RegularGridInterpolator(
-        (model['lsts'], model['lats'], model['lons']), 
-        np.squeeze(model['wind'][model['months']==model_time.month, :, 1, :, :]),
-    )
-
-    """ Get the model wind at the radar locs """
-    wind = {}
-    for radarcode in radar_list.keys():
-        wind[radarcode] = {}
-        time = obs_start_time
-
-        while time.month == obs_start_time.month:
-            # Load the SuperDARN wind
-            try:
-                sd = nc_utils.load_nc(time.strftime(in_fn_fmt_wind.format(radarcode)))
-            except:
-                time += dt.timedelta(days=1)
-                continue
-
-            """ get the model and observed winds into a structure """
-            wind[radarcode][time] = calc_boresight_wind(sd, interp_fn_U, interp_fn_V)
-            time += dt.timedelta(days=1)
-
-    # calculate mean
-    mean_wind = {}
-    zeroarr = np.zeros(24)
-    onearr = np.ones(24)
-    for radarcode, wind_el in wind.items():
-        k = list(wind_el.keys())
-        if len(k) == 0:  # skip the empty radars
-            continue
-        mean_wind[radarcode] = {'model': wind_el[k[0]]['model'], 'obs': zeroarr.copy(), 'obs_var': zeroarr.copy()}
-        ct = zeroarr.copy()
-        for k, v in wind_el.items():
-            idx = np.isin(hr, v['hour'])
-            mean_wind[radarcode]['obs'][idx] += v['obs']
-            mean_wind[radarcode]['obs_var'][idx] += v['obs_var']
-            ct[idx] += onearr[idx]
-
-        mean_wind[radarcode]['obs'] /= ct
-        mean_wind[radarcode]['obs_var'] /= ct
-        mean_wind[radarcode]['obs_std'] = np.sqrt(mean_wind[radarcode]['obs_var'])
-
-    # Remove anomalies
-    mean_wind = remove_anomalies(mean_wind)
-
-    return mean_wind
-
 
 def calc_station_avg_errs(annual_mean_wind, radar_list):
     """ get overall RMS of observations and obs-model diffs on station-by-station basis"""
@@ -300,43 +266,30 @@ def remove_anomalies(mean_wind, maxerr=3):
     return mean_wind
 
 
-def plot_mean_wind(radar_wind):
-    plt.plot(hr, radar_wind['model'])
-    plt.errorbar(hr, radar_wind['obs'], yerr=radar_wind['obs_std'])
-    plt.grid()
-    plt.show()
-
-def plot_median_wind(sd_wind):
-    plt.plot(np.arange(0, 24), sd_wind['gbr']['obs_med'])
-    plt.plot(np.arange(0, 24), sd_wind['gbr']['obs_daily'].T, '.')
+def plot_median_wind(wind):
+    code = 'gbr'
+    plt.errorbar(hr, wind[code]['obs_med'], yerr=wind[code]['obs_MAD'])
+    plt.plot(hr, wind[code]['obs_daily'].T, '.')
     plt.grid()
     plt.show()
 
 
-def calc_boresight_wind(sd, interp_fn_U, interp_fn_V):
+def calc_boresight_wind(lat, lon, boresight, interp_fn_U, interp_fn_V):
     """ Get model boresight winds at the SuperDARN locations """
-    boresight = np.rad2deg(float(sd.boresight.split()[0]))
-    lst = hr + sd.lon / 360. * 24.
+    boresight_rad = np.deg2rad(boresight)
+    lst = hr + lon / 360. * 24.
     lst[lst < 0] += 24
     lst[lst >= 24] -= 24
-    sd_lon = np.array([sd.lon,])
-    sd_lon[sd.lon < 0] += 360.
+    sd_lon = np.array([lon,])
+    sd_lon[sd_lon < 0] += 360.
 
     """ Interpolate """
     # Get the model U/V at the radar location, for the specified month
-    U = interp_fn_U(np.squeeze(np.array([lst, np.ones(lst.shape) * sd.lat, np.ones(lst.shape) * sd_lon]).T))
-    V = interp_fn_V(np.squeeze(np.array([lst, np.ones(lst.shape) * sd.lat, np.ones(lst.shape) * sd_lon]).T))
-    model_boresight_wind = np.sin(boresight) * U + np.cos(boresight) * V
+    U = interp_fn_U(np.squeeze(np.array([lst, np.ones(lst.shape) * lat, np.ones(lst.shape) * sd_lon]).T))
+    V = interp_fn_V(np.squeeze(np.array([lst, np.ones(lst.shape) * lat, np.ones(lst.shape) * sd_lon]).T))
+    model_boresight_wind = np.sin(boresight_rad) * U + np.cos(boresight_rad) * V
 
-    """ setup output variables """
-    out = {}
-    out['model'] = model_boresight_wind
-    goodidx = out['obs'] != 0
-    out['obs'] = out['obs'][goodidx]
-    out['obs_var'] = out['obs_var'][goodidx]
-    out['hour'] = out['hour'][goodidx]
-
-    return out
+    return model_boresight_wind
 
 
 if __name__ == '__main__':

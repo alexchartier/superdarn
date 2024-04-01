@@ -3,6 +3,8 @@ Calculate winds from the CTMT - Climatological Tidal Model of the Thermosphere
 Aim to do SuperDARN winds analysis against it
 
 """
+from line_profiler import LineProfiler
+
 import nc_utils   # available from github.com/alexchartier/nc_utils
 import numpy as np
 from scipy.interpolate import CubicSpline
@@ -25,11 +27,11 @@ def main(
     hour = 15, 
     month = 9, 
 ):
-    calc_full_wind(lats, lons, alt, in_fn_d, in_fn_sd)
+    model_coeffs = load_wind_coeffs(in_fn_d, in_fn_sd)
 
+    calc_full_wind(lats, lons, alt, model_coeffs)
 
     # Load the files
-    model = {'d':nc_utils.ncread_vars(in_fn_d), 's':nc_utils.ncread_vars(in_fn_sd)}
     comps = table_of_components()
 
     # generate the Oberheide figure
@@ -38,7 +40,7 @@ def main(
     for dirn, wind_str in wind_dirs.items():
         wind = []
         for lst in lsts:
-            wind.append(calc_wind_component(lats, lons, alt, month, model, comps, lst=lst, dirn=dirn))
+            wind.append(calc_wind_component(lats, lons, alt, month, model_coeffs, comps, lst=lst, dirn=dirn))
 
         fig, ax = plt.subplots(1, 4, subplot_kw={'projection': ccrs.PlateCarree()})
         fig.set_figheight(4)
@@ -56,7 +58,7 @@ def main(
         plt.show()
 
 
-    wind = summed_wind_components_at_ut(lats, lons, alt, hour, month, model, comps)
+    wind = summed_wind_components_at_ut(lats, lons, alt, hour, month, model_coeffs, comps)
     fig, ax = plt.subplots(2, 1)
     ct = 0
     axc = []
@@ -69,12 +71,25 @@ def main(
     plt.show()
 
 
-def calc_full_wind(lats, lons, alt, in_fn_d, in_fn_sd):
+def load_wind_coeffs(in_fn_d, in_fn_sd):
+    """ load CTMT coefficients """
+    return {'d':nc_utils.ncread_vars(in_fn_d), 's':nc_utils.ncread_vars(in_fn_sd)}
 
+
+def profile_calc_full_wind(lats, lons, alt, model_coeffs):
+    """ wrapper just to support line profiling """
+    lp = LineProfiler()
+    lp.add_function(calc_wind)
+    lp_wrapper = lp(calc_full_wind)
+    lp_wrapper(lats, lons, alt, model_coeffs)
+    lp.print_stats()
+
+
+def calc_full_wind(lats, lons, alt, model_coeffs):
+    """ returns a lat/lon distribution of model winds at specified alt """ 
     months = np.arange(1, 13)
     lsts = np.arange(0, 25) 
 
-    model = {'d':nc_utils.ncread_vars(in_fn_d), 's':nc_utils.ncread_vars(in_fn_sd)}
     comps = table_of_components()
     dirns = 'u', 'v'
 
@@ -82,7 +97,7 @@ def calc_full_wind(lats, lons, alt, in_fn_d, in_fn_sd):
     for im, month in enumerate(months):
         for il, lst in enumerate(lsts):
             for idn, dirn in enumerate(dirns):
-                wind_component = calc_wind_component(lats, lons, alt, month, model, comps, lst=lst, dirn=dirn)
+                wind_component = calc_wind_component(lats, lons, alt, month, model_coeffs, comps, lst=lst, dirn=dirn)
                 wind_array[im, il, idn, :, :] = wind_component
 
     wind = {
@@ -98,7 +113,7 @@ def calc_full_wind(lats, lons, alt, in_fn_d, in_fn_sd):
     return wind
 
 
-def calc_wind_component(lats, lons, alt, month, model, comps, lst=18, dirn='u'):
+def calc_wind_component(lats, lons, alt, month, model_coeffs, comps, lst=18, dirn='u'):
     """
     compare against https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/2011JA016784
 
@@ -106,7 +121,7 @@ def calc_wind_component(lats, lons, alt, month, model, comps, lst=18, dirn='u'):
     lons: list of longitudes (deg)
     alt: reference altitude (km)
     month: 1-12 
-    model: Jens' netCDFs loaded into a dict
+    model_coeffs: Jens' netCDFs loaded into a dict
     comps: dict of wave components (diurnal and semidiurnal - see table_of_components())
     lst: local solar time
     dirn: 'u' or 'v' (zonal/meridional)
@@ -119,29 +134,29 @@ def calc_wind_component(lats, lons, alt, month, model, comps, lst=18, dirn='u'):
         hour = hours[lonind]
         for ds, comp_list in comps.items():
             for comp in comp_list:
-                wind_comp, phase, amp = calc_wind(model[ds], lats, lon, alt, hour, month, comp, dirn, ds)
+                wind_comp, phase, amp = calc_wind(model_coeffs[ds], lats, lon, alt, hour, month, comp, dirn, ds)
                 wind[:, lonind] = wind[:, lonind] + np.squeeze(wind_comp)
 
     return wind
 
 
-def summed_wind_components_at_ut(lats, lons, alt, hour, month, model, comps):
+def summed_wind_components_at_ut(lats, lons, alt, hour, month, model_coeffs, comps):
     # Calculate the wind
     zeros = np.zeros((len(lats), len(lons)))
     wind = {'u': zeros.copy(), 'v': zeros.copy()}  
     for ds, comp_list in comps.items():
         for comp in comp_list:
             for dirn in wind.keys():
-                wind_comp, phase, amp = calc_wind(model[ds], lats, lons, alt, hour, month, comp, dirn, ds)
+                wind_comp, phase, amp = calc_wind(model_coeffs[ds], lats, lons, alt, hour, month, comp, dirn, ds)
                 wind[dirn] += wind_comp
 
     return wind
 
 
-def calc_wind(model, lat, lon, alt, t, month, component, direction, diurnal_semidiurnal='d'):
+def calc_wind(model_coeffs, lat, lon, alt, t, month, component, direction, diurnal_semidiurnal='d'):
     """ 
-    model: loaded diurnal or semidiurnal file
-    lat: scalar or vector latitude (must be subset of model['lat'])
+    model_coeffs: loaded diurnal or semidiurnal file
+    lat: scalar or vector latitude (must be subset of model_coeffs['lat'])
     lon: scalar or vector longitudes
     alt: scalar in km
     t: scalar UT in decimal hours
@@ -150,26 +165,25 @@ def calc_wind(model, lat, lon, alt, t, month, component, direction, diurnal_semi
     direction: 'u' or 'v' (zonal or meridional, aka east or north)
     diurnal_semidiurnal: either 'd' or 's'
 
-    TODO: be careful about the meaning of the output (could be eastward, westward, northward or upward)
     """
 
     # Expand the query points into 2D arrays if necessary
     lon, lat = np.meshgrid(lon, lat)
     
     # Get the dimensions  
-    mi = model['month'] == month
-    ai = model['lev'] == alt
+    mi = model_coeffs['month'] == month
+    ai = model_coeffs['lev'] == alt
 
-    # check all requested lat within model['lat']
-    assert np.all(np.in1d(lat, model['lat'])), "requested lat must be subset of model['lat']"
+    # check all requested lat within model_coeffs['lat']
+    assert np.all(np.in1d(lat, model_coeffs['lat'])), "requested lat must be subset of model_coeffs['lat']"
 
     #  amplitude (m/s) (east/west/north/up, depending on component)
-    amp = np.interp(lat, model['lat'], model['amp_%s_%s' % (component, direction)][mi, ai, :].flatten())
-    #amp = CubicSpline(model['lat'], model['amp_%s_%s' % (component, direction)][mi, ai, :].flatten())(lat)
+    amp = np.interp(lat, model_coeffs['lat'], model_coeffs['amp_%s_%s' % (component, direction)][mi, ai, :].flatten())
+    #amp = CubicSpline(model_coeffs['lat'], model_coeffs['amp_%s_%s' % (component, direction)][mi, ai, :].flatten())(lat)
 
     # phase (UT of MAX at 0 deg lon)
-    phase = np.interp(lat, model['lat'], model['phase_%s_%s' % (component, direction)][mi, ai, :].flatten())
-    #phase = CubicSpline(model['lat'], model['phase_%s_%s' % (component, direction)][mi, ai, :].flatten())(lat)
+    phase = np.interp(lat, model_coeffs['lat'], model_coeffs['phase_%s_%s' % (component, direction)][mi, ai, :].flatten())
+    #phase = CubicSpline(model_coeffs['lat'], model_coeffs['phase_%s_%s' % (component, direction)][mi, ai, :].flatten())(lat)
    
     # propagation direction multiplier used to determine phase at specified longitude
     if component[0] == 'e': # eastward

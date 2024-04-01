@@ -10,7 +10,7 @@ Compare SD against CTMT winds
 
 """
 
-
+from line_profiler import LineProfiler
 import nc_utils   # available from github.com/alexchartier/nc_utils
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
@@ -61,19 +61,15 @@ def fit_model(year, lats, lons, alt, month, model_coeffs, in_fn_fmt_wind, radar_
     
     time = dt.datetime(year, month, 1)
 
+    """ Load SuperDARN wind """
     wind = load_sd_wind(year, month, in_fn_fmt_wind, radar_list)
-
-    # 2 lines just an example
-    model = calc_ctmt_winds.calc_full_wind(lats, lons, alt, model_coeffs)
-    wind = get_ctmt_wind_at_sd_locs(model, month, wind)  
-    breakpoint()
+    #plot_median_wind(wind, 'gbr')
 
     # Now create a cost function to minimize from there
     components = calc_ctmt_winds.table_of_components() 
     dirns = 'u', 'v'
 
     # TODO: add phase adjustment (coeffs=2x len comps, phase += coeffs * 12)
-    # TODO: also decide whether to change the u and v independently (currently they're scaled together)
     X0 = np.zeros(len(components['d'] + components['s'])) # coefficients for amplitude of each component in U and V
     fitted_model_coeffs = model_coeffs.copy()
 
@@ -85,21 +81,19 @@ def fit_model(year, lats, lons, alt, month, model_coeffs, in_fn_fmt_wind, radar_
                     fitted_model_coeffs[ds]['amp_%s_%s' % (component, direction)] *= 1 + X[ct] * 1E2
                 ct += 1
 
-        model = calc_ctmt_winds.calc_full_wind(lats, lons, alt, fitted_model_coeffs)
-
-        # mean_wind contains the modeled and observed wind 
-        # note the >3 STD data-points are removed
-        mean_wind = calc_monthly_mean_wind(model, time, time, in_fn_fmt_wind, radar_list)  
+        model = calc_ctmt_winds.profile_calc_full_wind(lats, lons, alt, fitted_model_coeffs)  # model winds on a grid
+        wind_w_model = get_ctmt_wind_at_sd_locs(model, month, wind)
         weighted_errs = []
-        for station, vals in mean_wind.items():
-            weighted_errs += (vals['err_vs_model'] / vals['obs_std']).tolist()
+        for station, vals in wind_w_model.items():
+            weighted_errs += (np.abs(vals['obs_med'] - vals['model']) / vals['obs_MAD']).tolist()
         cost = np.nansum(np.array(weighted_errs)**2)
         print(X)
         print('Cost: %1.1f' % cost)
 
         return cost
-    
-    X = minimize(cost_function, X0, method='nelder-mead')
+   
+    cost_function(X0) 
+    #X = minimize(cost_function, X0, method='nelder-mead')
     
 
 def load_sd_wind(year, month, in_fn_fmt_wind, radar_list):
@@ -149,7 +143,6 @@ def load_sd_wind(year, month, in_fn_fmt_wind, radar_list):
     
 def get_ctmt_wind_at_sd_locs(model, month, wind):
     """ Calculate the model wind in the boresight direction at the radar locations 
-    TODO: break out the SuperDARN data-load from this
     """
     # Setup interpolators
     interp_fn_U = RegularGridInterpolator(
@@ -191,7 +184,8 @@ def error_analysis(year, lats, lons, alt, model_coeffs, in_fn_fmt_wind, radar_li
     for month in np.arange(1, 13):
         # Calculate 24 hours of monthly mean model & observed winds at all the stations
         obs_start_time = dt.datetime(year, month, 1)
-        wind_vs_jan[month] = calc_monthly_mean_wind(model, model_time, obs_start_time, in_fn_fmt_wind, radar_list)
+        # wind = TODO: Add load_sd_wind call here
+        wind_vs_jan[month] = calc_boresight_wind(lat, lon, boresight, interp_fn_U, interp_fn_V)
         #plot_mean_wind(wind_vs_jan[month]['kap']) 
     print('*** Errors vs Jan model *** ')
     wind_errs_jan = calc_station_avg_errs(wind_vs_jan, radar_list)
@@ -201,7 +195,8 @@ def error_analysis(year, lats, lons, alt, model_coeffs, in_fn_fmt_wind, radar_li
     for month in np.arange(1, 13):
         # Calculate 24 hours of monthly mean model & observed winds at all the stations
         time = dt.datetime(year, month, 1)
-        wind_vs_right_month[month] = calc_monthly_mean_wind(model, time, time, in_fn_fmt_wind, radar_list)
+
+        wind_vs_right_month[month] = calc_boresight_wind(lat, lon, boresight, interp_fn_U, interp_fn_V)  # TODO change the interp_fn here
         #plot_mean_wind(wind_vs_right_month[month]['kap']) 
     print('*** Errors vs right month model *** ')
     wind_errs_right_month = calc_station_avg_errs(wind_vs_right_month, radar_list)
@@ -266,11 +261,13 @@ def remove_anomalies(mean_wind, maxerr=3):
     return mean_wind
 
 
-def plot_median_wind(wind):
-    code = 'gbr'
+def plot_median_wind(wind, code):
     plt.errorbar(hr, wind[code]['obs_med'], yerr=wind[code]['obs_MAD'])
     plt.plot(hr, wind[code]['obs_daily'].T, '.')
     plt.grid()
+    plt.xlabel('Hour (UT)')
+    plt.ylabel('Boresight Wind (m/s)')
+    plt.title(code)
     plt.show()
 
 

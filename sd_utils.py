@@ -11,27 +11,17 @@ def get_radar_params(hdw_dat_dir):
     # Pull out all the time/beam/radar name info from hdw_dat_dir   
     hdw_dat_dir = os.path.expanduser(hdw_dat_dir)
     filenames = glob.glob(os.path.join(hdw_dat_dir, '*'))
+    filenames = [f for f in filenames if not f.endswith('txt')]
     assert len(filenames) > 0, 'No HDW files found in: %s' % hdw_dat_dir
 
-    # NOTE: Simon's ICW/ICE hdw.dat files are non-standard format and of unknown provenance -I'm taking them out (ATC)
-    filenames_nosimon = []
-    for fn in filenames:
-        if fn.split('.')[-1] == 'icw':
-            continue
-        if fn.split('.')[-1] == 'ice':
-            continue
-        filenames_nosimon.append(fn)
-    filenames = filenames_nosimon
-
     prm = [
-        'glat', 'glon', 'alt', 'boresight', 'beamsep', 'velsign',
-         'rxstep', 'tdiff', 'phasesign', 'intoffset_x', 'intoffset_y',
-         'intoffset_z', 'risetime', 'atten', 'maxrg', 'maxbeams',
+        'glat', 'glon', 'alt', 'boresight', 'offset', 'beamsep', 'velsign',
+         'phasesign', 'tdiff1', 'tdiff2', 'intoffset_x', 'intoffset_y',
+         'intoffset_z', 'risetime', 'att','n', 'maxrg', 'maxbeams',
     ]
     radar_list = {}
     for fn in filenames:
         radar_name = fn.split('.')[-1]
-
 
         # Read in text and remove comments
         with open(fn, 'r') as f:
@@ -44,27 +34,24 @@ def get_radar_params(hdw_dat_dir):
             if not line.startswith('#'):
                 txt2.append(line)
 
-        # Read hardware parameters
-        radar_list[radar_name] = {}
+        # Generate list of radar times
+        enddates = []
         for line in txt2:
             ln = line.split()
+            try:
+                time = dt.datetime.strptime(ln[2], '%Y%m%d')
+            except:
+                breakpoint()
+            assert (time > dt.datetime(1980, 1, 1)) & (time < dt.datetime(2100, 1, 1)), 'time looks wrong: %s %s' % (time, radar_name)
+            enddates.append(time)
+        enddates.append(dt.datetime(2100,1,1))
 
-            # Simon has decided to add a time of day to the hdw.dat - here's a workaround
-            #lnclean = []
-            #for x in ln:
-            #    if not re.search(r':', x):
-            #        lnclean.append(x)
-            #ln = lnclean
-
-            vals = [float(vn) for vn in ln]
-            yr = int(vals[1])
-            tot_sec = int(vals[2])
-            assert (yr < 5000) & (yr > 1980), 'year looks wrong: %i' % yr
-            assert (tot_sec < 34300000) & (tot_sec >= 0), 'tot_sec looks wrong: %i' % tot_sec
-            enddate = dt.datetime(yr, 1, 1) + dt.timedelta(seconds=tot_sec)
-            flv = [float(v) for v in vals[3:]]
-            hdw_params = dict(zip(prm, flv))
-
+        # Read hardware parameters
+        radar_list[radar_name] = {}
+        for ind, line in enumerate(txt2):
+            vals = [float(vn) for vn in ln[4:]]
+            enddate = enddates[ind + 1]
+            hdw_params = dict(zip(prm, vals))
             assert hdw_params['maxbeams'] < 25, 'maxbeams is > 24 %f' % hdw_params['maxbeams']
             assert hdw_params['beamsep'] < 5, 'beamsep is > 5 %f' % hdw_params['beamsep']
             assert hdw_params['boresight'] < 360, 'boresight is >= 360 %f' % hdw_params['boresight']

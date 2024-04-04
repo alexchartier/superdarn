@@ -13,8 +13,9 @@ Compare SD against CTMT winds
 from line_profiler import LineProfiler
 import nc_utils   # available from github.com/alexchartier/nc_utils
 import numpy as np
+import copy
 from scipy.interpolate import RegularGridInterpolator
-from scipy.optimize import minimize
+from scipy.optimize import minimize, direct, Bounds
 import matplotlib.pyplot as plt 
 import datetime as dt
 from cartopy import config
@@ -71,30 +72,58 @@ def fit_model(year, lats, lons, alt, month, model_coeffs, in_fn_fmt_wind, radar_
 
     # TODO: add phase adjustment (coeffs=2x len comps, phase += coeffs * 12)
     X0 = np.zeros(len(components['d'] + components['s'])) # coefficients for amplitude of each component in U and V
-    fitted_model_coeffs = model_coeffs.copy()
 
     def cost_function(X): 
         ct = 0
+        fitted_model_coeffs = copy.deepcopy(model_coeffs)
+
         for ds in 'd', 's':  # diurnal/semidiurnal 
             for component in components[ds]:  # wave component
                 for direction in dirns:  # u/v
-                    fitted_model_coeffs[ds]['amp_%s_%s' % (component, direction)] *= 1 + X[ct] * 1E2
+                    fitted_model_coeffs[ds]['amp_%s_%s' % (component, direction)] *= 1 + X[ct]
                 ct += 1
 
-        model = calc_ctmt_winds.profile_calc_full_wind(lats, lons, alt, fitted_model_coeffs)  # model winds on a grid
-        wind_w_model = get_ctmt_wind_at_sd_locs(model, month, wind)
+        model = calc_ctmt_winds.calc_full_wind(month, lats, lons, alt, fitted_model_coeffs)  # model winds on a grid
+        wind_w_model = get_ctmt_wind_at_sd_locs(model, wind)
         weighted_errs = []
         for station, vals in wind_w_model.items():
             weighted_errs += (np.abs(vals['obs_med'] - vals['model']) / vals['obs_MAD']).tolist()
-        cost = np.nansum(np.array(weighted_errs)**2)
-        print(X)
+
+        weighted_errs = np.array(weighted_errs)
+        cost = np.nansum(weighted_errs**2)
         print('Cost: %1.1f' % cost)
 
         return cost
-   
-    cost_function(X0) 
-    #X = minimize(cost_function, X0, method='nelder-mead')
-    
+
+  
+    #result = bruteforce_search(cost_function, X0, searchslice=slice(-1, 1, 0.1))
+    result = powell_search(cost_function, X0)
+    print('**********')
+    print(result.x)
+    print('Final cost: %1.1f' % result.fun)
+
+
+def bruteforce_search(cost_function, X0, searchslice=slice(-1, 1, 0.1)):
+    # bruteforce array is too big
+    ranges = []
+    bounds = Bounds(-np.ones(len(X0)), np.ones(len(X0)))
+    result = direct(cost_function, bounds) 
+
+
+def powell_search(cost_function, X0):
+    result = minimize(cost_function, X0, method='powell') # , options={'eps':0.25})
+    return result
+
+
+def diy_bruteforce(cost_function, X0, searchvals=np.arange(-1, 1.01, 0.1)):
+    """
+    costs = np.zeros(len(X0), len(searchvals))
+    ranges = []
+    for i in range(len(X0)):
+        for j in range(len(searchvals)):
+            costs[i, j] = cost_function( 
+    """
+
 
 def load_sd_wind(year, month, in_fn_fmt_wind, radar_list):
     """ 
@@ -141,17 +170,17 @@ def load_sd_wind(year, month, in_fn_fmt_wind, radar_list):
     return wind
 
     
-def get_ctmt_wind_at_sd_locs(model, month, wind):
+def get_ctmt_wind_at_sd_locs(model, wind):
     """ Calculate the model wind in the boresight direction at the radar locations 
     """
     # Setup interpolators
     interp_fn_U = RegularGridInterpolator(
         (model['lsts'], model['lats'], model['lons']), 
-        np.squeeze(model['wind'][model['months']==month, :, 0, :, :]),
+        np.squeeze(model['wind'][0, :, :, :]),
     )
     interp_fn_V = RegularGridInterpolator(
         (model['lsts'], model['lats'], model['lons']), 
-        np.squeeze(model['wind'][model['months']==month, :, 1, :, :]),
+        np.squeeze(model['wind'][1, :, :, :]),
     )
 
     """ Get the model wind at the radar locs """

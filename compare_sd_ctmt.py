@@ -47,6 +47,8 @@ def main(
     radar_list = sd_utils.get_radar_params(hdw_dat_dir)
     model_coeffs = calc_ctmt_winds.load_wind_coeffs(in_fn_diurnal, in_fn_semidiurnal)
 
+    # TODO: patch up and rerun error_analysis, downselect sites prior to fit_model, add phase shifting
+
     #error_analysis(year, lats, lons, alt, model, in_fn_fmt_wind, radar_list)
 
     month = 1
@@ -94,9 +96,7 @@ def fit_model(year, lats, lons, alt, month, model_coeffs, in_fn_fmt_wind, radar_
         print('Cost: %1.1f' % cost)
 
         return cost
-
   
-    #result = bruteforce_search(cost_function, X0, searchslice=slice(-1, 1, 0.1))
     result = powell_search(cost_function, X0)
     print('**********')
     print(result.x)
@@ -110,19 +110,14 @@ def bruteforce_search(cost_function, X0, searchslice=slice(-1, 1, 0.1)):
     result = direct(cost_function, bounds) 
 
 
-def powell_search(cost_function, X0):
-    result = minimize(cost_function, X0, method='powell') # , options={'eps':0.25})
+def neldermead_search(cost_function, X0):
+    result = minimize(cost_function, X0, method='nelder-mead') # , options={'eps':0.25})
     return result
 
 
-def diy_bruteforce(cost_function, X0, searchvals=np.arange(-1, 1.01, 0.1)):
-    """
-    costs = np.zeros(len(X0), len(searchvals))
-    ranges = []
-    for i in range(len(X0)):
-        for j in range(len(searchvals)):
-            costs[i, j] = cost_function( 
-    """
+def powell_search(cost_function, X0):
+    result = minimize(cost_function, X0, method='powell') # , options={'eps':0.25})
+    return result
 
 
 def load_sd_wind(year, month, in_fn_fmt_wind, radar_list):

@@ -1,15 +1,13 @@
 """ 
 Compare SD against CTMT winds
 
- TODO: Notes from Ruth: 
-    #1 calculate fit based on just one hemisphere at a time. 
-    #2 do a ~6-year comparison (2002 - 2008) against the CTMT
-    #3 compare  performance against the average against all realizations of CTMT
-
-    [later] go from mean to median to mitigate impact of high-lat convection contamination 
-
+ TODO:
+    #1 Determine accuracy of all sites against CTMT in Jan. Use performance vs July CTMT as baseline
+    #2 Add phase fitting. Make sure it doesn't make things worse
+    #3 Confirm whether valsites show better or worse performance against CTMT
 """
 
+from itertools import islice
 from line_profiler import LineProfiler
 import nc_utils   # available from github.com/alexchartier/nc_utils
 import numpy as np
@@ -24,6 +22,7 @@ import calc_ctmt_winds
 import sd_utils
 
 hr = np.arange(0, 24)
+
 
 def main(
     year = 2008,
@@ -41,21 +40,100 @@ def main(
     # CTMT diurnal/semidiurnal
     in_fn_semidiurnal = '~/data/ctmt/ctmt_semidiurnal_2002_2008.nc',
     in_fn_diurnal = '~/data/ctmt/ctmt_diurnal_2002_2008.nc',
-
+    valsites=['gbr', 'kod', 'hok'],
+    #valsites=['inv', 'kap', 'hok', 'wal', 'pyk', 'rkn', 'kod', 'pgr', 'ksr', 'sas', 'han', 'sto'],
 ):
 
     radar_list = sd_utils.get_radar_params(hdw_dat_dir)
     model_coeffs = calc_ctmt_winds.load_wind_coeffs(in_fn_diurnal, in_fn_semidiurnal)
 
-    # TODO: patch up and rerun error_analysis, downselect sites prior to fit_model, add phase shifting
-
-    #error_analysis(year, lats, lons, alt, model, in_fn_fmt_wind, radar_list)
-
     month = 1
-    fit_model(year, lats, lons, alt, month, model_coeffs, in_fn_fmt_wind, radar_list)
+   
+    # Load the SuperDARN wind data 
+    sd_wind = load_sd_wind(year, month, in_fn_fmt_wind, radar_list)
+    sd_wind = downselect_sites(sd_wind, hem='N')
+    sd_wind_novalsites = downselect_sites(sd_wind, exclude=valsites)
+    sd_wind_valsites = downselect_sites(sd_wind, include=valsites)
+
+    # Fit the model 
+    pkl_fn = 'fit.pkl'
+    try: 
+        fitted_model_coeffs = nc_utils.unpickle(pkl_fn)
+    except:
+        fitted_model_coeffs, X = fit_model(year, lats, lons, alt, month, model_coeffs, sd_wind_novalsites)
+        nc_utils.pickle(fitted_model_coeffs, pkl_fn)
+
+    # run error analysis
+    model = calc_ctmt_winds.calc_full_wind(month, lats, lons, alt, model_coeffs)  # CTMT winds on a grid
+    fitted_model = calc_ctmt_winds.calc_full_wind(month, lats, lons, alt, fitted_model_coeffs)  # fitted winds on a grid
 
 
-def fit_model(year, lats, lons, alt, month, model_coeffs, in_fn_fmt_wind, radar_list):
+    errs_full = error_analysis(year, lats, lons, alt, model, sd_wind)
+    errs_full_fitted = error_analysis(year, lats, lons, alt, fitted_model, sd_wind)
+    errs_valsites = error_analysis(year, lats, lons, alt, model, sd_wind_valsites)
+    errs_valsites_fitted = error_analysis(year, lats, lons, alt, fitted_model, sd_wind_valsites)
+    
+    # plotting/reporting 
+    disp_errs(errs_full, errs_full_fitted)
+    plot_errors(errs_valsites, fitted=errs_valsites_fitted)
+    #plot_errors(errs_full, fitted=errs_full_fitted)
+
+
+def disp_errs(errs, errs_fitted):
+    print("\n\n******** error scores (+ve = worse)")
+    term = 'weighted_err_score'
+    for station, vals in errs.items():
+        print('%s: %1.2f %1.2f %1.2f' % \
+        (station, vals[term], errs_fitted[station][term], errs_fitted[station][term] - vals[term]))
+
+
+def error_analysis(year, lats, lons, alt, model, sd_wind, verbose=False):
+    """ compare the data against the model. 
+    """
+    wind = get_ctmt_wind_at_sd_locs(model, sd_wind)
+   
+    if verbose:  
+        print("\n\n******** error scores")
+    errs = {}
+    for station, vals in wind.items():
+        errs[station] = {}
+        errs[station]['obs'] = vals['obs_med']
+        errs[station]['mod'] = vals['model']
+        errs[station]['error'] = vals['obs_med'] - vals['model']
+        errs[station]['weighted_err_score'] = np.nanmean(np.abs(errs[station]['error']) / vals['obs_MAD'])
+        errs[station]['obs_MAD'] = vals['obs_MAD']
+        if verbose:
+            print('%s: %1.1f' % (station, errs[station]['weighted_err_score']))
+
+    return errs
+
+
+def plot_errors(errs, fitted=None, ylim=[-30, 30]):
+    if len(errs) > 6:
+        errs = take(6, errs.items())
+
+    fig, ax = plt.subplots(len(errs), 1)
+    ct = 0
+    for station, vals in errs.items():
+        ax[ct].errorbar(hr, vals['obs'], yerr=vals['obs_MAD'], label='Observed')
+        ax[ct].plot(hr, vals['mod'], label='CTMT')
+        if fitted:
+            ax[ct].plot(hr, fitted[station]['mod'], label='Fitted')
+        ax[ct].grid()
+        ax[ct].set_xlabel('Hour (UT)')
+        ax[ct].set_ylabel('Boresight Wind (m/s)')
+        ax[ct].set_title(station)
+        ax[ct].set_xlim([0, 24])
+        ax[ct].set_ylim(ylim)
+
+        ct +=1
+
+    ax[0].legend()
+    plt.show()
+
+
+
+def fit_model(year, lats, lons, alt, month, model_coeffs, sd_wind):
     """ calculate a tidal fit that best matches the SuperDARN data 
     TODO: downselect to just NH (or SH) sites, update fit coefficients
     Use scaling factors to vary the coefficient amplitudes (6x diurnal, 8x semidiurnal
@@ -65,31 +143,23 @@ def fit_model(year, lats, lons, alt, month, model_coeffs, in_fn_fmt_wind, radar_
     time = dt.datetime(year, month, 1)
 
     """ Load SuperDARN wind """
-    wind = load_sd_wind(year, month, in_fn_fmt_wind, radar_list)
     #plot_median_wind(wind, 'gbr')
 
     # Now create a cost function to minimize from there
-    components = calc_ctmt_winds.table_of_components() 
-    dirns = 'u', 'v'
 
-    # TODO: add phase adjustment (coeffs=2x len comps, phase += coeffs * 12)
+    components = calc_ctmt_winds.table_of_components() 
     X0 = np.zeros(len(components['d'] + components['s'])) # coefficients for amplitude of each component in U and V
 
     def cost_function(X): 
-        ct = 0
-        fitted_model_coeffs = copy.deepcopy(model_coeffs)
+        # Update the coefficients according to X
+        fitted_model_coeffs = scale_model(model_coeffs, X)
 
-        for ds in 'd', 's':  # diurnal/semidiurnal 
-            for component in components[ds]:  # wave component
-                for direction in dirns:  # u/v
-                    fitted_model_coeffs[ds]['amp_%s_%s' % (component, direction)] *= 1 + X[ct]
-                ct += 1
-
+        # Calculate the wind errors
         model = calc_ctmt_winds.calc_full_wind(month, lats, lons, alt, fitted_model_coeffs)  # model winds on a grid
-        wind_w_model = get_ctmt_wind_at_sd_locs(model, wind)
+        wind = get_ctmt_wind_at_sd_locs(model, sd_wind)
         weighted_errs = []
-        for station, vals in wind_w_model.items():
-            weighted_errs += (np.abs(vals['obs_med'] - vals['model']) / vals['obs_MAD']).tolist()
+        for station, vals in wind.items():
+            weighted_errs += (np.abs(vals['obs_med'] - vals['model']) / vals['obs_MAD']**2).tolist()
 
         weighted_errs = np.array(weighted_errs)
         cost = np.nansum(weighted_errs**2)
@@ -101,6 +171,33 @@ def fit_model(year, lats, lons, alt, month, model_coeffs, in_fn_fmt_wind, radar_
     print('**********')
     print(result.x)
     print('Final cost: %1.1f' % result.fun)
+
+    # fit to the result
+    fitted_model_coeffs = scale_model(model_coeffs, result.x)
+
+    return fitted_model_coeffs, result.x
+
+
+def scale_model(model_coeffs, X):
+    """ Scale the model coefficients according to X (=zeros for no scaling) """
+
+    # TODO: add phase adjustment (X=2x len comps, phase += X[ct * 2] * 12)
+
+    components = calc_ctmt_winds.table_of_components() 
+    dirns = 'u', 'v'
+
+    # Copy so as not to modify the original
+    fitted_model_coeffs = copy.deepcopy(model_coeffs)
+
+    # Vary the model according to the fit coefficients
+    ct = 0
+    for ds in 'd', 's':  # diurnal/semidiurnal 
+        for component in components[ds]:  # wave component
+            for direction in dirns:  # u/v
+                fitted_model_coeffs[ds]['amp_%s_%s' % (component, direction)] *= 1 + X[ct]
+            ct += 1
+
+    return fitted_model_coeffs
 
 
 def bruteforce_search(cost_function, X0, searchslice=slice(-1, 1, 0.1)):
@@ -186,105 +283,6 @@ def get_ctmt_wind_at_sd_locs(model, wind):
 
     return wind
 
-
-def calc_err(wind):
-    """ TODOO: run through the stations and calculate MAD-weighted errors (maybe MAD**2) """
-
-
-def error_analysis(year, lats, lons, alt, model_coeffs, in_fn_fmt_wind, radar_list):
-    """ compare the data against the model. 
-    Run all 12 months of model winds against model Jan, then run against correct months 
-    """
-
-    """ Load the model """
-    model = calc_ctmt_winds.calc_full_wind(lats, lons, alt, model_coeffs)
-
-    # NB: the 'obs' values can change between the following two versions, 
-    # as points >3 standard deviations from the model are kicked from the analysis 
-
-    """ calculate the RMSEs against one model month """
-    wind_vs_jan = {}
-    model_time = dt.datetime(year, 1, 1)
-    for month in np.arange(1, 13):
-        # Calculate 24 hours of monthly mean model & observed winds at all the stations
-        obs_start_time = dt.datetime(year, month, 1)
-        # wind = TODO: Add load_sd_wind call here
-        wind_vs_jan[month] = calc_boresight_wind(lat, lon, boresight, interp_fn_U, interp_fn_V)
-        #plot_mean_wind(wind_vs_jan[month]['kap']) 
-    print('*** Errors vs Jan model *** ')
-    wind_errs_jan = calc_station_avg_errs(wind_vs_jan, radar_list)
-
-    """ calculate the RMSEs against the correct model months """
-    wind_vs_right_month = {}
-    for month in np.arange(1, 13):
-        # Calculate 24 hours of monthly mean model & observed winds at all the stations
-        time = dt.datetime(year, month, 1)
-
-        wind_vs_right_month[month] = calc_boresight_wind(lat, lon, boresight, interp_fn_U, interp_fn_V)  # TODO change the interp_fn here
-        #plot_mean_wind(wind_vs_right_month[month]['kap']) 
-    print('*** Errors vs right month model *** ')
-    wind_errs_right_month = calc_station_avg_errs(wind_vs_right_month, radar_list)
-   
-
-def calc_station_avg_errs(annual_mean_wind, radar_list):
-    """ get overall RMS of observations and obs-model diffs on station-by-station basis"""
-
-    #set up storage  
-    out = {}
-    overall = {}
-    varnames = 'obs', 'err_vs_model'
-    for vn in varnames:
-        overall[vn] = 0
-    for station in radar_list:
-        out[station] = {}
-        for vn in varnames:
-            out[station][vn] = []
-    
-    for month in np.arange(1, 13):
-        for station, vals in annual_mean_wind[month].items():
-            for vn in varnames:
-                out[station][vn].append(vals[vn])
-        
-    # Calculate average errors for all the model months
-    print('Station, Obs RMS, RMSE vs model')
-    ct = 0
-    for station, vals in out.items():
-        if not vals[varnames[0]]:
-            continue
-        for vn in varnames: 
-            out[station][vn] = np.array(vals[vn])
-            out[station]['rms_' + vn] = np.sqrt(np.nanmean(out[station][vn] ** 2))
-            overall[vn] += out[station]['rms_' + vn] 
-
-        print('%s       %1.1f    %1.1f' % \
-            (station, out[station]['rms_obs'], out[station]['rms_err_vs_model']))
-        ct += 1
-
-    print('Overall %s: %1.1f, %s: %1.1f\n' % \
-        (varnames[0], overall[varnames[0]] / ct, varnames[1], overall[varnames[1]] / ct))
-
-    return out
-
-
-def remove_anomalies(mean_wind, maxerr=3):
-    """ calculate the errors by radar, considering the Std. Devs. Remove those that are >maxerr STDs out """
-    badids = []
-    errs_out = []
-    for k, v in mean_wind.items():
-        errs = v['obs'] - v['model']
-        err_pct = errs / v['obs_std'] * 100
-        mean_err = np.nanmean(np.abs(err_pct))
-        errs_out.append(mean_err)
-        # print('%s %1.0f' % (k, mean_err))
-
-        if mean_err > maxerr * 100:
-            badids.append(k)
-        mean_wind[k]['err_vs_model'] = errs
-    [mean_wind.pop(k) for k in badids]
-
-    return mean_wind
-
-
 def plot_median_wind(wind, code):
     plt.errorbar(hr, wind[code]['obs_med'], yerr=wind[code]['obs_MAD'])
     plt.plot(hr, wind[code]['obs_daily'].T, '.')
@@ -311,6 +309,39 @@ def calc_boresight_wind(lat, lon, boresight, interp_fn_U, interp_fn_V):
     model_boresight_wind = np.sin(boresight_rad) * U + np.cos(boresight_rad) * V
 
     return model_boresight_wind
+
+
+def downselect_sites(sd_wind, hem=None, exclude=[], include=[]):
+    """ kick out hemisphere & exclude-list stations """ 
+    sd_wind_short = {}
+
+    for radarcode, vals in sd_wind.items():
+        # kick out exclude sites
+        if radarcode in exclude:
+            continue
+
+        # kick out non-include sites
+        if include and radarcode not in include:
+            continue
+
+        # kick out wrong hemisphere
+        if hem:
+            if hem == 'N':
+                if vals['lat'] < 0:
+                    continue
+            if hem == 'S':
+                if vals['lat'] > 0:
+                    continue
+
+        sd_wind_short[radarcode] = vals
+
+    return sd_wind_short
+
+
+
+def take(n, iterable):
+    """Return the first n items of the iterable as a list."""
+    return dict(islice(iterable, n))
 
 
 if __name__ == '__main__':

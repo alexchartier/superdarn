@@ -76,33 +76,31 @@ def load_wind_coeffs(in_fn_d, in_fn_sd):
     return {'d':nc_utils.ncread_vars(in_fn_d), 's':nc_utils.ncread_vars(in_fn_sd)}
 
 
-def profile_calc_full_wind(lats, lons, alt, model_coeffs):
+def profile_calc_full_wind(month, lats, lons, alt, model_coeffs):
     """ wrapper just to support line profiling """
     lp = LineProfiler()
     lp.add_function(calc_wind)
     lp_wrapper = lp(calc_full_wind)
-    lp_wrapper(lats, lons, alt, model_coeffs)
-    lp.print_stats()
+    model = lp_wrapper(month, lats, lons, alt, model_coeffs)
+    lp.print_stats(output_unit=1)
+    return model
 
 
-def calc_full_wind(lats, lons, alt, model_coeffs):
-    """ returns a lat/lon distribution of model winds at specified alt """ 
-    months = np.arange(1, 13)
+def calc_full_wind(month, lats, lons, alt, model_coeffs):
+    """ returns a u+v lst/lat/lon distribution of model winds at specified alt and month """ 
     lsts = np.arange(0, 25) 
 
     comps = table_of_components()
     dirns = 'u', 'v'
 
-    wind_array = np.zeros((len(months), len(lsts), len(dirns), len(lats), len(lons)))
-    for im, month in enumerate(months):
-        for il, lst in enumerate(lsts):
-            for idn, dirn in enumerate(dirns):
-                wind_component = calc_wind_component(lats, lons, alt, month, model_coeffs, comps, lst=lst, dirn=dirn)
-                wind_array[im, il, idn, :, :] = wind_component
+    wind_array = np.zeros((len(dirns), len(lsts), len(lats), len(lons)))
+    for il, lst in enumerate(lsts):
+        for idn, dirn in enumerate(dirns):
+            wind_component = calc_wind_component(lats, lons, alt, month, model_coeffs, comps, lst=lst, dirn=dirn)
+            wind_array[idn, il, :, :] = wind_component
 
     wind = {
         'wind': wind_array, 
-        'months': months, 
         'lsts': lsts, 
         'dirns': dirns, 
         'lats': lats, 
@@ -130,60 +128,42 @@ def calc_wind_component(lats, lons, alt, month, model_coeffs, comps, lst=18, dir
     # Calculate the wind
     wind = np.zeros((len(lats), len(lons)))
     hours = lst - lons / 360 * 24
-    for lonind, lon in enumerate(lons):
-        hour = hours[lonind]
-        for ds, comp_list in comps.items():
-            for comp in comp_list:
-                wind_comp, phase, amp = calc_wind(model_coeffs[ds], lats, lon, alt, hour, month, comp, dirn, ds)
-                wind[:, lonind] = wind[:, lonind] + np.squeeze(wind_comp)
-
-    return wind
-
-
-def summed_wind_components_at_ut(lats, lons, alt, hour, month, model_coeffs, comps):
-    # Calculate the wind
-    zeros = np.zeros((len(lats), len(lons)))
-    wind = {'u': zeros.copy(), 'v': zeros.copy()}  
     for ds, comp_list in comps.items():
         for comp in comp_list:
-            for dirn in wind.keys():
-                wind_comp, phase, amp = calc_wind(model_coeffs[ds], lats, lons, alt, hour, month, comp, dirn, ds)
-                wind[dirn] += wind_comp
+            wind_comp, phase, amp = calc_wind(model_coeffs[ds], lats, lons, alt, hours, month, comp, dirn, ds)
+            wind += np.squeeze(wind_comp)
 
     return wind
 
 
-def calc_wind(model_coeffs, lat, lon, alt, t, month, component, direction, diurnal_semidiurnal='d'):
+def calc_wind(model_coeffs, lat, lon, alt, hour, month, component, direction, diurnal_semidiurnal='d'):
     """ 
     model_coeffs: loaded diurnal or semidiurnal file
     lat: scalar or vector latitude (must be subset of model_coeffs['lat'])
     lon: scalar or vector longitudes
     alt: scalar in km
-    t: scalar UT in decimal hours
+    hour: scalar UT in decimal hours
     month: scalar
     component: 'e', 'w', 's' for east, west or stationary propagation + 0 - 4 for wavenumber
     direction: 'u' or 'v' (zonal or meridional, aka east or north)
     diurnal_semidiurnal: either 'd' or 's'
 
     """
+   
+    [lon2, _] = np.meshgrid(lon, lat) 
+    # check all requested lat within model_coeffs['lat']
+    # assert np.all(np.in1d(lat, model_coeffs['lat'])), "requested lat must be subset of model_coeffs['lat']"
 
-    # Expand the query points into 2D arrays if necessary
-    lon, lat = np.meshgrid(lon, lat)
-    
-    # Get the dimensions  
+    # Get the dimensional indexes 
     mi = model_coeffs['month'] == month
     ai = model_coeffs['lev'] == alt
-
-    # check all requested lat within model_coeffs['lat']
-    assert np.all(np.in1d(lat, model_coeffs['lat'])), "requested lat must be subset of model_coeffs['lat']"
+    li = np.isin(lat, model_coeffs['lat']).ravel()
 
     #  amplitude (m/s) (east/west/north/up, depending on component)
-    amp = np.interp(lat, model_coeffs['lat'], model_coeffs['amp_%s_%s' % (component, direction)][mi, ai, :].flatten())
-    #amp = CubicSpline(model_coeffs['lat'], model_coeffs['amp_%s_%s' % (component, direction)][mi, ai, :].flatten())(lat)
+    amp = model_coeffs['amp_%s_%s' % (component, direction)][mi, ai, li].ravel()
 
     # phase (UT of MAX at 0 deg lon)
-    phase = np.interp(lat, model_coeffs['lat'], model_coeffs['phase_%s_%s' % (component, direction)][mi, ai, :].flatten())
-    #phase = CubicSpline(model_coeffs['lat'], model_coeffs['phase_%s_%s' % (component, direction)][mi, ai, :].flatten())(lat)
+    phase = model_coeffs['phase_%s_%s' % (component, direction)][mi, ai, li].ravel()
    
     # propagation direction multiplier used to determine phase at specified longitude
     if component[0] == 'e': # eastward
@@ -207,16 +187,25 @@ def calc_wind(model_coeffs, lat, lon, alt, t, month, component, direction, diurn
     s = int(component[1])
     assert np.abs(s) < 5, 'wavenumbers <= 4 supported'
 
-    # # Phase (UT of max at the specified lon).
-    # phase_at_lon = phase + dirn_multiplier * s * lon / 360 * 24    
-
     # Wind values at the requested locations
-    # wind = amp * np.cos((phase_at_lon - hour * ds_multiplier)  / 24 * np.pi * 2)  
-    wind = amp * np.cos(ds_multiplier * np.pi / 12. * t \
-                      - dirn_multiplier * s * lon * np.pi / 180. \
-                      - phase * ds_multiplier * np.pi / 12)
+    [_, amp2] = np.meshgrid(lon, amp)
+    [_, phase2] = np.meshgrid(lon, phase)
+    wind = amp2 * np.cos(ds_multiplier * np.pi / 12. * hour - dirn_multiplier * s * lon2 * np.pi / 180. - phase2 * ds_multiplier * np.pi / 12)
 
-    return wind, phase, amp
+    return wind, phase2, amp2
+
+
+def summed_wind_components_at_ut(lats, lons, alt, hour, month, model_coeffs, comps):
+    # Calculate the wind
+    zeros = np.zeros((len(lats), len(lons)))
+    wind = {'u': zeros.copy(), 'v': zeros.copy()}  
+    for ds, comp_list in comps.items():
+        for comp in comp_list:
+            for dirn in wind.keys():
+                wind_comp, phase, amp = calc_wind(model_coeffs[ds], lats, lons, alt, hour, month, comp, dirn, ds)
+                wind[dirn] += wind_comp
+
+    return wind
 
 
 def table_of_components():

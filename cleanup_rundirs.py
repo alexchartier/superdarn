@@ -1,6 +1,7 @@
-# Clear out the old run directories 
+# Clear out the old run directories
 
-import os.path, time 
+import os.path
+import time
 import glob
 import numpy as np
 import shutil
@@ -9,7 +10,8 @@ import pdb
 
 target = sys.argv[1]
 cutoff = 86400
-dirs = [d for d in os.listdir('./%s' % target) if os.path.isdir(os.path.join('./%s' % target, d))]
+dirs = [d for d in os.listdir(
+    './%s' % target) if os.path.isdir(os.path.join('./%s' % target, d))]
 
 for dn in dirs:
     dirn = os.path.join(target, dn)
@@ -25,4 +27,3 @@ for dn in dirs:
             print('%s removed' % dirn)
         else:
             print('%s active - see %s' % (dirn, latest_file))
-        

@@ -11,7 +11,6 @@ import pysat
 from pysat.instruments.methods import sw as sw_methods
 
 
-
 def main():
     """ Download and write the solargeomag file containing F10.7, Kp, and Ap
     """
@@ -59,6 +58,7 @@ def none_string(line):
     else:
         return line
 
+
 def process_command_line_input():
     """ Process command line input, needed to possible ipython use
 
@@ -78,8 +78,10 @@ def process_command_line_input():
     return input_args
 # End of run_tools routines
 
+
 def evaluate_today(dtime):
     return dtime.date() == dt.datetime.today().date()
+
 
 def get_recent_f107_data(today=dt.datetime.today()):
     """ Get today's F10.7 forecasts and historic 30-day record from SWPC
@@ -114,6 +116,7 @@ def get_recent_f107_data(today=dt.datetime.today()):
 
     return f107_inst
 
+
 def get_historic_f107_data(stime, etime):
     """ Get historic F10.7 for a specified range of dates
 
@@ -146,6 +149,7 @@ def get_historic_f107_data(stime, etime):
 
     return f107_inst
 
+
 def add_f107a(f107_inst):
     """ Add F10.7a to input instrument object, using historic data when needed
 
@@ -165,8 +169,8 @@ def add_f107a(f107_inst):
 
     if hist_inst.empty:
         raise RuntimeError('unable to load past F107 data for {:}-{:}'.format(
-                                                        start_time, stop_time))
-    
+            start_time, stop_time))
+
     # Ensure enough data was loaded
     i = 0
     while (stop_time - hist_inst.index[-1]).total_seconds() > 86400.0 and i < 5:
@@ -179,7 +183,7 @@ def add_f107a(f107_inst):
         # If there is just a one-day gap, go on.  This can happen at certain
         # times of day
         raise RuntimeError('trouble downloading desired data')
-            
+
     # Combine the input and historic data, prioritizing input
     f107a_input = f107_inst.copy()
     f107a_input.data = f107_inst.data.combine_first(hist_inst.data)
@@ -193,6 +197,7 @@ def add_f107a(f107_inst):
                                                   f107_inst.index[-1]]
 
     return
+
 
 def get_recent_kp_data(today=dt.datetime.today()):
     """ Get today's Kp forecasts and historic 30-day record from SWPC
@@ -228,6 +233,7 @@ def get_recent_kp_data(today=dt.datetime.today()):
 
     return kp_inst
 
+
 def get_historic_kp_data(stime, etime):
     """ Get today's Kp forecasts and historic 30-day record from SWPC
 
@@ -260,6 +266,7 @@ def get_historic_kp_data(stime, etime):
                                     stop=etime)
 
     return kp_inst
+
 
 def combine_f107_kp(f107_inst, kp_inst):
     """ Combine F10.7 and Kp data, saving only overlapping data
@@ -308,7 +315,7 @@ def combine_f107_kp(f107_inst, kp_inst):
 
     out_time = np.array(out_time)
     out_f107 = np.array(out_f107)
-            
+
     # Determine the date range, using the latest start and soonest stop date
     start = max([out_time[0], kp_inst.index[0]])
     stop = min([out_time[-1], kp_inst.index[-1]])
@@ -317,7 +324,7 @@ def combine_f107_kp(f107_inst, kp_inst):
     tdiff_stop = np.array([abs(t - stop) for t in out_time])
     fstart = tdiff_start.argmin()
     fstop = tdiff_stop.argmin() + 1
-    
+
     kstart = abs(kp_inst.index - start).argmin()
     kstop = abs(kp_inst.index - stop).argmin() + 1
 
@@ -331,7 +338,8 @@ def combine_f107_kp(f107_inst, kp_inst):
     f107_kp_inst.doy = int(start.strftime('%j'))
 
     return f107_kp_inst
-    
+
+
 def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
     """ Write a HDF5 file containing F10.7, Kp, and Ap data
 
@@ -355,12 +363,12 @@ def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
     root_grp = Dataset(filename, "w", format="NETCDF4")
     root_grp.description = "".join(
         ["F10.7, F10.7a, Kp, ap, and Ap ",
-        "" if ap_inst is None else " recent",
-        "historical data ",
-        "" if ap_inst is None else "and forecasts ",
-        "made on {:}".format(dt.datetime.today())],
+         "" if ap_inst is None else " recent",
+         "historical data ",
+         "" if ap_inst is None else "and forecasts ",
+         "made on {:}".format(dt.datetime.today())],
     )
-    
+
     # Define the two different data groups and their dimension (time)
     recent_grp = root_grp.createGroup('recent')
     recent_grp.description = "".join(
@@ -391,14 +399,14 @@ def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
     recent_sod.units = "Seconds"
     recent_sod.description = "Universal Time seconds of day"
     recent_sod[:] = [tt.hour * 3600 + tt.minute * 60 + tt.second
-                  for tt in f107_kp_inst.index]
+                     for tt in f107_kp_inst.index]
 
     recent_f107 = recent_grp.createVariable('f107', 'i4', ('time',))
     f107_meta = f107_kp_inst.meta['f107']
     recent_f107.units = f107_meta[f107_kp_inst.meta.units_label]
     recent_f107.description = f107_meta[f107_kp_inst.meta.desc_label]
     nan_index = f107_kp_inst.index[np.isnan(f107_kp_inst['f107'].values.astype(
-                float))]
+        float))]
     f107_kp_inst.data.loc[nan_index, ('f107')] = -1
     recent_f107[:] = list(f107_kp_inst['f107'])
 
@@ -407,7 +415,7 @@ def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
     recent_f107a.units = f107a_meta[f107_kp_inst.meta.units_label]
     recent_f107a.description = f107a_meta[f107_kp_inst.meta.desc_label]
     nan_index = f107_kp_inst.index[np.isnan(f107_kp_inst['f107a'].values.astype(
-                float))]
+        float))]
     f107_kp_inst.data.loc[nan_index, ('f107a')] = -1
     recent_f107a[:] = list(f107_kp_inst['f107a'])
 
@@ -416,7 +424,7 @@ def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
     recent_kp.units = kp_meta[f107_kp_inst.meta.units_label]
     recent_kp.description = kp_meta[f107_kp_inst.meta.desc_label]
     nan_index = f107_kp_inst.index[np.isnan(f107_kp_inst['Kp'].values.astype(
-                float))]
+        float))]
     f107_kp_inst.data.loc[nan_index, ('Kp')] = -1
     recent_kp[:] = list(f107_kp_inst['Kp'])
 
@@ -425,7 +433,7 @@ def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
     recent_Ap.units = Ap_meta[f107_kp_inst.meta.units_label]
     recent_Ap.description = Ap_meta[f107_kp_inst.meta.desc_label]
     nan_index = f107_kp_inst.index[np.isnan(f107_kp_inst['Ap'].values.astype(
-                float))]
+        float))]
     f107_kp_inst.data.loc[nan_index, ('Ap')] = -1
     recent_Ap[:] = list(f107_kp_inst['Ap'])
 
@@ -434,7 +442,7 @@ def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
     recent_dap.units = dap_meta[f107_kp_inst.meta.units_label]
     recent_dap.description = dap_meta[f107_kp_inst.meta.desc_label]
     nan_index = f107_kp_inst.index[np.isnan(
-            f107_kp_inst['daily_ave_ap'].values.astype(float))]
+        f107_kp_inst['daily_ave_ap'].values.astype(float))]
     f107_kp_inst.data.loc[nan_index, ('daily_ave_ap')] = -1
     recent_dap[:] = list(f107_kp_inst['daily_ave_ap'])
 
@@ -443,7 +451,7 @@ def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
     recent_ap3h.units = ap3h_meta[f107_kp_inst.meta.units_label]
     recent_ap3h.description = ap3h_meta[f107_kp_inst.meta.desc_label]
     nan_index = f107_kp_inst.index[np.isnan(
-            f107_kp_inst['3hr_ap'].values.astype(float))]
+        f107_kp_inst['3hr_ap'].values.astype(float))]
     f107_kp_inst.data.loc[nan_index, ('3hr_ap')] = -1
     recent_ap3h[:] = list(f107_kp_inst['3hr_ap'])
 
@@ -469,7 +477,8 @@ def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
         f107_meta = ap_inst.meta['f107']
         forecast_f107.units = f107_meta[ap_inst.meta.units_label]
         forecast_f107.description = f107_meta[ap_inst.meta.desc_label]
-        nan_index = ap_inst.index[np.isnan(ap_inst['f107'].values.astype(float))]
+        nan_index = ap_inst.index[np.isnan(
+            ap_inst['f107'].values.astype(float))]
         ap_inst.data.loc[nan_index, ('f107')] = -1
         forecast_f107[:] = list(ap_inst['f107'])
 
@@ -477,7 +486,8 @@ def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
         f107a_meta = ap_inst.meta['f107a']
         forecast_f107a.units = f107a_meta[ap_inst.meta.units_label]
         forecast_f107a.description = f107a_meta[ap_inst.meta.desc_label]
-        nan_index = ap_inst.index[np.isnan(ap_inst['f107a'].values.astype(float))]
+        nan_index = ap_inst.index[np.isnan(
+            ap_inst['f107a'].values.astype(float))]
         ap_inst.data.loc[nan_index, ('f107a')] = -1
         forecast_f107a[:] = list(ap_inst['f107a'])
 
@@ -501,6 +511,7 @@ def write_solargeomag_file(filename, f107_kp_inst, ap_inst):
     root_grp.close()
     print('Wrote f107 etc. to %s' % filename)
     return
+
 
 def get_f107_kp_ap(outfile, stime, etime):
 

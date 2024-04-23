@@ -25,22 +25,21 @@ where Pdyn is the solar wind dynamic pressure in nPa;
 """
 
 # From date and time
-t1 = dt.datetime(2001,1,2,3,4,5)  # year month day hour min sec
-t0 = dt.datetime(1970,1,1)   # start of epoch
-ut = (t1-t0).total_seconds()
+t1 = dt.datetime(2001, 1, 2, 3, 4, 5)  # year month day hour min sec
+t0 = dt.datetime(1970, 1, 1)   # start of epoch
+ut = (t1 - t0).total_seconds()
 ps = geopack.recalc(ut)
 
 x0gsm = 6.3
 y0gsm = 5.3
-z0gsm = -2.9 
+z0gsm = -2.9
 dir = 1
 rlim = 1.1
-r0 = 1 
-par = 2 
+r0 = 1
+par = 2
 exname = 't04'
 inname = 'igrf'
-out = geopack.trace(x0gsm,y0gsm,z0gsm, dir)#, par, exname)#, inname)
-
+out = geopack.trace(x0gsm, y0gsm, z0gsm, dir)  # , par, exname)#, inname)
 
 
 pdb.set_trace()

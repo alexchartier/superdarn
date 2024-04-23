@@ -25,11 +25,11 @@ author: A.T. Chartier, 5 February 2020
 import os
 import sys
 import glob
-#import bz2
+# import bz2
 import shutil
 import netCDF4
 import jdutil
-import datetime as dt 
+import datetime as dt
 from dateutil.relativedelta import relativedelta
 import calendar
 import numpy as np
@@ -42,8 +42,9 @@ import helper
 DELETE_PROCESSED_RAWACFS = False
 SAVE_OUTPUT_TO_LOGFILE = False
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
-MAKE_FIT_VERSIONS = [2.5,3.0]
-MIN_FITACF_FILE_SIZE = 1E5 # bytes
+MAKE_FIT_VERSIONS = [2.5, 3.0]
+MIN_FITACF_FILE_SIZE = 1E5  # bytes
+
 
 def main(
     start_time=dt.datetime(2005, 12, 1),
@@ -55,7 +56,7 @@ def main(
     skip_existing=True,
     fit_ext='*.fit',
 ):
-    
+
     run_dir = '/project/superdarn/run/%s' % get_random_string(4)
 
     # Send the output to a log file
@@ -63,27 +64,28 @@ def main(
     if SAVE_OUTPUT_TO_LOGFILE:
         f = open(
             '{logDir}/raw_to_fit_to_net_{startDate}-{endDate}.log'.format(
-            logDir = log_dir,
-            startDate = start_time.strftime("%Y%m%d"), 
-            endDate = end_time.strftime("%Y%m%d"),
+                logDir=log_dir,
+                startDate=start_time.strftime("%Y%m%d"),
+                endDate=end_time.strftime("%Y%m%d"),
             ), 'w')
-            
+
         sys.stdout = f
-    
+
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
     hdw_dat_dir = os.path.join(rstpath, 'tables/superdarn/hdw/')
-    
+
     # Running raw to fit
     radar_info = get_radar_params(hdw_dat_dir)
-    raw_to_fit(start_time, end_time, run_dir, in_dir_fmt, fit_dir_fmt, MAKE_FIT_VERSIONS)
+    raw_to_fit(start_time, end_time, run_dir, in_dir_fmt,
+               fit_dir_fmt, MAKE_FIT_VERSIONS)
     sys.stdout = original_stdout
 
 
 def raw_to_fit(
-    start_time = dt.datetime(2016, 1, 1),
-    end_time = dt.datetime(2017, 1, 1),
-    run_dir = '/project/superdarn/run/',
+    start_time=dt.datetime(2016, 1, 1),
+    end_time=dt.datetime(2017, 1, 1),
+    run_dir='/project/superdarn/run/',
     in_dir='/project/superdarn/data/rawacf/%Y/%m/',
     out_dir='/project/superdarn/alex/fitacf/%Y/%m/',
     make_fit_versions=[2.5, 3.0],
@@ -92,7 +94,8 @@ def raw_to_fit(
 
     print('%s\n%s\n%s\n%s\n%s\n' % (
         'Converting files from rawACF to fitACF',
-        'from: %s to %s' % (start_time.strftime('%Y/%m/%d'), end_time.strftime('%Y/%m/%d')),
+        'from: %s to %s' % (start_time.strftime('%Y/%m/%d'),
+                            end_time.strftime('%Y/%m/%d')),
         'input e.g.: %s' % start_time.strftime(in_dir),
         'output e.g.: %s' % start_time.strftime(out_dir),
         'Run: %s' % run_dir,
@@ -112,8 +115,10 @@ def raw_to_fit(
             radar_list = get_radar_list(in_dir_t)
             for radar in radar_list:
                 # indirn = os.path.join(in_dir, radar)  # for old setup
-                in_fname_fmt = time.strftime(os.path.join(in_dir, '%Y%m%d' + '*{radarName}*.rawacf.bz2'.format(radarName = radar)))
-                fit_fname = time.strftime(out_dir + '/%Y%m%d.' + '{radarName}.v{fitVer}.fit'.format(radarName = radar, fitVer = fit_version))
+                in_fname_fmt = time.strftime(os.path.join(
+                    in_dir, '%Y%m%d' + '*{radarName}*.rawacf.bz2'.format(radarName=radar)))
+                fit_fname = time.strftime(
+                    out_dir + '/%Y%m%d.' + '{radarName}.v{fitVer}.fit'.format(radarName=radar, fitVer=fit_version))
                 if os.path.isfile(fit_fname):
                     print("File exists: %s" % fit_fname)
                     if clobber:
@@ -121,18 +126,20 @@ def raw_to_fit(
                     else:
                         print('skipping')
                         continue
-                status = proc_radar(in_fname_fmt, fit_fname, fit_version, run_dir)
+                status = proc_radar(in_fname_fmt, fit_fname,
+                                    fit_version, run_dir)
 
                 # Only delete the rawACFs if:
                 #   - The rawACF -> fitACF conversion succeeded
                 #   - The user set the flag to delete rawACFs
                 #   - All fitACF versions have been created
-                if (status == 0 and 
-                    DELETE_PROCESSED_RAWACFS and 
-                    fit_version == make_fit_versions[-1]):
-                    print('Deleting processed rawACFs: {rawacfs}'.format(rawacfs = glob.glob(in_fname_fmt)))
-                    os.system('rm {rawacfs}'.format(rawacfs = in_fname_fmt))
-                    
+                if (status == 0 and
+                    DELETE_PROCESSED_RAWACFS and
+                        fit_version == make_fit_versions[-1]):
+                    print('Deleting processed rawACFs: {rawacfs}'.format(
+                        rawacfs=glob.glob(in_fname_fmt)))
+                    os.system('rm {rawacfs}'.format(rawacfs=in_fname_fmt))
+
             time += dt.timedelta(days=1)
 
 
@@ -158,14 +165,15 @@ def proc_radar(in_fname_fmt, out_fname, fit_version, run_dir):
         # Get just the rawacf filename without the path
         rawacfFile = in_fname.split('/')[-1]
         rawacfFileList.append(rawacfFile)
-        
+
         shutil.copy2(in_fname, run_dir)
         in_fname_t = os.path.join(run_dir, os.path.basename(in_fname))
         os.system('bzip2 -d %s' % in_fname_t)
 
         in_fname_t2 = '.'.join(in_fname_t.split('.')[:-1])
         tmp_fname = '.'.join(in_fname_t2.split('.')[:-1]) + '.fitacf'
-        os.system('make_fit -fitacf-version %1.1f %s > %s' % (fit_version, in_fname_t2, tmp_fname))
+        os.system('make_fit -fitacf-version %1.1f %s > %s' %
+                  (fit_version, in_fname_t2, tmp_fname))
     os.system('cat *.fitacf > tmp.fitacf')
 
     # Create a single fitACF at output location
@@ -174,26 +182,30 @@ def proc_radar(in_fname_fmt, out_fname, fit_version, run_dir):
         if fit_version == 2.5:
             shutil.move('tmp.fitacf', out_fname)
         elif fit_version == 3.0:
-        # Apply despeckling to v3.0 fitACFs   
-            #path = '/'.join(out_fname.split('/')[:-1]) + '/'
-            #fname = '.'.join(out_fname.split('/')[-1].split('.')[:-1]) + '.despeckled.fit'
-            #despeckled_out_fname = path + fname
+            # Apply despeckling to v3.0 fitACFs
+            # path = '/'.join(out_fname.split('/')[:-1]) + '/'
+            # fname = '.'.join(out_fname.split('/')[-1].split('.')[:-1]) + '.despeckled.fit'
+            # despeckled_out_fname = path + fname
             os.system('fit_speck_removal tmp.fitacf > {0}'.format(out_fname))
             fn_inf = os.stat(out_fname)
         else:
-            raise ValueError('fit version must be 2.5 of 3.0 - {0} fit version specified'.format(fit_version))
-        
-        print('file created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
-        
+            raise ValueError(
+                'fit version must be 2.5 of 3.0 - {0} fit version specified'.format(fit_version))
+
+        print('file created at %s, size %1.1f MB' %
+              (out_fname, fn_inf.st_size / 1E6))
+
         # Use the fitACF output filename to create a similar filename for the
         # list of rawACFs used to create the fitACF
-        rawacfListFilename = '.'.join(out_fname.split('.')[:-1]) + '.rawacfList.txt'
-        
+        rawacfListFilename = '.'.join(
+            out_fname.split('.')[:-1]) + '.rawacfList.txt'
+
         # Save the list of rawACFs used to create the fitACF
-        with open(rawacfListFilename, "wb") as fp: 
+        with open(rawacfListFilename, "wb") as fp:
             pickle.dump(rawacfFileList, fp)
     else:
-        print('file %s too small, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
+        print('file %s too small, size %1.1f MB' %
+              (out_fname, fn_inf.st_size / 1E6))
     return 0
 
 
@@ -213,7 +225,3 @@ if __name__ == '__main__':
         fit_dir = args[4]
 
     main(stime, etime, in_dir, fit_dir)
-
-
-
-

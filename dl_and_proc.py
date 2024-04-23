@@ -3,10 +3,11 @@ Download and process data one day at a time
 """
 import raw_to_nc
 import datetime as dt
-import os 
+import os
+
 
 def main():
-    dirs  = {
+    dirs = {
         'bas': 'apl@bslsuperdarnb.nerc-bas.ac.uk:/sddata/raw/%Y/%m/',
         'dat': '/project/superdarn/data/dat/%Y/%m/',
         'rawacf': '/project/superdarn/data/rawacf/%Y/%m/',
@@ -17,10 +18,11 @@ def main():
 
     times = get_times()
 
-    for time in times: 
+    for time in times:
         dl_one_day(dirs, time)
-        raw_to_nc.main(time, time, dirs['rawacf'], dirs['fitacf'], dirs['netcdf'])
-    
+        raw_to_nc.main(time, time, dirs['rawacf'],
+                       dirs['fitacf'], dirs['netcdf'])
+
     # TODO: Delete old rawACF files
 
 
@@ -32,7 +34,8 @@ def dl_one_day(dirs, time):
             os.makedirs(tdirs[key], exist_ok=True)
 
     dateString = time.strftime('%Y%m%d')
-    os.system("rsync -avhe ssh --include '*$/' --include '%s*' --exclude '*' %s %s" % (dateString, tdirs['bas'], tdirs['rawacf']))
+    os.system("rsync -avhe ssh --include '*$/' --include '%s*' --exclude '*' %s %s" %
+              (dateString, tdirs['bas'], tdirs['rawacf']))
 
 
 def get_times():

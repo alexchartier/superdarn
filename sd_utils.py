@@ -2,13 +2,14 @@ import numpy as np
 import datetime as dt
 import glob
 import os
-import string 
+import string
 import random
 import aacgmv2
 import re
 
+
 def get_radar_params(hdw_dat_dir):
-    # Pull out all the time/beam/radar name info from hdw_dat_dir   
+    # Pull out all the time/beam/radar name info from hdw_dat_dir
     hdw_dat_dir = os.path.expanduser(hdw_dat_dir)
     filenames = glob.glob(os.path.join(hdw_dat_dir, '*'))
     filenames = [f for f in filenames if not f.endswith('txt')]
@@ -16,8 +17,8 @@ def get_radar_params(hdw_dat_dir):
 
     prm = [
         'glat', 'glon', 'alt', 'boresight', 'offset', 'beamsep', 'velsign',
-         'phasesign', 'tdiff1', 'tdiff2', 'intoffset_x', 'intoffset_y',
-         'intoffset_z', 'risetime', 'att','n', 'maxrg', 'maxbeams',
+        'phasesign', 'tdiff1', 'tdiff2', 'intoffset_x', 'intoffset_y',
+        'intoffset_z', 'risetime', 'att', 'n', 'maxrg', 'maxbeams',
     ]
     radar_list = {}
     for fn in filenames:
@@ -42,9 +43,10 @@ def get_radar_params(hdw_dat_dir):
                 time = dt.datetime.strptime(ln[2], '%Y%m%d')
             except:
                 breakpoint()
-            assert (time > dt.datetime(1980, 1, 1)) & (time < dt.datetime(2100, 1, 1)), 'time looks wrong: %s %s' % (time, radar_name)
+            assert (time > dt.datetime(1980, 1, 1)) & (time < dt.datetime(
+                2100, 1, 1)), 'time looks wrong: %s %s' % (time, radar_name)
             enddates.append(time)
-        enddates.append(dt.datetime(2100,1,1))
+        enddates.append(dt.datetime(2100, 1, 1))
 
         # Read hardware parameters
         radar_list[radar_name] = {}
@@ -60,7 +62,7 @@ def get_radar_params(hdw_dat_dir):
 
     return radar_list
 
-    
+
 def id_hdw_params_t(day, hdw_params):
     # return the first hardware params with an end-date after time t
     for enddate, hdw_params_t in hdw_params.items():
@@ -70,9 +72,10 @@ def id_hdw_params_t(day, hdw_params):
 
 def id_beam_north(hdw_params, center_bm=8, maxdev=10):
     # Find the most northward-pointing beam (if any close to north)
-    beam_az = np.arange(hdw_params['maxbeams']) * hdw_params['beamsep'] 
-    beam_az += hdw_params['boresight'] - hdw_params['beamsep'] * (center_bm - 1)
-    beam_az[beam_az > 180] -= 360 
+    beam_az = np.arange(hdw_params['maxbeams']) * hdw_params['beamsep']
+    beam_az += hdw_params['boresight'] - \
+        hdw_params['beamsep'] * (center_bm - 1)
+    beam_az[beam_az > 180] -= 360
     closest_north = min(abs(beam_az))
     if closest_north < maxdev:
         beamn = np.arange(1, hdw_params['maxbeams'] + 1)
@@ -116,6 +119,3 @@ def get_radar_list(in_dir):
             radar_list.append(radarn)
             print(radarn)
     return radar_list
-
-
-

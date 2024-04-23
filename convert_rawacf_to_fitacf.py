@@ -15,6 +15,7 @@ import helper
 # Global date variable
 date = None
 
+
 def main(date_string):
     global date
     date = datetime.strptime(date_string, '%Y%m%d')
@@ -26,7 +27,8 @@ def main(date_string):
     os.makedirs(fitacf_dir, exist_ok=True)
 
     # Get all rawACF files for the date
-    rawacf_bz2_files = glob(f"{os.path.join(rawacf_dir, date_string)}.*rawacf.bz2")
+    rawacf_bz2_files = glob(
+        f"{os.path.join(rawacf_dir, date_string)}.*rawacf.bz2")
 
     # Unpack all compressed files
     print("Unpacking compressed rawACF files...")
@@ -45,15 +47,18 @@ def main(date_string):
             # Convert the RAWACF file to FITACF with version 2.5.
             fitacf_filename = rawacf_filename.replace("rawacf", "fitacf2")
             fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
-            futures.append(executor.submit(convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 2.5))
+            futures.append(executor.submit(
+                convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 2.5))
 
             # Convert the RAWACF file to FITACF with version 3.0.
             fitacf_filename = rawacf_filename.replace("rawacf", "fitacf3")
             fitacf_file = os.path.join(fitacf_dir, fitacf_filename)
-            futures.append(executor.submit(convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 3.0))
+            futures.append(executor.submit(
+                convert_rawacf_to_fitacf, rawacf_file, fitacf_file, 3.0))
 
         # Wait for all tasks to complete
         concurrent.futures.wait(futures)
+
 
 def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
     """
@@ -65,9 +70,10 @@ def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
         version:     The fitACF version (2.5 or 3.0)
     """
 
-    fit_version = "-fitacf2" if version == 2.5 else "-fitacf3"    
+    fit_version = "-fitacf2" if version == 2.5 else "-fitacf3"
     command = f"make_fit {fit_version} {rawacf_file} > {fitacf_file}"
     subprocess.run(command, shell=True)
+
 
 def unpack_bz2_and_remove(input_file):
     """
@@ -109,4 +115,3 @@ if __name__ == "__main__":
         sys.exit(1)
 
     main(date_string)
-

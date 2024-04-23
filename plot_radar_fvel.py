@@ -31,15 +31,15 @@ def main(
     hdwDatDir='../rst/tables/superdarn/hdw/',
 ):
     radarInfo = get_radar_params(hdwDatDir)
-   
-    inFname = os.path.join(time.strftime(inDir), time.strftime('%Y%m%d') + '.%s.nc' % radarCode)
+
+    inFname = os.path.join(time.strftime(
+        inDir), time.strftime('%Y%m%d') + '.%s.nc' % radarCode)
     if outDir:
         outDir = os.path.join(outDir, radarCode)
         print('Writing to %s' % outDir)
         plot_one_radar(inFname, radarInfo, outDir)
     else:
         plot_one_radar(inFname, radarInfo)
-
 
     # inFnameFmt = 'data/sd_netcdf/%Y/%m/%Y%m%d*.nc'
     # plot_all_radars(time, inFnameFmt, radarInfo)
@@ -59,7 +59,8 @@ def plot_all_radars(time, inFnameFmt, radarInfo):
     clb = plt.colorbar()
     clb.ax.set_title("Velocity")
     clb.set_label("m/s", rotation=270)
-    plt.suptitle("All F Scatter\n%s" % (radarCode, time.strftime('%Y%b%d_%H%M')))
+    plt.suptitle("All F Scatter\n%s" %
+                 (radarCode, time.strftime('%Y%b%d_%H%M')))
 
     plt.show()
 
@@ -68,7 +69,7 @@ def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]
     """ 
     plot F region scatter on a map - does a whole day's worth of files
     """
-    
+
     radarCode = inFname.split('.')[1]
 
     # data = nc_utils.ncread_vars(inFname)  # go to this once the filtering is in the netCDFs
@@ -85,7 +86,7 @@ def plot_one_radar(inFname, radarInfo, outDir=None, axExtent=[-180, 180, 30, 90]
         radarInfo_t = id_hdw_params_t(time, radarInfo[radarCode])
         # plot_vels_at_time(data, mjdTime, radarCode, radarInfo_t, axExtent)
         plot_radar(data, radarInfo_t['lat'], radarInfo_t['lon'], time)
-    
+
         clb = plt.colorbar()
         clb.ax.set_title("Velocity")
         clb.set_label("m/s", rotation=270)
@@ -115,10 +116,10 @@ def plot_radar(ax, data, radarLat, radarLon, time, beams=None):
     ax.add_feature(cfeature.BORDERS, linestyle=':')
     ax.set_global()
 
-    for beam in beams: 
+    for beam in beams:
 
         # Select one beam at a time
-        bmdata = {} 
+        bmdata = {}
         bmInd = data['beam'] == beam
         if np.sum(bmInd) == 0:
             print('No data on %i' % beam)
@@ -127,7 +128,8 @@ def plot_radar(ax, data, radarLat, radarLon, time, beams=None):
             bmdata[k] = v[bmInd]
 
         # Find the closest MJD time to the requested time
-        radarTimes = np.array([jd.from_jd(mjd, fmt="mjd") for mjd in bmdata["mjd"]])
+        radarTimes = np.array([jd.from_jd(mjd, fmt="mjd")
+                              for mjd in bmdata["mjd"]])
         timeIndex = np.argmin(np.abs(radarTimes - time))
         if np.abs(radarTimes - time).min() > dt.timedelta(seconds=60):
             continue
@@ -138,31 +140,30 @@ def plot_radar(ax, data, radarLat, radarLon, time, beams=None):
         plot_vels_at_time(ax, data_t, radarLat, radarLon)
     return ax
 
- 
+
 def plot_vels_at_time(ax, data, radarLat, radarLon):
     # Plot the radar velocities on a map
 
-
-    data_crs = ccrs.PlateCarree() 
-
+    data_crs = ccrs.PlateCarree()
 
     ax.scatter(
-        data['lon'], data['lat'], s=5,  
-        c=data['v'], cmap="Spectral_r",  
+        data['lon'], data['lat'], s=5,
+        c=data['v'], cmap="Spectral_r",
         vmin=-1000, vmax=1000, transform=ccrs.PlateCarree(),
     )
 
     ax.plot(
-        radarLon, radarLat, 
+        radarLon, radarLat,
         color="k", marker=".", markersize=9, transform=data_crs,
     )
 
     return ax
 
 
-def tindex_data(data, mjdTime, 
-        variables=["lon", "lat", "mjd", "v", "gflg", "p_l", "beam", "range"],
-):
+def tindex_data(data, mjdTime,
+                variables=["lon", "lat", "mjd", "v",
+                           "gflg", "p_l", "beam", "range"],
+                ):
     # Select the F scatter at the relevant time
     timeIndex = data["mjd"] == mjdTime
     for var in variables:
@@ -178,11 +179,5 @@ if __name__ == '__main__':
 
     time = dt.datetime.strptime(args[1], '%Y,%m,%d')
 
-    argv = [time,] + args[2:] 
+    argv = [time,] + args[2:]
     main(*argv)
-    
-
-
-
-
-

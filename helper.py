@@ -5,14 +5,14 @@ Helper functions for SuperDARN processing scripts
 import os
 import time
 
-EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
+EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'  # ,Alex.Chartier@jhuapl.edu'
 
 LATEST_PUBLIC_DATA = 2021
 
 # Directories
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
 WAL_SERVER = 'radar@38.124.149.234'
-BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m'   
+BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m'
 BAS_DAT_DIR_FMT = '/sddata/dat/%Y/%m'
 GLOBUS_RAWACF_DIR_FMT = '/chroot/sddata/dat/%Y/%m'
 GLOBUS_DAT_DIR_FMT = '/chroot/sddata/dat/%Y/%m/'
@@ -43,16 +43,19 @@ ZENODO_SANDBOX_TOKEN = '9FWXXWi1NYeEo6c7zarVtOEOzUkPwiwgVNJ6FD2Wyzecf3PNrs1HKKnr
 
 GLOBUS_SUPERDARN_ENDPOINT = 'c02cb494-1515-11e9-9f9f-0a06afd4a22e'
 
-def send_email(subject, body, addresses = EMAIL_ADDRESSES):
-    os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = body, sub = subject, addr = addresses))
+
+def send_email(subject, body, addresses=EMAIL_ADDRESSES):
+    os.system('echo {bd} | mail -s {sub} {addr}'.format(bd=body,
+              sub=subject, addr=addresses))
 
 
 def get_radar_list():
-    radarList = ['ade','adw','bks','cve','cvw','cly','fhe','fhw','gbr',
-    'han','hok','hkw','inv','jme','kap','ksr','kod','lyr','pyk','pgr',
-    'rkn', 'sas', 'sch', 'sto', 'wal','bpk','dce','dcn','fir','hal','ker',
-    'mcm','san','sps','sye','sys','tig','unw','zho']
+    radarList = ['ade', 'adw', 'bks', 'cve', 'cvw', 'cly', 'fhe', 'fhw', 'gbr',
+                 'han', 'hok', 'hkw', 'inv', 'jme', 'kap', 'ksr', 'kod', 'lyr', 'pyk', 'pgr',
+                 'rkn', 'sas', 'sch', 'sto', 'wal', 'bpk', 'dce', 'dcn', 'fir', 'hal', 'ker',
+                 'mcm', 'san', 'sps', 'sye', 'sys', 'tig', 'unw', 'zho']
     return radarList
+
 
 def getTimeString(time):
     day = time // (24 * 3600)
@@ -105,6 +108,7 @@ def getDOI(year):
 
     return DOIs[year]
 
+
 def get_three_letter_radar_id(radar_letter):
     """Convert a single-letter radar ID to a three-letter ID"""
 
@@ -130,18 +134,21 @@ def get_three_letter_radar_id(radar_letter):
         "c": "ksr",
         "u": "unw",
         "m": "mcm",
-        "q": "fir" 
+        "q": "fir"
     }
 
     return radar_ids[radar_letter]
 
+
 def check_remaining_zenodo_requests(response):
-    rate_limit_remaining = int(response.headers.get("X-RateLimit-Remaining", 0))
+    rate_limit_remaining = int(
+        response.headers.get("X-RateLimit-Remaining", 0))
     rate_limit_reset = int(response.headers.get("X-RateLimit-Reset", 0))
 
     # Check to see if we've used up our alloted requests
     if rate_limit_remaining == 1:
         current_time = int(time.time())
         sleep_time = rate_limit_reset - current_time
-        print("Rate limit about to be exhausted. Waiting for {} seconds...".format(sleep_time))
+        print("Rate limit about to be exhausted. Waiting for {} seconds...".format(
+            sleep_time))
         time.sleep(sleep_time)

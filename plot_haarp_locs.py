@@ -1,7 +1,7 @@
 import numpy as np
 from netCDF4 import Dataset
 import julian as jd
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.dates as mdates
 import matplotlib.colors as colors
@@ -20,46 +20,48 @@ import glob
 import datetime as dt
 from plot_radar_fvel import plot_radar, tindex_data
 from radFov import calcFieldPnt
-import sys 
-import pdb 
+import sys
+import pdb
 
 
 def main(
-    inDir = 'data/netcdf/%Y/%m/',
-    startTime = dt.datetime(2014, 4, 23),
-    endTime = dt.datetime(2014, 4, 23, 12, 0),
-    timeStep = dt.timedelta(minutes = 1),
+    inDir='data/netcdf/%Y/%m/',
+    startTime=dt.datetime(2014, 4, 23),
+    endTime=dt.datetime(2014, 4, 23, 12, 0),
+    timeStep=dt.timedelta(minutes=1),
     haarpLat=62.3883,
     haarpLon=-145.1505,
-    radars = {
+    radars={
         'kod.c': [[500, 1000], 9],
         'cvw': [[2800, 3200], 9],
         'cly': [[3200, 3600], 4],
     },
-    ionosondes = ['GAKONA', 'EIELSON', 'IDAHONATIONALLAB'],
-    ionoDir = '/Users/chartat1/fusionpp_data/ionosonde/',
-    outFnFmt = '/Users/chartat1/superdarn/plots/haarp_backscatter/%Y%m%d_%H%M.jpg',
+    ionosondes=['GAKONA', 'EIELSON', 'IDAHONATIONALLAB'],
+    ionoDir='/Users/chartat1/fusionpp_data/ionosonde/',
+    outFnFmt='/Users/chartat1/superdarn/plots/haarp_backscatter/%Y%m%d_%H%M.jpg',
 ):
     inDir = startTime.strftime(inDir)
     radarFnames = {}
     for radar in radars.keys():
-        radarFnames[radar] = os.path.join(inDir, '%s.%s.nc' % (startTime.strftime('%Y%m%d'), radar)) 
+        radarFnames[radar] = os.path.join(
+            inDir, '%s.%s.nc' % (startTime.strftime('%Y%m%d'), radar))
     ionoFnames = {}
     for ionosonde in ionosondes:
-        ionoFnames[ionosonde] = os.path.join(ionoDir, '%s_%s.nc' % (ionosonde, startTime.strftime('%Y%m%d'))) 
+        ionoFnames[ionosonde] = os.path.join(
+            ionoDir, '%s_%s.nc' % (ionosonde, startTime.strftime('%Y%m%d')))
 
     # plot_data_locs([haarpLat, haarpLon], radarFnames, ionoFnames)
-    tlim = [dt.datetime(2014, 4, 23, 7, 10), dt.datetime(2014, 4, 23, 8, 30)] 
+    tlim = [dt.datetime(2014, 4, 23, 7, 10), dt.datetime(2014, 4, 23, 8, 30)]
     for radar, rg_bm in radars.items():
         rlim = rg_bm[0]
         bm = rg_bm[1]
-        plotBeam(radarFnames[radar], bm, radar) #, tlim, rlim)
+        plotBeam(radarFnames[radar], bm, radar)  # , tlim, rlim)
 
     time = startTime
     while time < endTime:
-        plot_radars(radars, radarFnames, time, haarpLat, haarpLon, time.strftime(outFnFmt))
+        plot_radars(radars, radarFnames, time, haarpLat,
+                    haarpLon, time.strftime(outFnFmt))
         time += timeStep
-
 
 
 def plot_radars(radars, radarFnames, time, haarpLat, haarpLon, outFname=None):
@@ -95,7 +97,7 @@ def plot_radars(radars, radarFnames, time, haarpLat, haarpLon, outFname=None):
 
         data = nc_utils.ncread_vars(inFname)
         rgi = (data['range'] > rg[0]) & (data['range'] < rg[1])
-        for k,v in data.items():
+        for k, v in data.items():
             data[k] = v[rgi]
         if 'kod' in radar:
             data['v'][:] = -1000
@@ -104,16 +106,16 @@ def plot_radars(radars, radarFnames, time, haarpLat, haarpLon, outFname=None):
         hdr = nc_utils.load_nc(inFname)
         ax.plot(
             hdr.lon, hdr.lat,
-            color="k", marker="o",transform=transform,
+            color="k", marker="o", transform=transform,
         )
         ax = plot_radar(ax, data, hdr.lat, hdr.lon, time, )
 
     ax.plot(haarpLon, haarpLat, marker='o', color='red', transform=transform)
 
-    # Plot the radar labels 
+    # Plot the radar labels
     geodetic_transform = ccrs.Geodetic()._as_mpl_transform(ax)
-    text_transform = offset_copy(geodetic_transform, units='dots', x=-25) 
-    for rn, radar in radars.items(): 
+    text_transform = offset_copy(geodetic_transform, units='dots', x=-25)
+    for rn, radar in radars.items():
         rn = rn.split('.')[0].upper()
         plt.text(radar['lon'], radar['lat'], rn,
                  verticalalignment='center', horizontalalignment='right',
@@ -142,14 +144,14 @@ def plot_data_locs(haarpLoc, radarFnames, ionoFnames, axExtent=[-180, 180, 40, 9
         for ind, brng in enumerate(radar.brng_at_15deg_el):
             beam_off = brng - radar.boresight
             fovpts[ind, :] = calcFieldPnt(
-                radar.lat, radar.lon, radar.alt, radar.boresight, beam_off, slant_range, 
+                radar.lat, radar.lon, radar.alt, radar.boresight, beam_off, slant_range,
                 hop=2, adjusted_sr=False, altitude=300,
             )
         radars[r] = {
             'lon': radar.lon,
             'lat': radar.lat,
             'alt': radar.alt,
-            'fovpts': fovpts, 
+            'fovpts': fovpts,
         }
 
     ionosondes = {}
@@ -173,29 +175,33 @@ def plot_data_locs(haarpLoc, radarFnames, ionoFnames, axExtent=[-180, 180, 40, 9
     # ax.gridlines()
 
     # Plot the radars and FOVs
-    for rn, radar in radars.items(): 
-        ax.plot(radar['lon'], radar['lat'], marker='.', color='k', markersize=5, transform=data_crs)
+    for rn, radar in radars.items():
+        ax.plot(radar['lon'], radar['lat'], marker='.',
+                color='k', markersize=5, transform=data_crs)
         for ind, brng in enumerate(radar['fovpts'][:, 0]):
             ax.plot(
-                [radar['lon'], radar['fovpts'][ind, 1]], [radar['lat'],radar['fovpts'][ind, 0]],
-                color='k', transform=data_crs, linewidth=0.3, 
+                [radar['lon'], radar['fovpts'][ind, 1]], [
+                    radar['lat'], radar['fovpts'][ind, 0]],
+                color='k', transform=data_crs, linewidth=0.3,
             )
-    ax.plot(haarpLoc[1], haarpLoc[0], marker='.', color='red', markersize=15, transform=data_crs)
-  
-    # Plot the radar labels 
+    ax.plot(haarpLoc[1], haarpLoc[0], marker='.',
+            color='red', markersize=15, transform=data_crs)
+
+    # Plot the radar labels
     geodetic_transform = ccrs.Geodetic()._as_mpl_transform(ax)
-    text_transform = offset_copy(geodetic_transform, units='dots', x=-25) 
-    for rn, radar in radars.items(): 
+    text_transform = offset_copy(geodetic_transform, units='dots', x=-25)
+    for rn, radar in radars.items():
         rn = rn.split('.')[0].upper()
         plt.text(radar['lon'], radar['lat'], rn,
                  verticalalignment='center', horizontalalignment='right',
                  transform=text_transform,
                  bbox=dict(facecolor='sandybrown', boxstyle='round'))
-        
+
     # Plot the ionosondes
-    for rn, iono in ionosondes.items(): 
-        
-        ax.plot(iono[1], iono[0], marker='.', color='b', markersize=7, transform=data_crs)
+    for rn, iono in ionosondes.items():
+
+        ax.plot(iono[1], iono[0], marker='.', color='b',
+                markersize=7, transform=data_crs)
         if rn == 'GAKONA':
             plt.text(iono[1] + 3, iono[0], 'HAARP',
                      verticalalignment='center', horizontalalignment='left',
@@ -213,7 +219,6 @@ def plot_data_locs(haarpLoc, radarFnames, ionoFnames, axExtent=[-180, 180, 40, 9
                      bbox=dict(facecolor='lightblue', boxstyle='round'))
 
     plt.show()
-     
 
 
 def plotBeam(inFname, bm, radarCode, tlim=None, rlim=None):
@@ -224,18 +229,19 @@ def plotBeam(inFname, bm, radarCode, tlim=None, rlim=None):
 
     plt.style.use('dark_background')
     plt.rcParams.update({'font.size': 18})
-    fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(16, 9), gridspec_kw={'height_ratios': [1, 4]})
+    fig, (ax1, ax2) = plt.subplots(nrows=2, figsize=(
+        16, 9), gridspec_kw={'height_ratios': [1, 4]})
     plt.suptitle('%s Beam %i' % (radarCode.split('.')[0].upper(), bm))
 
     """
     1. narrow frequency plot
     """
-    ax1.plot(times, tfreq/1E3, '.')
+    ax1.plot(times, tfreq / 1E3, '.')
     ax1.set_xlim(tlim)
     ax1.set_ylim([8, 20])
     ax1.set_ylabel('Tx Freq. (MHz)')
     ax1.xaxis.set_major_formatter(plt.NullFormatter())
-    ax1.xaxis.set_ticks_position('none') 
+    ax1.xaxis.set_ticks_position('none')
 
     """ 
     2. Velocity plot, not yet with alpha = power
@@ -252,21 +258,21 @@ def plotBeam(inFname, bm, radarCode, tlim=None, rlim=None):
     tlim_hr = [dn_to_dechr(tlim[0]), dn_to_dechr(tlim[1])]
 
     # define scale, with white at zero
-    colormap = 'bwr'  #'bwr'
+    colormap = 'bwr'  # 'bwr'
     cmap = plt.get_cmap(colormap)
     norm = plt.Normalize(-1000, 1000)
     vel = vel.T
-    gflg = gflg.T 
-   
-    #  regrid the data 
+    gflg = gflg.T
+
+    #  regrid the data
     times_bnd = []
     t = tlim[0]
     while t <= tlim[1]:
         times_bnd.append(t)
         t += dt.timedelta(seconds=5)
     times_bnd = np.array(times_bnd)
-    vel_gridded = np.ones((len(times_bnd)-1, len(rg)))
-    gflg_gridded = np.ones((len(times_bnd)-1, len(rg)))
+    vel_gridded = np.ones((len(times_bnd) - 1, len(rg)))
+    gflg_gridded = np.ones((len(times_bnd) - 1, len(rg)))
     fn = interp1d(to_float(times, times[0]), vel[0, :])
     for ind in range(len(rg)):
         fn.y = vel[ind, :]
@@ -279,14 +285,16 @@ def plotBeam(inFname, bm, radarCode, tlim=None, rlim=None):
 
     rg_step = np.unique(np.diff(rg))[0]
     rg_bnd = np.arange(rg[0] - rg_step / 2, rg[-1] + rg_step, rg_step)
-    
+
     # Plot the scatter
     cMap = colors.ListedColormap(['g'])
-    ax2.pcolormesh(times_bnd, rg_bnd, vel_gridded.T, vmin=-1000, vmax=1000, cmap=colormap)
+    ax2.pcolormesh(times_bnd, rg_bnd, vel_gridded.T,
+                   vmin=-1000, vmax=1000, cmap=colormap)
     ax2.pcolormesh(times_bnd, rg_bnd, gflg_gridded.T, cmap=cMap)
     pos = ax2.get_position()
-    cbaxes = fig.add_axes([0.85, 0.12, 0.02, 0.53]) 
-    cb = mpl.colorbar.ColorbarBase(cbaxes, cmap=cmap, norm=norm, label='Velocity (m/s)')
+    cbaxes = fig.add_axes([0.85, 0.12, 0.02, 0.53])
+    cb = mpl.colorbar.ColorbarBase(
+        cbaxes, cmap=cmap, norm=norm, label='Velocity (m/s)')
     ax2.set_xlim(tlim)
     ax2.set_ylim(rlim)
     ax2.set_xlabel('Hour (UT)')
@@ -304,14 +312,15 @@ def plotBeam(inFname, bm, radarCode, tlim=None, rlim=None):
 
     plt.show()
 
+
 def dn_to_dechr(dn):
     return dn.hour + dn.minute / 60 + dn.second / 3600
-    
+
 
 def loadBeam(inFname, bm):
     data = nc_utils.ncread_vars(inFname)
     hdr = nc_utils.load_nc(inFname)
-   
+
     rsep = hdr.rsep_km
     rmax = hdr.maxrangegate
     radarLat = hdr.lat
@@ -322,7 +331,7 @@ def loadBeam(inFname, bm):
     for fld in flds:
         bmdata[fld] = data[fld][bmInd]
 
-    rg_idx = np.arange(rmax) 
+    rg_idx = np.arange(rmax)
     rg = (np.arange(rmax + 1) * rsep + data['range'].min()).astype('int')
 
     mjds = np.unique(bmdata["mjd"])
@@ -341,14 +350,10 @@ def loadBeam(inFname, bm):
     times = np.array([jd.from_jd(mjd, fmt="mjd") for mjd in mjds])
     return times, rg, pwr, vel, tfreq, rsep, gflg
 
+
 def to_float(dlist, epoch):
     return [(d - epoch).total_seconds() for d in dlist]
 
 
 if __name__ == '__main__':
     main()
-
-
-
-
-

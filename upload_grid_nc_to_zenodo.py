@@ -8,8 +8,9 @@ Terms:
     .nc  - netCDF output file (self-describing platform-independent file suitable 
            for sharing with users outside the community)
             Daily, one per hemisphere
-"""  
-import sys, os
+"""
+import sys
+import os
 # TODO: Remove this once requests is installed for python3
 # sys.path.append('/usr/lib/python2.7/site-packages/')
 import requests
@@ -19,7 +20,7 @@ import helper
 import json
 import glob
 import time
-    
+
 __author__ = "Jordan Wiker"
 __copyright__ = "Copyright 2023, JHUAPL"
 __version__ = "1.0.0"
@@ -35,27 +36,30 @@ keywords = 'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, netcd
 
 USE_SANDBOX = False
 
+
 def main(date):
 
     startTime = time.time()
     emailSubject = '"Starting Zenodo Upload"'
-    emailBody = '"Starting to upload {0} Grid files to Zenodo"'.format(date.strftime('%Y-%m'))
+    emailBody = '"Starting to upload {0} Grid files to Zenodo"'.format(
+        date.strftime('%Y-%m'))
     helper.send_email(emailSubject, emailBody)
 
     upload_to_zenodo(USE_SANDBOX, date)
 
     totalTime = helper.getTimeString(time.time() - startTime)
     emailSubject = '"Finished Zenodo Upload"'
-    emailBody = '"Finished uploading {0} Grid files\nTotal time: {1}"'.format(date.strftime('%Y-%m'), totalTime)
-    
+    emailBody = '"Finished uploading {0} Grid files\nTotal time: {1}"'.format(
+        date.strftime('%Y-%m'), totalTime)
+
 
 def upload_to_zenodo(sandbox, date):
-  
+
     accessToken = helper.ZENODO_SANDBOX_TOKEN if sandbox else helper.ZENODO_TOKEN
     depositURL = helper.SANDBOX_DEPOSIT_URL if sandbox else helper.DEPOSIT_URL
 
     uploadDir = date.strftime(helper.GRID_NC_DIR_FMT)
-    
+
     # TODO: Update this once 2020 data is allowed to be released publically
     if date.year > helper.LATEST_PUBLIC_DATA:
         fileList = glob.glob(os.path.join(uploadDir, '*wal**.nc'))
@@ -66,14 +70,15 @@ def upload_to_zenodo(sandbox, date):
         print('No files to upload in {0}'.format(uploadDir))
         return 1
     else:
-        print('Uploading {0} {1} files to Zenodo'.format(len(fileList), date.strftime('%Y-%m')))
-    
+        print('Uploading {0} {1} files to Zenodo'.format(
+            len(fileList), date.strftime('%Y-%m')))
+
     headers = {"Content-Type": "application/json"}
     params = {'access_token': accessToken}
     r = requests.post(depositURL,
-                   params=params,
-                   json={},
-                   headers=headers)
+                      params=params,
+                      json={},
+                      headers=headers)
 
     bucket_url = r.json()["links"]["bucket"]
     deposition_id = r.json()['id']
@@ -91,7 +96,7 @@ def upload_to_zenodo(sandbox, date):
             )
 
             helper.check_remaining_zenodo_requests(r)
-    
+
     if date.year > helper.LATEST_PUBLIC_DATA:
         data = {
             'metadata': {
@@ -100,10 +105,10 @@ def upload_to_zenodo(sandbox, date):
                 'description': '<p>{0} Wallops SuperDARN radar data in netCDF format. These files were produced using version 3.0 of the public FitACF and make_grid algorithms, using the AACGM v2 coordinate system. Cite this dataset if using our data in a publication.</p><p>The RST is available here:&nbsp;https://github.com/SuperDARN/rst</p><p>The research enabled by SuperDARN is due to the efforts of teams of scientists and engineers working in many countries to build and operate radars, process data and provide access, develop and improve data products, and assist users in interpretation. Users of SuperDARN data and data products are asked to acknowledge this support in presentations and publications. A brief statement on how to acknowledge use of SuperDARN data is provided below.<p>Users are also asked to consult with a SuperDARN PI prior to submission of work intended for publication. A listing of radars and PIs with contact information can be found here: (<a href="http://vt.superdarn.org/tiki-index.php?page=Radar+Overview">SuperDARN Radar Overview</a>)</p><p><strong>Recommended form of acknowledgement for the use of SuperDARN data:</strong></p><p>‘The authors acknowledge the use of SuperDARN data. SuperDARN is a collection of radars funded by national scientific funding agencies of Australia, Canada, China, France, Italy, Japan, Norway, South Africa, United Kingdom and the United States of America.’</p>'.format(date.strftime('%Y-%b')),
                 'creators': [
                     {
-                        'orcid': chartierORCID, 
-                        'affiliation': aplAffiliation, 
+                        'orcid': chartierORCID,
+                        'affiliation': aplAffiliation,
                         'name': 'Chartier, Alex T.'
-                    }, 
+                    },
                     {
                         'orcid': wikerORCID,
                         'affiliation': aplAffiliation,
@@ -116,7 +121,7 @@ def upload_to_zenodo(sandbox, date):
                 'communities': [
                     {
                         'identifier': 'spacephysics'
-                    }, 
+                    },
                     {
                         'identifier': 'superdarn'
                     }
@@ -132,10 +137,10 @@ def upload_to_zenodo(sandbox, date):
                 'description': '<p>{0} SuperDARN radar data in netCDF format. These files were produced using versions 3.0 of the public FitACF and make_grid algorithms, using the AACGM v2 coordinate system. Cite this dataset if using our data in a publication.</p><p>The RST is available here:&nbsp;https://github.com/SuperDARN/rst</p><p>The research enabled by SuperDARN is due to the efforts of teams of scientists and engineers working in many countries to build and operate radars, process data and provide access, develop and improve data products, and assist users in interpretation. Users of SuperDARN data and data products are asked to acknowledge this support in presentations and publications. A brief statement on how to acknowledge use of SuperDARN data is provided below.<p>Users are also asked to consult with a SuperDARN PI prior to submission of work intended for publication. A listing of radars and PIs with contact information can be found here: (<a href="http://vt.superdarn.org/tiki-index.php?page=Radar+Overview">SuperDARN Radar Overview</a>)</p><p><strong>Recommended form of acknowledgement for the use of SuperDARN data:</strong></p><p>‘The authors acknowledge the use of SuperDARN data. SuperDARN is a collection of radars funded by national scientific funding agencies of Australia, Canada, China, France, Italy, Japan, Norway, South Africa, United Kingdom and the United States of America.’</p>'.format(date.strftime('%Y-%b')),
                 'creators': [
                     {
-                        'orcid': chartierORCID, 
-                        'affiliation': aplAffiliation, 
+                        'orcid': chartierORCID,
+                        'affiliation': aplAffiliation,
                         'name': 'Chartier, Alex T.'
-                    }, 
+                    },
                     {
                         'orcid': wikerORCID,
                         'affiliation': aplAffiliation,
@@ -148,31 +153,30 @@ def upload_to_zenodo(sandbox, date):
                 'communities': [
                     {
                         'identifier': 'spacephysics'
-                    }, 
+                    },
                     {
                         'identifier': 'superdarn'
                     }
                 ],
-                'related_identifiers' : [{'relation': 'isSourceOf', 'identifier':helper.getDOI(date.year),'resource_type': 'dataset'}],
+                'related_identifiers': [{'relation': 'isSourceOf', 'identifier': helper.getDOI(date.year), 'resource_type': 'dataset'}],
                 'version': '1.0',
             }
         }
 
     r = requests.put(depositURL + '/%s' % deposition_id,
-    params={'access_token': accessToken}, data=json.dumps(data), headers=headers)
+                     params={'access_token': accessToken}, data=json.dumps(data), headers=headers)
 
     helper.check_remaining_zenodo_requests(r)
 
 
 if __name__ == '__main__':
     args = sys.argv
-    
+
     if len(args) < 2:
         # If no date was passed in, process the previous month
         today = dt.datetime.now()
         date = today - relativedelta(months=1)
     else:
         date = args[1]
-    
-    main(date)
 
+    main(date)

@@ -23,14 +23,15 @@ def main():
 
 
 def plot_pot_etc(
-        in_fname, title, 
+        in_fname, title,
         out_fname=None,
-        facmax = 1.5,
-        potmax = 50,
-        condmax = 20,
+        facmax=1.5,
+        potmax=50,
+        condmax=20,
 ):
     vars = ncread_vars(in_fname)
-    fig, ax = plt.subplots(2, 2, subplot_kw=dict(projection='polar'), figsize=(12, 8))
+    fig, ax = plt.subplots(2, 2, subplot_kw=dict(
+        projection='polar'), figsize=(12, 8))
     th = np.rad2deg(np.unique(vars['Colatitude']))
     ph = np.unique(vars['Longitude'])
     plt.suptitle(title)
@@ -39,19 +40,21 @@ def plot_pot_etc(
             ax[a, b].set_theta_zero_location("N")
 
     # FACs
-    im = ax[0, 0].pcolor(ph, th, vars['FAC'], cmap='bwr', vmin=-facmax, vmax=facmax)
+    im = ax[0, 0].pcolor(ph, th, vars['FAC'], cmap='bwr',
+                         vmin=-facmax, vmax=facmax)
     cs = ax[0, 0].contour(ph, th, vars['Potential'], 8, colors='k')
     cbar = fig.colorbar(im, ax=ax[0, 0])
     cbar.set_label(r'Radial current density ($\mu A/m^2$)')
     plt.clabel(cs, inline=1, fmt='%1.0f', fontsize=10)
 
     # Potential
-    im = ax[0, 1].pcolor(ph, th, vars['Potential'], cmap='jet', vmin=-potmax, vmax=potmax)
+    im = ax[0, 1].pcolor(ph, th, vars['Potential'],
+                         cmap='jet', vmin=-potmax, vmax=potmax)
     exb = np.gradient(np.array(vars['Potential']))
     cs = ax[0, 1].contour(ph, th, vars['Potential'], 8, colors='k')
     cbar = fig.colorbar(im, ax=ax[0, 1])
     cbar.set_label('Electric Potential (kV)')
-    #plt.clabel(cs, inline=1, fmt='%1.0f', fontsize=10)
+    # plt.clabel(cs, inline=1, fmt='%1.0f', fontsize=10)
 
     # Conductances
     conds = 'Pedersen conductance', 'Hall conductance'
@@ -73,6 +76,7 @@ def plot_pot_etc(
     else:
         plt.show()
     plt.close()
+
 
 if __name__ == '__main__':
     main()

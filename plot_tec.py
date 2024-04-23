@@ -31,18 +31,19 @@ def main():
     mins = (modData['time'] - hrs) * 60
     modTime = []
     for ind, hr in enumerate(hrs):
-        modTime.append(dt.datetime(time.year, time.month, time.day, hr, mins[ind]))
+        modTime.append(dt.datetime(
+            time.year, time.month, time.day, hr, mins[ind]))
     modTime = np.array(modTime)
     titlestr = time.strftime("SAMI/AMPERE TEC @ %H:%M UT %Y/%b/%d")
     plot_data(
-        modData['lat0'][:, 0, :], modData['lon0'][:, 0, :], 
+        modData['lat0'][:, 0, :], modData['lon0'][:, 0, :],
         np.squeeze(modData['tec'][modTime == time, :, :]), titlestr,
     )
-   
+
 
 def plot_data(lat, lon, tec, titlestr, axext=[-180, 180, 45, 90]):
 
-    # set up the plot 
+    # set up the plot
     ax = plt.axes(projection=ccrs.Orthographic(-10, 45))
 
     crs = ccrs.RotatedPole(pole_longitude=0, pole_latitude=70)
@@ -50,10 +51,10 @@ def plot_data(lat, lon, tec, titlestr, axext=[-180, 180, 45, 90]):
     ax.add_feature(cartopy.feature.LAND, zorder=0, edgecolor='black')
 
     ax.set_global()
-    
+
     # make the plot
     lon[lon > 180] -= 360
-    plt.contourf(lon, lat, tec, transform=crs)   
+    plt.contourf(lon, lat, tec, transform=crs)
     ax.gridlines()
 
     plt.suptitle(titlestr)
@@ -63,10 +64,3 @@ def plot_data(lat, lon, tec, titlestr, axext=[-180, 180, 45, 90]):
 if __name__ == '__main__':
 
     main()
-
-
-
-
-
-
-

@@ -11,11 +11,11 @@ Plots the fitACF-level nc files
 """
 
 wgs84 = nv.FrameE(name='WGS84')
-depth = 0 # nvector uses depths in m 
+depth = 0  # nvector uses depths in m
 
 
 def main(
-    fname = os.path.expanduser('~/Downloads/20031029.han.v3.0.despeckled.nc'),
+    fname=os.path.expanduser('~/Downloads/20031029.han.v3.0.despeckled.nc'),
 ):
 
     rlat, rlon, lats, lons, vels = load_example_data(fname)
@@ -49,10 +49,12 @@ def load_example_data(fname):
 
 def calc_bearings(rlat, rlon, lats, lons):
     brng_deg = np.zeros(len(lats)) * np.nan
-    pointB = wgs84.GeoPoint(latitude=rlat, longitude=rlon, z=depth, degrees=True)
+    pointB = wgs84.GeoPoint(
+        latitude=rlat, longitude=rlon, z=depth, degrees=True)
     for ind, lat in enumerate(lats):
         lon = lons[ind]
-        pointA = wgs84.GeoPoint(latitude=lat, longitude=lon, z=depth, degrees=True)
+        pointA = wgs84.GeoPoint(
+            latitude=lat, longitude=lon, z=depth, degrees=True)
         p_AB_N = pointA.delta_to(pointB)  # note we want the bearing at point A
         brng_deg[ind] = p_AB_N.azimuth_deg - 180  # ... but away from the radar
 
@@ -63,7 +65,8 @@ def plot(rlat, rlon, lats, lons, vels, brng_deg, fname):
     brng_rad = np.deg2rad(brng_deg)
     plt.plot(lons, lats, '.k', markersize=5)
     plt.plot(rlon, rlat, '.r', markersize=20)
-    plt.quiver(lons, lats, np.sin(brng_rad) * vels / 100, np.cos(brng_rad) * vels / 100)
+    plt.quiver(lons, lats, np.sin(brng_rad) * vels /
+               100, np.cos(brng_rad) * vels / 100)
     plt.xlabel('Lon. (deg)')
     plt.ylabel('Lat. (deg)')
     plt.title('ExB drift components from %s' % fname)
@@ -74,5 +77,5 @@ def plot(rlat, rlon, lats, lons, vels, brng_deg, fname):
 if __name__ == '__main__':
     assert len(sys.argv) > 1, 'Provide a superdarn netCDF filename'
     fname = sys.argv[-1]
-        
+
     main(fname)

@@ -1,6 +1,14 @@
 #!/usr/bin/env python
 """Automate the conversion of a series of SuperDARN dat files to rawacf files"""
 
+import bz2
+import helper
+import glob
+import os
+from sd_utils import get_random_string
+import nc_utils
+import shutil
+import jdutil
 import pdb
 import sys
 import string
@@ -8,14 +16,6 @@ import random
 import numpy as np
 import datetime as dt
 sys.path.append('/homes/chartat1/fusionpp/src/nimo/')
-import jdutil
-import shutil
-import nc_utils
-from sd_utils import get_random_string
-import os
-import glob
-import helper
-import bz2
 
 __author__ = "Jordan Wiker"
 __copyright__ = "Copyright 2020, JHUAPL"
@@ -34,7 +34,7 @@ def main(
     clobber=False,
 ):
     """Convert dat files to rawacf files
-    
+
     Iterate over the specified interval and convert the dat files in the 
     input directory to rawacf files and save them in the output directory. 
     If a file already exists in the output directory, only overwrite it if 
@@ -51,7 +51,7 @@ def main(
     ))
 
     run_dir = os.path.abspath(run_dir)
-    
+
     # Loop over time
     time = start_time
     while time <= end_time:
@@ -59,11 +59,13 @@ def main(
         radar_list = get_single_letter_radar_list(time.strftime(in_dir))
 
         for radar in radar_list:
-            in_fname_format = time.strftime(os.path.join(in_dir, '%Y%m%d%H' + '*%s*.dat.bz2' % radar))
+            in_fname_format = time.strftime(os.path.join(
+                in_dir, '%Y%m%d%H' + '*%s*.dat.bz2' % radar))
             three_letter_radar = helper.get_three_letter_radar_id(radar)
-            out_fname = time.strftime(out_dir + '%Y%m%d%H.' + '%s.rawacf' % three_letter_radar)
+            out_fname = time.strftime(
+                out_dir + '%Y%m%d%H.' + '%s.rawacf' % three_letter_radar)
             out_compressed_fname = out_fname + ".bz2"
-            
+
             if os.path.isfile(out_fname):
                 print("File exists: %s" % out_compressed_fname)
                 if clobber:
@@ -103,9 +105,8 @@ def convert_file(in_fname_format, out_fname, run_dir):
     for in_fname in in_fnames:
         shutil.copy2(in_fname, run_dir)
         in_fname_compressed = os.path.join(run_dir, os.path.basename(in_fname))
-         # Decrompress the file
+        # Decrompress the file
         os.system('bzip2 -d %s' % in_fname_compressed)
-
 
     # Combine multiple dat files if there are more than one for the same hour
     os.system('cat *.dat > combined.dat')
@@ -117,10 +118,12 @@ def convert_file(in_fname_format, out_fname, run_dir):
     fn_inf = os.stat(out_fname)
     if fn_inf.st_size < 1E5:
         os.remove(out_fname)
-        print('rawacf %s is too small, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
+        print('rawacf %s is too small, size %1.1f MB' %
+              (out_fname, fn_inf.st_size / 1E6))
     else:
-        print('rawacf created at %s, size %1.1f MB' % (out_fname, fn_inf.st_size / 1E6))
-    
+        print('rawacf created at %s, size %1.1f MB' %
+              (out_fname, fn_inf.st_size / 1E6))
+
         # Compress the new rawacf file
         os.system('bzip2 -z %s' % out_fname)
 
@@ -158,14 +161,14 @@ def get_single_letter_radar_list(in_dir):
 if __name__ == '__main__':
     args = sys.argv
     assert len(args) >= 5, 'Should have at least 4x args, e.g.:\n' + \
-       'python3 dat_to_rawacf.py 1993,1,1,0 1994,1,1,23 ' + \
-       '/project/superdarn/data/dat/%Y/%m/  ' + \
-       '/project/superdarn/data/rawacf/%Y/%m/ \n' + \
-       'optionally add clobber flag at the end'
+        'python3 dat_to_rawacf.py 1993,1,1,0 1994,1,1,23 ' + \
+        '/project/superdarn/data/dat/%Y/%m/  ' + \
+        '/project/superdarn/data/rawacf/%Y/%m/ \n' + \
+        'optionally add clobber flag at the end'
 
     clobber = False
     if (len(args) > 5) and (args[5] == 'clobber'):
-       clobber = True
+        clobber = True
 
     start_time = dt.datetime.strptime(args[1], '%Y,%m,%d,%H')
     end_time = dt.datetime.strptime(args[2], '%Y,%m,%d,%H')

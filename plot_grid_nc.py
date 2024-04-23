@@ -1,12 +1,12 @@
 #!/usr/bin/python3
 """ Quiver & scatter plot example for grid files
 nc_utils from github.com/alexchartier/nc_utils
-""" 
+"""
 
 import numpy as np
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import nvector as nv
-import os  
+import os
 import nc_utils
 
 
@@ -16,11 +16,11 @@ def main(
     df = nc_utils.load_nc(fn)
     data = nc_utils.ncread_vars(fn)
 
-    t0 = np.floor(data['mjd_start'][0])# + 16/24
-    t1 = np.floor(data['mjd_start'][0])+ 2/60/24# + 16/24     
+    t0 = np.floor(data['mjd_start'][0])  # + 16/24
+    t1 = np.floor(data['mjd_start'][0]) + 2 / 60 / 24  # + 16/24
     tidx = np.logical_and(data['mjd_start'] >= t0, data['mjd_start'] <= t1)
     breakpoint()
-    
+
     for k, v in data.items():
         data[k] = v[tidx]
 
@@ -54,7 +54,8 @@ def plot_quiver(rlat, rlon, lats, lons, vels, brng_deg, fname):
     plt.plot(lons, lats, '.k', markersize=5)
     plt.plot(rlon, rlat, '.r', markersize=20)
 
-    plt.quiver(lons, lats, np.sin(brng_rad) * vels / 100, np.cos(brng_rad) * vels / 100)
+    plt.quiver(lons, lats, np.sin(brng_rad) * vels /
+               100, np.cos(brng_rad) * vels / 100)
     plt.xlabel('Lon. (deg)')
     plt.ylabel('Lat. (deg)')
     plt.title('ExB drift components from %s' % fname)

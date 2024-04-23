@@ -21,10 +21,10 @@ author: A.T. Chartier, 2 November 2020
 
 
 import os
-import sys 
+import sys
 import glob
 import datetime as dt
-#import bz2
+# import bz2
 import shutil
 import pdb
 from fit_to_meteorwind import get_radar_params
@@ -58,7 +58,8 @@ def main(
     while time < endtime:
 
         timestr = time.strftime('%Y%m%d')
-        os.makedirs(time.strftime(os.path.dirname(out_fname_fmt)), exist_ok=True)
+        os.makedirs(time.strftime(
+            os.path.dirname(out_fname_fmt)), exist_ok=True)
 
         # Clear out the run directory
         files = glob.glob(os.path.join(run_dir, '*'))
@@ -68,10 +69,12 @@ def main(
         # CFit to GRID
         in_fname_fmt_t = time.strftime(os.path.join(in_dir_fmt, fit_ext))
         cfit_fn_list = glob.glob(in_fname_fmt_t)
-        
+
         for cfit_fn in cfit_fn_list:
-            if os.path.basename(cfit_fn).split('.')[1] in NH_radars:  # identify just the NH radars
-                grd_fn = os.path.join(run_dir, os.path.basename(cfit_fn)) + '.grd'
+            # identify just the NH radars
+            if os.path.basename(cfit_fn).split('.')[1] in NH_radars:
+                grd_fn = os.path.join(
+                    run_dir, os.path.basename(cfit_fn)) + '.grd'
                 arg = 'make_grid -cfit %s > %s' % (cfit_fn, grd_fn)
                 os.system(arg)
 
@@ -83,7 +86,7 @@ def main(
 
         # GRID to MAP
         fn_pre = os.path.join(run_dir, timestr)
-        empty_map_fn =  fn_pre + '.empty.map'
+        empty_map_fn = fn_pre + '.empty.map'
         hmb_map_fn = fn_pre + '.hmb.map'
         imf_map_fn = fn_pre + '.imf.map'
         mod_map_fn = fn_pre + '.model.map'
@@ -91,7 +94,8 @@ def main(
 
         os.system('map_grd %s > %s' % (cmb_grd_fn, empty_map_fn))
         os.system('map_addhmb %s > %s' % (empty_map_fn, hmb_map_fn))
-        os.system('map_addimf -if %s %s > %s' % (imf_fn, hmb_map_fn, imf_map_fn))
+        os.system('map_addimf -if %s %s > %s' %
+                  (imf_fn, hmb_map_fn, imf_map_fn))
         os.system('map_addmodel -o 8 -d l %s > %s' % (imf_map_fn, mod_map_fn))
         os.system('map_fit %s > %s' % (mod_map_fn, out_fn))
         """
@@ -102,9 +106,9 @@ def main(
         map_fit  20181001.model.map > 20181001.north.map
 
         """
-    
+
         print('wrote to %s' % out_fn)
-        
+
         time += dt.timedelta(days=1)
 
 

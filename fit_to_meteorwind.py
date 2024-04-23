@@ -12,9 +12,10 @@ from sd_utils import get_random_string, get_radar_list, id_beam_north, id_hdw_pa
 import sys
 import helper
 
+
 def main(
-        starttime=dt.datetime(2016, 1, 1), 
-        endtime=dt.datetime(2020, 11, 1), 
+        starttime=dt.datetime(2016, 1, 1),
+        endtime=dt.datetime(2020, 11, 1),
         fit_fname_fmt='/project/superdarn/data/fit/%Y/%m/%Y%m%d',
         wind_fname_fmt='/project/superdarn/data/meteorwind/%Y/%m/%Y%b%d',
         run_dir='./run_mw/',
@@ -32,7 +33,8 @@ def main(
             hdw_params = id_hdw_params_t(time, hdw_params)
 
             # specify input filenames
-            fit_fname_regex = time.strftime(fit_fname_fmt) + '.{0}.*'.format(radar_name) 
+            fit_fname_regex = time.strftime(
+                fit_fname_fmt) + '.{0}.*'.format(radar_name)
             fit_flist = glob.glob(fit_fname_regex)
 
             # Skip nonexistent files
@@ -45,37 +47,40 @@ def main(
 
             fn_info = os.stat(fit_fname)
             if fn_info.st_size < helper.MIN_FITACF_FILE_SIZE:
-                print('\n\n%s %1.1f MB\nFile too small - skipping' % (fit_fname, fn_info.st_size / 1E6))
+                print('\n\n%s %1.1f MB\nFile too small - skipping' %
+                      (fit_fname, fn_info.st_size / 1E6))
                 continue
 
-            hdw_dat_fname = glob.glob(os.path.join(hdw_dat_dir, '*%s*' % radar_name))[0]
+            hdw_dat_fname = glob.glob(os.path.join(
+                hdw_dat_dir, '*%s*' % radar_name))[0]
 
             # loop over meridional and zonal
             for mz_flag in ['m', 'z']:
                 print(mz_flag)
-                
-                radar_name_with_mode = '.'.join(os.path.basename(fit_fname).split('.')[1:-3])
+
+                radar_name_with_mode = '.'.join(
+                    os.path.basename(fit_fname).split('.')[1:-3])
 
                 # specify output filename
-                wind_fname = time.strftime(wind_fname_fmt) + '.%s.%s.txt' % (radar_name_with_mode, mz_flag)
-                
+                wind_fname = time.strftime(
+                    wind_fname_fmt) + '.%s.%s.txt' % (radar_name_with_mode, mz_flag)
+
                 if (os.path.isfile(wind_fname) & skip_existing):
                     print('wind file already exists')
                     continue
 
-                beam_num = 1 # id_beam_north(hdw_params)
+                beam_num = 1  # id_beam_north(hdw_params)
                 # find_middle_beam
                 # beam_num = int(hdw_params['maxbeams'] / 2)
 
                 # skip radars with no good beam
-                #if np.isnan(beam_num):  
+                # if np.isnan(beam_num):
                 #    print('No valid beam')
                 #    continue
 
-
                 # Convert file to a wind
                 fit_to_wind(
-                    time, fit_fname, beam_num, wind_fname, meteorproc_exe, 
+                    time, fit_fname, beam_num, wind_fname, meteorproc_exe,
                     cfit_exe, mz_flag,
                 )
 
@@ -83,10 +88,10 @@ def main(
 
 
 def fit_to_wind(
-        day, fit_fname, beam_num, wind_fname, meteorproc_exe, cfit_exe, 
+        day, fit_fname, beam_num, wind_fname, meteorproc_exe, cfit_exe,
         mz_flag='m', cfit_fname='tmp.cfit',
 ):
-    
+
     # Convert fit to cfit
     os.system('%s %s > %s' % (cfit_exe, fit_fname, cfit_fname))
 
@@ -121,6 +126,7 @@ def get_radar_list(in_dir):
             print(radarn)
     return radar_list
 
+
 if __name__ == '__main__':
     args = sys.argv
     assert len(args) == 5, 'Should have 4x args, e.g.:\n' + \
@@ -134,9 +140,7 @@ if __name__ == '__main__':
 
     stime = dt.datetime.strptime(args[1], '%Y%m%d')
     etime = dt.datetime.strptime(args[2], '%Y%m%d')
-    run_dir = './run/%s' % get_random_string(4) 
+    run_dir = './run/%s' % get_random_string(4)
 
-    main(starttime=stime, endtime=etime, fit_fname_fmt=args[3], wind_fname_fmt=args[4])
-
-
-
+    main(starttime=stime, endtime=etime,
+         fit_fname_fmt=args[3], wind_fname_fmt=args[4])

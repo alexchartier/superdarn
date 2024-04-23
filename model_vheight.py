@@ -12,6 +12,7 @@ Chisham, G., T. K. Yeoman, and G. J. Sofko (2008), doi:10.5194/angeo-26-823-2008
 '''
 import numpy as np
 
+
 def standard_vhm(slant_range, adjusted_sr=True, max_vh=400.0, hop=0.5,
                  alt=None, elv=None):
     '''Standard virtual height model
@@ -47,7 +48,7 @@ def standard_vhm(slant_range, adjusted_sr=True, max_vh=400.0, hop=0.5,
     if not adjusted_sr:
         slant_range /= 2.0 * hop
 
-    # Set the altitude, if not provided    
+    # Set the altitude, if not provided
     if alt is None:
         if elv is None:
             # Set default altitude to 300 km
@@ -55,10 +56,10 @@ def standard_vhm(slant_range, adjusted_sr=True, max_vh=400.0, hop=0.5,
         else:
             # If you have elevation but not altitude, then you calculate
             # altitude, and elevation will be adjusted anyway
-            alt = np.sqrt(Re**2 + slant_range**2 + 2.0 * slant_range * Re
-                          * np.sin(np.radians(elv))) - Re
+            alt = np.sqrt(Re**2 + slant_range**2 + 2.0 * slant_range * Re *
+                          np.sin(np.radians(elv))) - Re
 
-    # Model divides data by near and far range.  
+    # Model divides data by near and far range.
     if slant_range < 150.0:
         vheight = (slant_range / 150.0) * 115.0
     else:
@@ -86,8 +87,9 @@ def standard_vhm(slant_range, adjusted_sr=True, max_vh=400.0, hop=0.5,
     # straight-line path to the last refraction point for groundscatter
     if hop > 1.0 and not np.isnan(vheight):
         vheight *= 2.0 * hop if hop != np.floor(hop) else 2.0 * (hop - 0.5)
-        
+
     return vheight
+
 
 def chisham_vhm(slant_range, vhmtype=None, hop_output=False):
     '''Chisham virtual height model, only handles ionospheric backscatter
@@ -109,7 +111,7 @@ def chisham_vhm(slant_range, vhmtype=None, hop_output=False):
     hop : (float)
         If hop_output is True, hop will also be output
     '''
-    vout = [np.nan, 0] if hop_output else [np.nan] 
+    vout = [np.nan, 0] if hop_output else [np.nan]
     srange_2 = slant_range * slant_range
 
     if vhmtype is None:
@@ -119,7 +121,7 @@ def chisham_vhm(slant_range, vhmtype=None, hop_output=False):
             vhmtype = "F1"
         elif slant_range > 2137.5:
             vhmtype = "F3"
-            
+
     if vhmtype == "E1":
         # .5-hop E-region
         vout[0] = 108.974 + 0.0191271 * slant_range + 6.68283e-5 * srange_2
@@ -135,5 +137,5 @@ def chisham_vhm(slant_range, vhmtype=None, hop_output=False):
         vout[0] = 1098.28 - 0.354557 * slant_range + 9.39961e-5 * srange_2
         if hop_output:
             vout[1] = 1.5
- 
+
     return vout if len(vout) > 1 else vout[0]

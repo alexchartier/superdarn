@@ -21,6 +21,7 @@ import download_and_process_rawacfs
 import upload_fit_nc_to_zenodo
 import upload_grid_nc_to_zenodo
 
+
 def main(start_date, end_date):
     """
     Process rawACF files for a range of dates into fitACFs, grids, and meteorwinds
@@ -64,19 +65,20 @@ def delete_rawacfs(date_string):
         except Exception as e:
             print(f"Error removing {file_path}: {e}")
 
+
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         print('Usage: python3 master_script.py 20210231 20220321')
         sys.exit(1)
-    
+
     start_date_str = sys.argv[1]
     end_date_str = sys.argv[2]
-    
+
     try:
         start_date = datetime.strptime(start_date_str, '%Y%m%d')
         end_date = datetime.strptime(end_date_str, '%Y%m%d')
     except ValueError:
         print('Invalid date format. Please use YYYYMMDD.')
         sys.exit(1)
-    
+
     main(start_date, end_date)

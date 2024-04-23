@@ -13,16 +13,16 @@ def convert_winds(
     startTime, endTime, indir, outdir,
     hdw_dat_dir='/project/superdarn/software/rst/tables/superdarn/hdw/',
 ):
-    radar_prm = get_radar_params(hdw_dat_dir)   
+    radar_prm = get_radar_params(hdw_dat_dir)
     step = relativedelta(months=1)
 
     month = startTime - step
     while month <= endTime:
         month += step
-    
+
         # Parse monthly file-list
         flist = glob.glob(os.path.join(month.strftime(indir), '*'))
-        if len(flist) == 0: 
+        if len(flist) == 0:
             print(month.strftime('skipping %Y %b - no files'))
             continue
 
@@ -38,15 +38,17 @@ def convert_winds(
 
         # Loop over dates and radars, process into netCDFs
         for date in dates:
-            time = dt.datetime.strptime(date, '%Y%b%d') 
+            time = dt.datetime.strptime(date, '%Y%b%d')
             for radar in radars:
                 print(radar)
-                fn_fmt = os.path.join(month.strftime(indir), '.'.join([date, radar, '*%s.txt']))
-                out_fname = os.path.join(month.strftime(outdir), '.'.join([date, radar, 'nc']))
+                fn_fmt = os.path.join(month.strftime(
+                    indir), '.'.join([date, radar, '*%s.txt']))
+                out_fname = os.path.join(month.strftime(
+                    outdir), '.'.join([date, radar, 'nc']))
                 os.makedirs(os.path.dirname(out_fname), exist_ok=True)
-                
+
                 # Grab the file
-                merid_wind_fn_glob = fn_fmt % 'm' 
+                merid_wind_fn_glob = fn_fmt % 'm'
                 merid_wind_fn_list = glob.glob(merid_wind_fn_glob)
                 if len(merid_wind_fn_list) < 1:
                     print('Unable to find %s' % merid_wind_fn_glob)
@@ -68,10 +70,10 @@ def convert_winds(
                 if m_vars['year'] == []:
                     print('Unable to process %s' % fn_fmt)
                     continue
-                
-                # Define output variables 
+
+                # Define output variables
                 outvars, header_info = format_outvars(m_vars)
-                dim_defs = {'npts': len(outvars['hour'])}   
+                dim_defs = {'npts': len(outvars['hour'])}
                 var_defs = def_vars()
                 header_info['description'] = \
                     'SuperDARN winds from %s' % \
@@ -80,22 +82,21 @@ def convert_winds(
                 header_info['history'] = 'created on %s' % dt.datetime.now()
                 header_info['boresight'] = '%1.2f degrees East of North' % boresight
 
-                # Write out the netCDF 
-                with netCDF4.Dataset(out_fname, 'w') as nc: 
+                # Write out the netCDF
+                with netCDF4.Dataset(out_fname, 'w') as nc:
                     set_header(nc, header_info)
                     for k, v in dim_defs.items():
                         nc.createDimension(k, size=v)
                     for k, v in outvars.items():
                         defs = var_defs[k]
                         var = nc.createVariable(k, defs['type'], defs['dims'])
-                        var[:] = v 
+                        var[:] = v
                         var.units = defs['units']
                         var.long_name = defs['long_name']
                 print('Wrote to %s' % out_fname)
-                
 
 
-def set_header(rootgrp, header_info) :
+def set_header(rootgrp, header_info):
     rootgrp.description = header_info['description']
     rootgrp.header = header_info['params']
     rootgrp.history = header_info['history']
@@ -109,12 +110,12 @@ def set_header(rootgrp, header_info) :
 
 def format_outvars(m_vars):
     outvars = {}
-    #varnames = 'hour', 'Vm', 'Vx', 'Vy', 'sdev_Vx', 'sdev_Vy'
-    varnames = 'hour',  'Vx', 'Vy', 'sdev_Vx', 'sdev_Vy', 'lat', 'long'
+    # varnames = 'hour', 'Vm', 'Vx', 'Vy', 'sdev_Vx', 'sdev_Vy'
+    varnames = 'hour', 'Vx', 'Vy', 'sdev_Vx', 'sdev_Vy', 'lat', 'long'
     for vn in varnames:
-        outvars[vn] = m_vars[vn] 
-    #outvars['V_merid'] = outvars.pop('Vm')
-    #outvars['V_zonal'] = z_vars['Vz']
+        outvars[vn] = m_vars[vn]
+    # outvars['V_merid'] = outvars.pop('Vm')
+    # outvars['V_zonal'] = z_vars['Vz']
     params = {
         'day': dt.datetime(int(m_vars['year'][0]), int(m_vars['month'][0]), int(m_vars['day'][0])),
         'lat': m_vars['lat'][0],
@@ -122,24 +123,24 @@ def format_outvars(m_vars):
         'rsep': m_vars['rsep'][0],
         'frang': m_vars['frang'][0],
     }
-    
+
     return outvars, params
 
 
 def def_vars():
     # netCDF writer expects a series of variable definitions - here they are
-    stdin_dbl = {'type': 'f8', 'dims': 'npts'} 
-    var_defs = { 
+    stdin_dbl = {'type': 'f8', 'dims': 'npts'}
+    var_defs = {
         'hour': dict({'units': 'hours', 'long_name': 'Hour (UT)'}, **stdin_dbl),
-        #'V_merid': dict({'units': 'm/s', 'long_name': 'Merid. Vel. (+ve Poleward)'}, **stdin_dbl),
-        #'V_zonal': dict({'units': 'm/s', 'long_name': 'Zonal Vel. (+ve East)'}, **stdin_dbl),
+        # 'V_merid': dict({'units': 'm/s', 'long_name': 'Merid. Vel. (+ve Poleward)'}, **stdin_dbl),
+        # 'V_zonal': dict({'units': 'm/s', 'long_name': 'Zonal Vel. (+ve East)'}, **stdin_dbl),
         'Vx': dict({'units': 'm/s', 'long_name': 'Radar Boresight Vel.'}, **stdin_dbl),
         'Vy': dict({'units': 'm/s', 'long_name': 'Perp. Radar Boresight Vel. (90deg right)'}, **stdin_dbl),
         'sdev_Vx': dict({'units': 'm/s', 'long_name': 'Vel. error'}, **stdin_dbl),
         'sdev_Vy': dict({'units': 'm/s', 'long_name': 'Vel. error'}, **stdin_dbl),
         'lat': dict({'units': 'deg', 'long_name': 'Latitude'}, **stdin_dbl),
         'long': dict({'units': 'deg', 'long_name': 'Longitude'}, **stdin_dbl),
-    }   
+    }
     return var_defs
 
 

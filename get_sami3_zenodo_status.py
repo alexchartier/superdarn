@@ -37,22 +37,25 @@ while date <= END_DATE:
                             params={'q': '"SAMI3 data in netCDF format ({})"'.format(day),
                                     'access_token': helper.ZENODO_TOKEN})
     # Extract rate-limit information from response headers
-    rate_limit_remaining = int(response.headers.get("X-RateLimit-Remaining", 0))
+    rate_limit_remaining = int(
+        response.headers.get("X-RateLimit-Remaining", 0))
     rate_limit_reset = int(response.headers.get("X-RateLimit-Reset", 0))
     # print(rate_limit_remaining)
-    
+
     data[day] = 1 if response.json()["hits"]["hits"] else 0
-    
+
     if rate_limit_remaining == 1:
         current_time = int(time.time())
         sleep_time = rate_limit_reset - current_time
-        print("Rate limit about to be exhausted. Waiting for {} seconds...".format(sleep_time))
+        print("Rate limit about to be exhausted. Waiting for {} seconds...".format(
+            sleep_time))
         time.sleep(sleep_time)
 
     date += datetime.timedelta(days=1)
 
 # Save data to the JSON file
-outputFile = '{0}/{1}_sami3_zenodo_data_inventory.json'.format(DATA_STATUS_DIR, END_DATE.strftime('%Y%m%d'))
+outputFile = '{0}/{1}_sami3_zenodo_data_inventory.json'.format(
+    DATA_STATUS_DIR, END_DATE.strftime('%Y%m%d'))
 with open(outputFile, 'w') as outfile:
     json.dump(data, outfile)
 

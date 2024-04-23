@@ -22,6 +22,7 @@ TIMEOUT = 10  # seconds
 # Global date variable
 date = None
 
+
 def main(dateString, dataSource=None):
     """
     Downloads rawACF files for the specified date from the specified source and combines them.
@@ -39,6 +40,7 @@ def main(dateString, dataSource=None):
 
     download_source_files(dataSource)
 
+
 def download_source_files(dataSource):
     """
     Downloads rawACF files from the specified data source.
@@ -54,7 +56,9 @@ def download_source_files(dataSource):
     elif dataSource == 'globus':
         download_files_from_globus(rawDir)
     else:
-        print(f'ERROR: Specified rawACF source is invalid {dataSource}. Valid options are: \'bas\' or \'globus\'')
+        print(f'ERROR: Specified rawACF source is invalid {
+              dataSource}. Valid options are: \'bas\' or \'globus\'')
+
 
 def download_files_from_globus(rawDir):
     """
@@ -65,10 +69,12 @@ def download_files_from_globus(rawDir):
     """
     # Start Globus Connect Personal and establish connection
     # Also allow access to /project/superdarn/data/
-    subprocess.call(f'{helper.GLOBUS_PATH} -start -restrict-paths \'rw~/,rw/project/superdarn/data\' &', shell=True)
+    subprocess.call(
+        f'{helper.GLOBUS_PATH} -start -restrict-paths \'rw~/,rw/project/superdarn/data\' &', shell=True)
 
     # Initiate the transfer from Globus to APL
-    subprocess.call(f'nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/superdarn/globus/sync_radar_data_globus.py -y {date.year} -m {date.month} -t raw {rawDir}', shell=True)
+    subprocess.call(f'nohup /project/superdarn/software/python-3.8.1/bin/python3 /homes/superdarn/superdarn/globus/sync_radar_data_globus.py -y {
+                    date.year} -m {date.month} -t raw {rawDir}', shell=True)
 
     # Stop Globus Connect Personal
     subprocess.call(f'{helper.GLOBUS_PATH} -stop', shell=True)
@@ -76,6 +82,7 @@ def download_files_from_globus(rawDir):
     # emailSubject = f'"{date.strftime("%Y/%m")} rawACF Data Successfully Downloaded from Globus"'
     # emailBody = f'"{date.strftime("%Y/%m")} rawACF source files have been downloaded. Starting conversion to fitACF and netCDF."'
     # helper.send_email(emailSubject, emailBody)
+
 
 def download_files_from_bas(rawDir):
     """
@@ -90,29 +97,36 @@ def download_files_from_bas(rawDir):
     if not BASServerConnected():
         # Send email if BAS couldn't be reached
         emailSubject = '"Unable to reach BAS"'
-        emailBody = 'Unable to reach BAS after trying for {} minutes.'.format(RETRIES * DELAY / 60)
+        emailBody = 'Unable to reach BAS after trying for {} minutes.'.format(
+            RETRIES * DELAY / 60)
         helper.send_email(emailSubject, emailBody)
         sys.exit('{message}'.format(message=emailBody))
 
     dateString = date.strftime('%Y%m%d')
     print(f'Downloading {dateString} rawACFs from BAS')
-    rsyncLogDir = os.path.join(helper.LOG_DIR, 'BAS_rsync_logs', date.strftime('%Y'))
+    rsyncLogDir = os.path.join(
+        helper.LOG_DIR, 'BAS_rsync_logs', date.strftime('%Y'))
     os.makedirs(rsyncLogDir, exist_ok=True)
     rsyncLogFilename = f'BAS_rsync_{dateString}.out'
     fullLogFilename = os.path.join(rsyncLogDir, rsyncLogFilename)
-    rsyncCommand = f'nohup rsync -rv apl@{helper.BAS_SERVER}:{basRawDir}/{dateString}*.rawacf.bz2 {rawDir} >& {fullLogFilename}'
-    rsyncProcess = subprocess.Popen(rsyncCommand, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    rsyncCommand = f'nohup rsync -rv apl@{helper.BAS_SERVER}:{
+        basRawDir}/{dateString}*.rawacf.bz2 {rawDir} >& {fullLogFilename}'
+    rsyncProcess = subprocess.Popen(
+        rsyncCommand, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     rsyncExitCode = rsyncProcess.wait()
 
     if rsyncExitCode == 0:
         print(f'Successfully downloaded {dateString} rawACFs from BAS')
     else:
         # Send an email and end the script if rsync didn't succeed
-        emailSubject = f'"Unsuccessful attempt to copy {dateString} BAS rawACF data"'
-        emailBody = f'"Failed to copy {dateString} rawACFs from BAS with exit code {rsyncExitCode}. \nSee {fullLogFilename} for more details."'
+        emailSubject = f'"Unsuccessful attempt to copy {
+            dateString} BAS rawACF data"'
+        emailBody = f'"Failed to copy {dateString} rawACFs from BAS with exit code {
+            rsyncExitCode}. \nSee {fullLogFilename} for more details."'
         helper.send_email(emailSubject, emailBody)
         print(emailBody)
         sys.exit('{message}'.format(message=emailBody))
+
 
 def combine_source_files():
     dateString = date.strftime('%Y%m%d')
@@ -131,7 +145,7 @@ def combine_source_files():
         match = re.search(r'\d{8}\.\d{4}\.\d{2}\.(.*?)\.rawacf\.bz2', filename)
         if match:
             radarSites.add(match.group(1))
-    
+
     for site in radarSites:
         siteFilesFormat = os.path.join(rawDir, f"{dateString}*{site}*")
         siteFiles = glob.glob(siteFilesFormat)
@@ -139,19 +153,21 @@ def combine_source_files():
         fullOutputFilename = os.path.join(rawDir, outputFilename)
         unzipAndCombine(siteFiles, fullOutputFilename)
 
+
 def unzipAndCombine(files, outputFile):
-  """
-  Unzips and combines the given files into a single output file.
+    """
+    Unzips and combines the given files into a single output file.
 
-  Args:
-    files: A list of file paths to the files to be unzipped and combined.
-    outputFile: The path to the output file.
-  """
+    Args:
+      files: A list of file paths to the files to be unzipped and combined.
+      outputFile: The path to the output file.
+    """
 
-  with open(outputFile, "wb") as f_out:
-    for file in files:
-      with bz2.open(file, "rb") as f_in:
-        f_out.write(f_in.read())
+    with open(outputFile, "wb") as f_out:
+        for file in files:
+            with bz2.open(file, "rb") as f_in:
+                f_out.write(f_in.read())
+
 
 def BASServerConnected():
     """
@@ -168,6 +184,7 @@ def BASServerConnected():
         else:
             time.sleep(DELAY)
     return BASup
+
 
 def isOpen(server, port):
     """
@@ -190,6 +207,7 @@ def isOpen(server, port):
         return False
     finally:
         s.close()
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:

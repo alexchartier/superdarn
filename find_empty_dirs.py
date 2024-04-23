@@ -1,5 +1,6 @@
 import os
 
+
 def search_directories(directory_path, log_file):
     for root, dirs, files in os.walk(directory_path):
         for subdir in dirs:
@@ -9,6 +10,7 @@ def search_directories(directory_path, log_file):
                 if subdir_size < 100 * 1024:  # Convert 100kB to bytes
                     log_file.write(subdir_path + '\n')
 
+
 def get_directory_size(directory_path):
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(directory_path):
@@ -17,6 +19,7 @@ def get_directory_size(directory_path):
             if os.path.isfile(file_path):
                 total_size += os.path.getsize(file_path)
     return total_size
+
 
 # Directory to search
 directory_to_search = '/project/superdarn/data/meteorwind/'

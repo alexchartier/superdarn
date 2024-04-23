@@ -8,7 +8,6 @@
 # HME files are ICON data product 4.1. For example, the data from 2020 can be found in the following directory:
 #  - Science/LEVEL.4/HME/2020/Data/
 #
-# As of May 3, 2022, only Version 1 (v01) is available. Version 2 will be coming soon.
 # Author: Brian Harding, Berkeley SSL. Edited by ATC (APL)
 # See https://nbviewer.org/url/www.ssl.berkeley.edu/~bharding/MIGHTI/HME_Example.ipynb
 import os
@@ -18,7 +17,6 @@ import matplotlib as mpl
 import glob
 import numpy as np
 from scipy import interpolate
-import seaborn as sns
 import pandas as pd
 import xarray as xr
 
@@ -210,7 +208,9 @@ def eval_hme_all(fn_hme, glats, glons, alts, thr):
     return u, v
 
 
-def eval_icon_hme(fn_hme, glats_1d, glons_1d, alt_km, thrs):
+def eval_icon_hme(fn_hme, glats_1d, glons_1d, alt_km, thrs, 
+        dirns=['u', 'v'], plot=False,
+):
     """ wrapper for eval_hme_all """
    
     alt = alt_km * 1000 
@@ -223,17 +223,32 @@ def eval_icon_hme(fn_hme, glats_1d, glons_1d, alt_km, thrs):
 
     u_3d = np.ones((len(thrs), glats_3d.shape[0], glats_3d.shape[1])) * np.nan
     v_3d = np.ones_like(u_3d) * np.nan
+    wind_array = np.zeros((len(dirns), len(thrs), len(glats_1d), len(glons_1d)))
     for ind, thr in enumerate(thrs):
         u, v = eval_hme_all(fn_hme, glats, glons, alts, thr)
         u_3d[ind, :, :] = np.reshape(u, glats_3d.shape[:2])
         v_3d[ind, :, :] = np.reshape(v, glats_3d.shape[:2])
+        wind_array[0, ind, :, :] = np.reshape(u, glats_3d.shape[:2])
+        wind_array[1, ind, :, :] = np.reshape(v, glats_3d.shape[:2])
 
-    plt.contourf(glons_1d, glats_1d, u_3d[0, :, :])
-    plt.colorbar()
-    plt.title('%i km U @ 0 UT from %s' % (alt_km, os.path.basename(fn_hme)))
-    plt.xlabel('GLON')
-    plt.ylabel('GLAT')
-    plt.show()
+    wind = { 
+        'wind': wind_array,
+        'dirns': ['u', 'v'],
+        'UTs': thrs,
+        'lats': glats_1d,
+        'lons': glons_1d,
+        'alt': alt_km,
+    }   
+
+    if plot:
+        plt.contourf(glons_1d, glats_1d, u_3d[0, :, :])
+        plt.colorbar()
+        plt.title('%i km U @ 0 UT from %s' % (alt_km, os.path.basename(fn_hme)))
+        plt.xlabel('GLON')
+        plt.ylabel('GLAT')
+        plt.show()
+
+    return wind
     
 
 

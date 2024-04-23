@@ -9,12 +9,14 @@ import subprocess
 import datetime
 import os
 
+
 def parse_date(date_str):
     try:
         return datetime.datetime.strptime(date_str, "%Y%m%d").date()
     except ValueError:
         print("Invalid date format. Please use YYYYMMDD.")
         sys.exit(1)
+
 
 # Get the date argument if provided, or default to yesterday's date
 if len(sys.argv) > 1:
@@ -40,7 +42,8 @@ destination_path = f"/project/superdarn/data/rawacf/{year}/{month}"
 os.makedirs(destination_path, exist_ok=True)
 
 # Get a list of the files to sync
-files_to_sync = subprocess.check_output(f"ssh {borealis_server} 'ls {path}'", shell=True, stderr=subprocess.DEVNULL)
+files_to_sync = subprocess.check_output(f"ssh {borealis_server} 'ls {
+                                        path}'", shell=True, stderr=subprocess.DEVNULL)
 files_to_sync = files_to_sync.decode().strip().split("\n")
 
 # Iterate over the files to sync and only sync them if they don't already exist at APL
@@ -50,7 +53,7 @@ for file_to_sync in files_to_sync:
     if not os.path.exists(destination_file):
         # Construct the scp command
         command = f"scp -r {borealis_server}:{file_to_sync} {destination_path}"
-        
+
         # Execute the command
         subprocess.call(command, shell=True, stderr=subprocess.DEVNULL)
         print(f"Synced file: {filename}")

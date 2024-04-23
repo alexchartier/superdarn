@@ -13,5 +13,5 @@ for line in out.decode("utf-8").splitlines():
 
 if numCronResults < 3:
     emailSubject = '"Scripts Stopped Running"'
-    emailBody    = '"Cron scripts are no longer running"'
+    emailBody = '"Cron scripts are no longer running"'
     helper.send_email(emailSubject, emailBody, EMAIL_ADDRESSES)

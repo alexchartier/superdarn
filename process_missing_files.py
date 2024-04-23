@@ -9,15 +9,17 @@ from dateutil.relativedelta import relativedelta
 import re
 import bz2
 
-VALID_FILE_TYPES = ['rawacf', 'fitacf', 'fit_nc', 'meteorwind', 'meteorwind_nc', 'grid', 'grid_nc']
+VALID_FILE_TYPES = ['rawacf', 'fitacf', 'fit_nc',
+                    'meteorwind', 'meteorwind_nc', 'grid', 'grid_nc']
 
-GLOBUS_SOURCE_FILES = {'rawacf':'raw', 
-                       'fitacf':'fitacf_30', 
-                       'fit_nc':'despeck_fitacf_30', 
-                       'meteorwind':'fitacf_30', 
-                       'meteorwind_nc':'meteorwind', 
-                       'grid':'fitacf_30', 
-                       'grid_nc':'grid'}
+GLOBUS_SOURCE_FILES = {'rawacf': 'raw',
+                       'fitacf': 'fitacf_30',
+                       'fit_nc': 'despeck_fitacf_30',
+                       'meteorwind': 'fitacf_30',
+                       'meteorwind_nc': 'meteorwind',
+                       'grid': 'fitacf_30',
+                       'grid_nc': 'grid'}
+
 
 def get_local_file_list(file_types=None):
     file_list = {}
@@ -57,7 +59,8 @@ def get_local_file_list(file_types=None):
             file_list['meteorwind'] = meteorwind_files
 
     if 'meteorwind_nc' in file_types:
-        meteorwindnc_files = glob.glob(f'{meteorwind_nc_dir}/*{day_string_two}*')
+        meteorwindnc_files = glob.glob(
+            f'{meteorwind_nc_dir}/*{day_string_two}*')
         if not meteorwindnc_files or not os.path.isdir(meteorwind_nc_dir):
             file_list['meteorwind_nc'] = []
         else:
@@ -79,6 +82,7 @@ def get_local_file_list(file_types=None):
 
     return file_list
 
+
 def get_globus_file_list():
     day = date.strftime('%Y%m%d')
     with open(f'{helper.GLOBUS_FILE_LIST_DIR}/globus_data_inventory.json') as f:
@@ -86,13 +90,17 @@ def get_globus_file_list():
     return remote_data.get(day, [])
 
 # NEXT: Test this with already existing fitACF files to confirm it's combining them properly
+
+
 def combine_files(file_list, fitVersion):
     file_dict = {}
 
     for file_name in file_list:
-        match = re.search(r'(\d{8})\.\d{4}\.\d{2}\.(.+)\.fitacf\.bz2$', file_name)
+        match = re.search(
+            r'(\d{8})\.\d{4}\.\d{2}\.(.+)\.fitacf\.bz2$', file_name)
         if match:
-            file_date = match.group(1)  # Extract the YYYYMMDD portion as the file date
+            # Extract the YYYYMMDD portion as the file date
+            file_date = match.group(1)
             station = match.group(2)  # Extract the radar station name
             key = (file_date, station)
             if key not in file_dict:
@@ -100,7 +108,8 @@ def combine_files(file_list, fitVersion):
             file_dict[key].append(file_name)
 
     for (file_date, station), files in file_dict.items():
-        output_file = os.path.join(fitacf_dir, f'{file_date}.{station}.{fitVersion}.fit')
+        output_file = os.path.join(fitacf_dir, f'{file_date}.{
+                                   station}.{fitVersion}.fit')
         with open(output_file, 'wb') as output:
             for file_name in files:
                 file_path = os.path.join(fitacf_dir, file_name)
@@ -113,26 +122,33 @@ def produce_rawacf(files):
 
     return
 
+
 def produce_fitacf(files):
     download_files('fitacf_30', files, fitacf_dir)
     files_to_combine = os.listdir(fitacf_dir)
     fit_version = 'v3.0'
     combine_files(files_to_combine, fit_version)
 
+
 def produce_fit_nc(files):
     return
+
 
 def produce_meteorwind(files):
     return
 
+
 def produce_meteorwind_nc(files):
     return
+
 
 def produce_grid(files):
     return
 
+
 def produce_grid_nc(files):
     return
+
 
 DATA_PRODUCTION_FUNCTIONS = {
     'rawacf': produce_rawacf,
@@ -145,34 +161,41 @@ DATA_PRODUCTION_FUNCTIONS = {
 }
 
 # Produce all missing files for the given day
+
+
 def produce_missing_files(missing_files):
     for file_type_to_produce, files in missing_files.items():
         if files:
-            production_function = DATA_PRODUCTION_FUNCTIONS.get(file_type_to_produce)
+            production_function = DATA_PRODUCTION_FUNCTIONS.get(
+                file_type_to_produce)
             if production_function:
                 breakpoint()
                 production_function(files)
             else:
-                print(f'No data production function found for file type: {file_type_to_produce}')
-            
+                print(f'No data production function found for file type: {
+                      file_type_to_produce}')
+
+
 def download_files(globus_file_type, stations, destination_dir):
-    subprocess.run(['nohup', '/software/python-3.11.4/bin/python3', 
+    subprocess.run(['nohup', '/software/python-3.11.4/bin/python3',
                     '/homes/superdarn/superdarn/globus/sync_radar_data_globus.py',
                     '-y', str(date.year), '-m', str(date.month), '-t', globus_file_type, destination_dir])
-    
+
     # for station in stations:
-        # pattern = date.strftime('%Y%m%d') + '*' + station
+    # pattern = date.strftime('%Y%m%d') + '*' + station
 
     # Initiate the Globus -> APL transfer
-    # subprocess.run(['nohup', '/software/python-3.11.4/bin/python3', 
+    # subprocess.run(['nohup', '/software/python-3.11.4/bin/python3',
     #                 '/homes/superdarn/superdarn/globus/sync_radar_data_globus.py',
     #                 '-y', str(date.year), '-m', str(date.month), '-t', globus_file_type, '-p', pattern, destination_dir])
+
 
 def main(start_date, end_date, file_types):
     if file_types is None:
         file_types = VALID_FILE_TYPES
     elif not file_types:
-        print('\nFile type flag is used, but no file types are specified.\nExample usage:\n')
+        print(
+            '\nFile type flag is used, but no file types are specified.\nExample usage:\n')
         print('   python3 process_missing_files.py 20221022 20220901')
         print('   python3 process_missing_files.py 20221022 20220901 -t fitacf meteorwind_nc\n')
         return
@@ -180,13 +203,15 @@ def main(start_date, end_date, file_types):
         file_types = [file_type.lower() for file_type in file_types]
         invalid_file_types = set(file_types) - set(VALID_FILE_TYPES)
         if invalid_file_types:
-            print(f'\nInvalid file types specified: {", ".join(invalid_file_types)}')
+            print(f'\nInvalid file types specified: {
+                  ", ".join(invalid_file_types)}')
             print('Valid file types are:')
             for file_type in VALID_FILE_TYPES:
                 print(f'  {file_type}')
-            print('\nExample usage: python3 process_missing_files.py -t fitacf meteorwind_nc\n')
+            print(
+                '\nExample usage: python3 process_missing_files.py -t fitacf meteorwind_nc\n')
             return
-        
+
     global rawacf_dir, fitacf_dir, fit_nc_dir, meteorwind_dir, meteorwind_nc_dir, grid_dir, grid_nc_dir, date
 
     date = start_date
@@ -234,7 +259,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('start_date', help='Specify the start date (YYYYMMDD)')
     parser.add_argument('end_date', help='Specify the end date (YYYYMMDD)')
-    parser.add_argument('-t', '--file-types', nargs='*', help='Specify the file types to check (e.g. fitacf, meteorwind_nc, etc)')
+    parser.add_argument('-t', '--file-types', nargs='*',
+                        help='Specify the file types to check (e.g. fitacf, meteorwind_nc, etc)')
     args = parser.parse_args()
 
     start_date = dt.datetime.strptime(args.start_date, '%Y%m%d')

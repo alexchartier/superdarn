@@ -15,8 +15,10 @@ from configparser import ConfigParser, SafeConfigParser
 
 #### Configuration routines ####
 
+
 def configure_system(config_fname):
-    assert os.path.isfile(config_fname), "Error: config file does not exist - %s" % config_fname
+    assert os.path.isfile(
+        config_fname), "Error: config file does not exist - %s" % config_fname
     config = SafeConfigParser(os.environ)
     config.read(config_fname)
 
@@ -39,10 +41,10 @@ def configure_system(config_fname):
                 None
 
     for k, v in sysconfig['global'].items():
-        if k == 'kp': 
+        if k == 'kp':
             sysconfig['global'][k] = [int(kpi) for kpi in v]
         try:
-            if len(v) == 5: 
+            if len(v) == 5:
                 sysconfig['global'][k] = get_datetime(v)
         except:
             None
@@ -50,19 +52,20 @@ def configure_system(config_fname):
             sysconfig['global'][k] = ast.literal_eval(v)
         except:
             None
-    sysconfig['global']['timestep'] = dt.timedelta(minutes=sysconfig['global']['timestep'])
- 
-    if 'out_fnames' in sysconfig.keys(): 
-        try: 
-            for k, v in sysconfig['out_fnames'].items(): 
+    sysconfig['global']['timestep'] = dt.timedelta(
+        minutes=sysconfig['global']['timestep'])
+
+    if 'out_fnames' in sysconfig.keys():
+        try:
+            for k, v in sysconfig['out_fnames'].items():
                 dn, _ = os.path.split(v)
-                os.makedirs(dn, exist_ok=True) 
+                os.makedirs(dn, exist_ok=True)
         except:
             print('Could not make out_fnames dirs')
 
-    for k, v in sysconfig['dirs'].items(): 
-        try: 
-            os.makedirs(v, exist_ok=True) 
+    for k, v in sysconfig['dirs'].items():
+        try:
+            os.makedirs(v, exist_ok=True)
         except:
             print('Could not make %s dir: %s' % (k, v))
 
@@ -140,5 +143,3 @@ if __name__ == "__main__":
         main(config_fname)
     else:
         main()
-
-

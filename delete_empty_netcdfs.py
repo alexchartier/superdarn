@@ -8,7 +8,7 @@ __maintainer__ = "Jordan Wiker"
 __email__ = "jordan.wiker@jhuapl.edu"
 __status__ = "Development"
 
-# import datetime as dt 
+# import datetime as dt
 # import sys
 # from dateutil.relativedelta import relativedelta
 import os
@@ -20,6 +20,7 @@ import subprocess
 # START_DATE = dt.datetime.now()
 # END_DATE = dt.datetime(1993, 1, 1)
 
+
 def main():
     # date = START_DATE
     # while date >= END_DATE:
@@ -30,10 +31,10 @@ def main():
     summaryLogFile = logDir + '/empty_netCDFs_summary.log'
     numEmptyNetCDFs = 0
 
-#    with open(emptynetcdfLogFile, "a+") as fp: 
+#    with open(emptynetcdfLogFile, "a+") as fp:
 #        fp.write('Empty NetCDFs\n')
 
-    with open(summaryLogFile, "a+") as fp: 
+    with open(summaryLogFile, "a+") as fp:
         fp.write('Month                                   Num Empty NetCDFs\n')
 
     for path, currentDirectory, files in os.walk(netcdfDir):
@@ -47,21 +48,23 @@ def main():
                 except:
                     # If it doesn't open (e.g. "NetCDF: HDF error"), add it to the list of bad files
                     os.remove(os.path.join(path, file))
- 
+
                 numDataPoints = ds.dimensions['npts'].size
                 if numDataPoints == 0:
                     os.remove(os.path.join(path, file))
-        
-        #if numEmptyNetCDFs != 0:
+
+        # if numEmptyNetCDFs != 0:
         # Get 'YYYY-MM' month format
         month = path.split('/')[-2] + '-' + path.split('/')[-1]
         logText = '{0}: {1}\n'.format(month, numEmptyNetCDFs)
-        with open(summaryLogFile, "a+") as fp: 
+        with open(summaryLogFile, "a+") as fp:
             fp.write(logText)
 
-    subprocess.call('sort {0} -o {1}'.format(summaryLogFile, summaryLogFile), shell=True)
-    subprocess.call('sort {0} -o {1}'.format(emptynetcdfLogFile, emptynetcdfLogFile), shell=True)        
+    subprocess.call(
+        'sort {0} -o {1}'.format(summaryLogFile, summaryLogFile), shell=True)
+    subprocess.call(
+        'sort {0} -o {1}'.format(emptynetcdfLogFile, emptynetcdfLogFile), shell=True)
+
 
 if __name__ == '__main__':
     main()
-

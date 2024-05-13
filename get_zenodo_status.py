@@ -34,8 +34,8 @@ MAX_NUM_TRIES = 10
 
 REMOVE_REMOTE_FILE_LIST = False
 
-START_DATE = dt.datetime(1993,9,29)
-END_DATE = dt.datetime.now()
+START_DATE = dt.datetime(2023,7,1)#(1993,9,29)
+END_DATE = dt.datetime(2023,7,31)#.now()
 
 BAS_FILE_LIST_DIR = '/project/superdarn/data/data_status/BAS_files'
 GLOBUS_FILE_LIST_DIR = '/project/superdarn/data/data_status/Globus_files'
@@ -315,7 +315,7 @@ def getMirrorFileList():
                 if not extension == 'bz2':
                     # This line isn't a rawACF or DAT filename
                     continue
-               
+              
                 # Get the day and the radar for the file
                 if file.split('.')[0][-3:] == 'Raw':
                     day = filename.split('.')[0].split('/')[-1]
@@ -329,6 +329,7 @@ def getMirrorFileList():
 
                 # Add the current radar to a new date entry if the day doesn't exist in the dict yet
                 if day not in mirror_data:
+                    print(f'Adding {radar} to {day}')
                     mirror_data[day] = [radar]
                     continue
 

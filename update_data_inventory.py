@@ -175,8 +175,7 @@ def create_new_inventory_file():
     filtered_files = [f for f in files if f.endswith("_data_status.json")]
     sorted_files = sorted(filtered_files)
     latest_inventory_file = sorted_files[-1] if sorted_files else None
-    #new_filename = f'{END_DATE.strftime("%Y%m%d")}_data_status.json'
-    new_filename = f'{dt.datetime.now().strftime("%Y%m%d")}_data_status.json'
+    new_filename = f'{END_DATE.strftime("%Y%m%d")}_data_status.json'
 
     if latest_inventory_file:
         shutil.copy(os.path.join(helper.DATA_STATUS_DIR, latest_inventory_file), os.path.join(helper.DATA_STATUS_DIR, new_filename))

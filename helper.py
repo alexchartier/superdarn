@@ -10,7 +10,7 @@ from glob import glob
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
 
-LATEST_PUBLIC_DATA = 2021
+LATEST_PUBLIC_DATA = 2022
 
 # Directories
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
@@ -118,7 +118,8 @@ def getDOI(year):
         2018: 'https://doi.org/10.20383/101.0290',
         2019: 'https://doi.org/10.20383/102.0558',
         2020: 'https://doi.org/10.20383/103.0573',
-        2021: 'https://doi.org/10.20383/102.0677'
+        2021: 'https://doi.org/10.20383/102.0677',
+        2022: 'https://doi.org/10.20383/103.0893'
     }
 
     return DOIs[year]

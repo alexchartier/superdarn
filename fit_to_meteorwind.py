@@ -15,7 +15,7 @@ import helper
 def main(
         starttime=dt.datetime(2016, 1, 1), 
         endtime=dt.datetime(2020, 11, 1), 
-        fit_fname_fmt='/project/superdarn/data/fit/%Y/%m/%Y%m%d',
+        fit_fname_fmt='/project/superdarn/data/fitacf/%Y/%m/%Y%m%d',
         wind_fname_fmt='/project/superdarn/data/meteorwind/%Y/%m/%Y%b%d',
         run_dir='./run_mw/',
         meteorproc_exe='/project/superdarn/software/rst/bin/meteorproc',

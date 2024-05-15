@@ -36,8 +36,10 @@ ZENODO_FILE_LIST_DIR = '/project/superdarn/data/data_status/zenodo_files'
 MIRROR_FILE_LIST_DIR = '/project/superdarn/data/data_status/mirror_files'
 DATA_STATUS_DIR = '/project/superdarn/data/data_status'
 HDW_DAT_DIR = '/project/superdarn/software/rst/tables/superdarn/hdw'
+METEORPROC_EXE = '/project/superdarn/software/rst/bin/meteorproc'
+CFIT_EXE = '/project/superdarn/software/rst/bin/make_cfit'
 
-MIN_FITACF_FILE_SIZE = 1E5
+MIN_FITACF_FILE_SIZE = 1E5 # bytes
 
 DEPOSIT_URL = 'https://zenodo.org/api/deposit/depositions'
 SANDBOX_DEPOSIT_URL = 'https://sandbox.zenodo.org/api/deposit/depositions'

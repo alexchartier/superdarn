@@ -21,6 +21,8 @@ TIMEOUT = 10  # seconds
 
 # Global date variable
 date = None
+total_files = 0
+transferred_files = -1
 
 def main(dateString, dataSource=None):
     """
@@ -96,16 +98,24 @@ def download_files_from_bas(rawDir):
 
     dateString = date.strftime('%Y%m%d')
     print(f'{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Downloading {dateString} rawACFs from BAS')
+    # Initialize progress bar
+    # update_progress_bar('1 0% / 0:00:00 (xfr#0, to-chk=0/999)')
     rsyncLogDir = os.path.join(helper.LOG_DIR, 'BAS_rsync_logs', date.strftime('%Y'))
     os.makedirs(rsyncLogDir, exist_ok=True)
     rsyncLogFilename = f'BAS_rsync_{dateString}.out'
     fullLogFilename = os.path.join(rsyncLogDir, rsyncLogFilename)
-    rsyncCommand = f'nohup rsync -av --ignore-errors --log-file={fullLogFilename} apl@{helper.BAS_SERVER}:{basRawDir}/{dateString}*.rawacf.bz2 {rawDir}'
-    rsyncProcess = subprocess.Popen(rsyncCommand, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    rsyncCommand = f'nohup rsync -av --info=progress2 --ignore-errors --log-file={fullLogFilename} apl@{helper.BAS_SERVER}:{basRawDir}/{dateString}*.rawacf.bz2 {rawDir}'
+    rsyncProcess = subprocess.Popen(rsyncCommand, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+
+    for line in rsyncProcess.stdout:
+        if line.strip():
+            update_progress_bar(line)
+
     rsyncExitCode = rsyncProcess.wait()
 
     if rsyncExitCode == 0:
-        print(f'Successfully downloaded {dateString} rawACFs from BAS')
+        print(f'\nSuccessfully downloaded {dateString} rawACFs from BAS')
     else:
         # Send an email and end the script if rsync didn't succeed
         emailSubject = f'"Unsuccessful attempt to copy {dateString} BAS rawACF data"'
@@ -190,6 +200,16 @@ def isOpen(server, port):
         return False
     finally:
         s.close()
+
+def update_progress_bar(line):
+    global total_files, transferred_files
+    if 'to-chk' in line:
+        total_files = int(line.split('to-chk=')[1].split('/')[1].split(')')[0])
+        transferred_files += 1
+        percent = transferred_files / total_files * 100
+        progress_bar = '█' * int(percent // 2) + '-' * (50 - int(percent // 2))
+        transfer_rate = line.split()[3]
+        print(f"\rProgress: [{progress_bar}] {percent:.2f}% ({transferred_files}/{total_files}) | Transfer time: {transfer_rate}", end='', flush=True)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:

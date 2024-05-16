@@ -16,14 +16,14 @@ import get_rawacfs
 import convert_rawacf_to_fitacf
 import convert_fitacf_to_netcdf
 import convert_fitacf_to_grid_netcdf
-import convert_fitacf_to_meteorwind_netcdf
+import convert_fitacf_to_meteorwind
 import os
 import helper
 import download_and_process_fitacfs
 import download_and_process_fitacf_to_meteor
 import download_and_process_rawacfs
-import upload_fit_nc_to_zenodo
-import upload_grid_nc_to_zenodo
+#import upload_fit_nc_to_zenodo
+#import upload_grid_nc_to_zenodo
 
 def main(start_date, end_date):
     """
@@ -43,11 +43,12 @@ def main(start_date, end_date):
         start_time = time.time()
         date_string = date.strftime('%Y%m%d')
         # download_and_process_fitacfs.main(date, True, True)
-        get_rawacfs.main(date_string)
-        convert_rawacf_to_fitacf.main(date_string)
-        convert_fitacf_to_netcdf.main(date_string)
-        convert_fitacf_to_grid_netcdf.main(date_string)
-        convert_fitacf_to_meteorwind_netcdf.main(date_string)
+        # get_rawacfs.main(date_string)
+        # convert_rawacf_to_fitacf.main(date_string)
+        # convert_fitacf_to_netcdf.main(date_string)
+        # convert_fitacf_to_grid_netcdf.main(date_string)
+        convert_fitacf_to_meteorwind.main(date_string)
+        #convert_fitacf_to_meteorwind_netcdf.main(date_string)
         delete_rawacfs(date_string)
         print(f"It took {helper.get_time_string(time.time() - start_time)} to process {date.strftime('%Y-%m-%d')}\n\n")
 
@@ -56,23 +57,27 @@ def main(start_date, end_date):
 
 def delete_rawacfs(date_string):
     """
-    Delete rawacfs for the specified day
+    Delete rawacfs for the specified day, except for Wallops files
 
     Args:
-        date_string (str): The date dictating which rawacfs will be deleted
+        date_string (str): The date dictating which rawacfs will be deleted.
 
     Returns:
         None
     """
     date = datetime.strptime(date_string, '%Y%m%d')
     raw_dir = date.strftime(helper.RAWACF_DIR_FMT)
+    all_files = glob(os.path.join(raw_dir, f"{date_string}*.rawacf*"))
+    files_to_remove = [file for file in all_files if '.wal.' not in file]
 
-    files_to_remove = glob(os.path.join(raw_dir, f"{date_string}*.rawacf"))
     for file_path in files_to_remove:
         try:
             os.remove(file_path)
+            print(f"Deleted: {file_path}")
         except Exception as e:
             print(f"Error removing {file_path}: {e}")
+
+    print(f"Deletion completed for date: {date_string}")
 
 
 if __name__ == '__main__':

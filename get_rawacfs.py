@@ -14,6 +14,7 @@ import subprocess
 import bz2
 import re
 from glob import glob
+import sd_utils
 
 DELAY = 60  # 1 minute
 RETRIES = 15    # Try to connect every 30 minutes for a day
@@ -24,35 +25,33 @@ date = None
 total_files = 0
 transferred_files = -1
 
-def main(dateString, dataSource=None):
+def main(dateString, radar='all'):
     """
     Downloads rawACF files for the specified date from the specified source and combines them.
 
     Args:
         dateString (str): The date in 'YYYYMMDD' format.
-        dataSource (str, optional): The data source ('bas' or 'globus'). Defaults to 'bas'.
+        radar (str, optional): The three-letter radar site code or 'all' for all radars. Defaults to 'all'.
     """
     global date
     date = datetime.datetime.strptime(dateString, '%Y%m%d')
-    if dataSource is None:
-        dataSource = 'bas'
-    else:
-        dataSource = dataSource.lower().strip()
+    dataSource = 'bas'  # Set the default data source to 'bas'
 
-    download_source_files(dataSource)
+    download_source_files(dataSource, radar)
 
-def download_source_files(dataSource):
+def download_source_files(dataSource, radar):
     """
     Downloads rawACF files from the specified data source.
 
     Args:
         dataSource (str): The data source ('bas' or 'globus').
+        radar (str): The three-letter radar site code or 'all' for all radars.
     """
     rawDir = date.strftime(helper.RAWACF_DIR_FMT)
     os.makedirs(rawDir, exist_ok=True)
 
     if dataSource == 'bas':
-        download_files_from_bas(rawDir)
+        download_files_from_bas(rawDir, radar)
     elif dataSource == 'globus':
         download_files_from_globus(rawDir)
     else:
@@ -79,12 +78,13 @@ def download_files_from_globus(rawDir):
     # emailBody = f'"{date.strftime("%Y/%m")} rawACF source files have been downloaded. Starting conversion to fitACF and netCDF."'
     # helper.send_email(emailSubject, emailBody)
 
-def download_files_from_bas(rawDir):
+def download_files_from_bas(rawDir, radar):
     """
     Downloads rawACF files from BAS.
 
     Args:
         rawDir (str): The directory to save the downloaded files.
+        radar (str): The three-letter radar site code or 'all' for all radars.
     """
     basRawDir = date.strftime(helper.BAS_RAWACF_DIR_FMT)
 
@@ -97,7 +97,12 @@ def download_files_from_bas(rawDir):
         sys.exit('{message}'.format(message=emailBody))
 
     dateString = date.strftime('%Y%m%d')
-    print(f'{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Downloading {dateString} rawACFs from BAS')
+    if radar == 'all':
+        print(f'\n{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Downloading {dateString} rawACFs from BAS for all radars')
+    else:
+        print(f'\n{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Downloading {dateString} rawACFs from BAS for radar {radar}')
+    
+    print("=========================================================================")
     # Initialize progress bar
     # update_progress_bar('1 0% / 0:00:00 (xfr#0, to-chk=0/999)')
     rsyncLogDir = os.path.join(helper.LOG_DIR, 'BAS_rsync_logs', date.strftime('%Y'))
@@ -105,7 +110,11 @@ def download_files_from_bas(rawDir):
     rsyncLogFilename = f'BAS_rsync_{dateString}.out'
     fullLogFilename = os.path.join(rsyncLogDir, rsyncLogFilename)
 
-    rsyncCommand = f'nohup rsync -av --info=progress2 --ignore-errors --log-file={fullLogFilename} apl@{helper.BAS_SERVER}:{basRawDir}/{dateString}*.rawacf.bz2 {rawDir}'
+    if radar == 'all':
+        rsyncCommand = f'nohup rsync -av --info=progress2 --ignore-errors --log-file={fullLogFilename} apl@{helper.BAS_SERVER}:{basRawDir}/ {rawDir} --include "*{dateString}*" --exclude "*"'
+    else:
+        rsyncCommand = f'nohup rsync -av --info=progress2 --ignore-errors --log-file={fullLogFilename} apl@{helper.BAS_SERVER}:{basRawDir}/ {rawDir} --include "*{dateString}*.{radar}.*" --exclude "*"'
+
     rsyncProcess = subprocess.Popen(rsyncCommand, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
 
     for line in rsyncProcess.stdout:
@@ -204,7 +213,7 @@ def isOpen(server, port):
 def update_progress_bar(line):
     global total_files, transferred_files
     if 'to-chk' in line:
-        total_files = int(line.split('to-chk=')[1].split('/')[1].split(')')[0])
+        total_files = int(line.split('to-chk=')[1].split('/')[1].split(')')[0]) - 1
         transferred_files += 1
         percent = transferred_files / total_files * 100
         progress_bar = '█' * int(percent // 2) + '-' * (50 - int(percent // 2))
@@ -213,18 +222,29 @@ def update_progress_bar(line):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: python script.py <date> [<dataSource>]")
+        print("Usage: python script.py <date> [<radar>]")
         sys.exit(1)
 
     # Extract the day argument in 'YYYYMMDD' format
     dateString = sys.argv[1]
 
-    # Extract the optional source argument if provided
-    dataSource = sys.argv[2] if len(sys.argv) > 2 else None
+    # Extract the optional radar argument if provided
+    radar = sys.argv[2] if len(sys.argv) > 2 else 'all'
+
+    # Get the list of radar names from sd_utils.get_radar_params(hdw_dat_dir)
+    rstpath = os.getenv('RSTPATH')
+    assert rstpath, 'RSTPATH environment variable needs to be set'
+    hdw_dat_dir = os.getenv('SD_HDWPATH')
+    radar_list = sd_utils.get_radar_params(hdw_dat_dir)
+
+    # Check if the radar argument is valid
+    if radar != 'all' and radar not in radar_list:
+        print(f"Radar argument must be a valid three-letter radar code. Valid radars: {', '.join(radar_list.keys())}")
+        sys.exit(1)
 
     # Check if the day argument is in the correct format
     if not dateString.isdigit() or len(dateString) != 8:
         print("Date argument must be in 'YYYYMMDD' format.")
         sys.exit(1)
 
-    main(dateString, dataSource)
+    main(dateString, radar)

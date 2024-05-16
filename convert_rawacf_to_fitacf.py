@@ -30,12 +30,13 @@ def main(date_string):
 
     # Unpack all compressed files
     print("\nUnpacking compressed rawACF files...\n===========================================")
+    # TODO: Check if this multiprocessing really offers a benefit
     with concurrent.futures.ThreadPoolExecutor() as executor:
         executor.map(unpack_bz2_and_remove, rawacf_bz2_files)
 
     rawacf_files = glob(f"{os.path.join(rawacf_dir, date_string)}.*rawacf")
 
-    # Create a pool of workers for each version
+    # Convert unpacked rawACFs to fitACF2 and fitACF3
     print(f'\n{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Converting rawACF to fitacf2 and fitacf3...\n===========================================')
     for rawacf_file in rawacf_files:
         rawacf_filename = os.path.basename(rawacf_file)
@@ -130,6 +131,7 @@ def combine_fitacfs(date_string):
 
         # Concatenate files into a daily file
         daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fitacf2")
+        # TODO: add clobber flag in order to overwrite any existing fitacf files
         command = f"cat {' '.join(site_fitacf2_files)} > {daily_filename}"
         try:
             subprocess.run(command, shell=True, check=True)
@@ -148,6 +150,7 @@ def combine_fitacfs(date_string):
 
         # Concatenate files into a daily file
         daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fitacf3")
+        # TODO: add clobber flag in order to overwrite any existing fitacf files
         command = f"cat {' '.join(site_fitacf3_files)} > {daily_filename}"
         try:
             subprocess.run(command, shell=True, check=True)
@@ -170,6 +173,8 @@ def perform_speck_removal(input_file):
     """
     # Create the output filename with 'despeck' added
     output_file = input_file.replace(".fitacf3", ".despeck.fitacf3")
+
+    # TODO: Check if a despeck file already exists so it doesn't create despeck.despeck files
 
     # Perform speck removal
     command = f"fit_speck_removal -quiet {input_file} > {output_file}"

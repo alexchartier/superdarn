@@ -23,6 +23,7 @@ RAWACF_DIR_FMT = '/project/superdarn/data/rawacf/%Y/%m'
 FITACF_DIR_FMT = '/project/superdarn/data/fitacf/%Y/%m'
 FIT_NC_DIR_FMT = '/project/superdarn/data/netcdf/%Y/%m'
 METEORWIND_DIR_FMT = '/project/superdarn/data/meteorwind/%Y/%m'
+METEORWIND_DIR_TEST_FMT = '/project/superdarn/data/meteorwind_test/%Y/%m'
 METEORWIND_NC_DIR_FMT = '/project/superdarn/data/meteorwindnc/%Y/%m'
 GRID_DIR_FMT = '/project/superdarn/data/grid/%Y/%m'
 GRID_NC_DIR_FMT = '/project/superdarn/data/grid_nc/%Y/%m'
@@ -36,8 +37,8 @@ ZENODO_FILE_LIST_DIR = '/project/superdarn/data/data_status/zenodo_files'
 MIRROR_FILE_LIST_DIR = '/project/superdarn/data/data_status/mirror_files'
 DATA_STATUS_DIR = '/project/superdarn/data/data_status'
 HDW_DAT_DIR = '/project/superdarn/software/rst/tables/superdarn/hdw'
-METEORPROC_EXE = '/project/superdarn/software/rst/bin/meteorproc'
-CFIT_EXE = '/project/superdarn/software/rst/bin/make_cfit'
+METEORPROC_EXE = '/project/superdarn/software/apl_rst/bin/meteorproc'
+CFIT_EXE = '/project/superdarn/software/apl_rst/bin/make_cfit'
 
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
 

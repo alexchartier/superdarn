@@ -18,7 +18,7 @@ def main(date_string):
     print("==============================================================")
     date = datetime.strptime(date_string, '%Y%m%d')
     fitacf_dir = date.strftime(helper.FITACF_DIR_FMT)
-    meteorwind_dir = date.strftime(helper.METEORWIND_DIR_TEST_FMT)
+    meteorwind_dir = date.strftime(helper.METEORWIND_DIR_FMT)
 
     # Create the meteorwind directory if it doesn't exist
     os.makedirs(meteorwind_dir, exist_ok=True)

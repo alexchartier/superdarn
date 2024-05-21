@@ -1,24 +1,15 @@
-"""
-upload_fitacf_nc_to_zenodo.py
-
-Upload SuperDARN fitACF files to Zenodo in netCDF format
-
-Terms:
-    Zenodo - https://zenodo.org
-    .nc  - netCDF output file (self-describing platform-independent file suitable 
-           for sharing with users outside the community)
-            Daily, one per hemisphere
-"""  
-import sys, os
+import sys
+import os
 import requests
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
-import helper
 import json
 import glob
 import time
-from calendar import monthrange
-    
+import zipfile
+from collections import defaultdict
+
+import helper
+
 __author__ = "Jordan Wiker"
 __copyright__ = "Copyright 2024, JHUAPL"
 __version__ = "1.0.0"
@@ -32,97 +23,87 @@ chartierORCID = '0000-0002-4215-031X'
 aplAffiliation = 'JHU/APL'
 keywords = 'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, netcdf, aeronomy, cedar, gem, radar, OTHR'
 
-# TODO: Switch to false
-USE_SANDBOX = True
-
-def main(date_string):
-
-    date = datetime.strptime(date_string, '%Y%m%d')
-    print(f'Starting to upload {date.strftime("%Y-%m")} netCDF files to Zenodo')
+def main(date_string, use_sandbox=True):
+    date = datetime.strptime(date_string, '%Y%m')
+    print(f'Starting to upload {date.strftime("%Y-%m")} fitACF files in netCDF format to Zenodo')
     startTime = time.time()
 
-    directory = "/project/superdarn/data/netcdf"
-    year = 2022  # Replace with the desired year
+    upload_to_zenodo(date, use_sandbox)
 
-    for month in range(1, 13):
-        days_in_month = monthrange(year, month)[1]
-        
-        for day in range(1, days_in_month + 1):
-            pattern = f"{year}{month:02d}{day:02d}"
-            files_found = [f for f in os.listdir(f"{directory}/{year}/{month:02d}") if f.startswith(pattern)]
-
-            if not files_found:
-                print(f"No files found for {pattern}")
-            else:
-                print(f"Files found for {pattern}:")
-                for file in files_found:
-                    print(file)
-
-    if has_files_for_each_day(date):
-        upload_to_zenodo(USE_SANDBOX, date)
-    else:
-        print(f'There\'s at least one day without any files in {date.strftime(helper.FIT_NC_DIR_FMT)}')
-
-    totalTime = helper.getTimeString(time.time() - startTime)
+    totalTime = helper.get_time_string(time.time() - startTime)
     emailSubject = '"Finished Zenodo Upload"'
-    emailBody = '"Finished uploading {0} netCDF files\nTotal time: {1}"'.format(date.strftime('%Y-%m'), totalTime)
-    helper.send_email(emailSubject, emailBody)
+    emailBody = '"Finished uploading {0} fitACF nc files\nTotal time: {1}"'.format(date.strftime('%Y-%m'), totalTime)
+    # helper.send_email(emailSubject, emailBody)
     
-    
-def has_files_for_each_day(date):
-    uploadDir = date.strftime(helper.FIT_NC_DIR_FMT)
-
-    year, month = date.year, date.month
-    days_in_month = monthrange(year, month)[1]
-
-    for day in range(1, days_in_month + 1):
-        pattern = f"{year}{month:02d}{day:02d}"
-        files_found = [f for f in os.listdir(f"{uploadDir}/{year}/{month:02d}") if f.startswith(pattern)]
-
-        if not files_found:
-            return False
-
-    return True
-
-
-def upload_to_zenodo(sandbox, date):
-  
+def upload_to_zenodo(date, sandbox):
     accessToken = helper.ZENODO_SANDBOX_TOKEN if sandbox else helper.ZENODO_TOKEN
     depositURL = helper.SANDBOX_DEPOSIT_URL if sandbox else helper.DEPOSIT_URL
-
-    uploadDir = date.strftime(helper.FIT_NC_DIR_FMT)
+    refererURL = 'https://sandbox.zenodo.org' if sandbox else 'https://zenodo.org'
+    upload_dir = date.strftime(helper.FIT_NC_DIR_FMT)
     
     if date.year > helper.LATEST_PUBLIC_DATA:
-        fileList = glob.glob(os.path.join(uploadDir, '*wal*.nc'))
+        file_list = glob.glob(os.path.join(upload_dir, '*wal*.nc'))
     else:
-        fileList = glob.glob(os.path.join(uploadDir, '*.nc'))
+        file_list = glob.glob(os.path.join(upload_dir, '*.nc'))
 
-    if len(fileList) == 0:
-        print('No files to upload in {0}'.format(uploadDir))
+    if len(file_list) == 0:
+        print('No files to upload in {0}'.format(upload_dir))
         return 1
     else:
-        print(f'Uploading {len(fileList)} {date.strftime("%Y-%m")} files to Zenodo')
+        print(f'Uploading {len(file_list)} {date.strftime("%Y-%m")} files to Zenodo')
     
-    headers = {"Content-Type": "application/json"}
+    # Organize files by day
+    files_by_day = defaultdict(list)
+    for file_path in file_list:
+        try:
+            file_date = datetime.strptime(os.path.basename(file_path).split('.')[0], '%Y%m%d')
+            files_by_day[file_date.strftime('%Y%m%d')].append(file_path)
+        except (IndexError, ValueError) as e:
+            print(f"Skipping file {file_path} due to unexpected naming format: {e}")
+    
+    # Create zip files for each day
+    zip_files = []
+    for day, files in files_by_day.items():
+        print(f"Zipping {day} files\n")
+        zip_filename = os.path.join(upload_dir, f'{day}.zip')
+        with zipfile.ZipFile(zip_filename, 'w') as zipf:
+            for file in files:
+                zipf.write(file, os.path.basename(file))
+        zip_files.append(zip_filename)
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Referer": refererURL
+    }
     params = {'access_token': accessToken}
-    r = requests.post(depositURL,
-                   params=params,
-                   json={},
-                   headers=headers)
+    r = requests.post(depositURL, params=params, json={}, headers=headers)
 
-    bucket_url = r.json()["links"]["bucket"]
+    if r.status_code != 201:
+        print(f'Error creating deposition\n')
+        breakpoint()
+        check_response_status(r)
+        return 1
+
+    bucket_url = r.json().get("links", {}).get("bucket")
+    if not bucket_url:
+        print(f'Error: no bucket link in response: {r.json()}')
+        return 1
+    
     deposition_id = r.json()['id']
     helper.check_remaining_zenodo_requests(r)
 
-    # The target URL is a combination of the bucket link with the desired filename
-    for file in fileList:
-        filename = file.split('/')[-1]
-        with open(file, "rb") as fp:
+    # Upload each zip file
+    for zip_file in zip_files:
+        filename = os.path.basename(zip_file)
+        with open(zip_file, "rb") as fp:
             r = requests.put(
-                "%s/%s" % (bucket_url, filename),
+                f"{bucket_url}/{filename}",
                 data=fp,
                 params=params,
             )
+            if r.status_code != 201:
+                print(f'Error uploading file {filename}: {r.status_code}, {r.json()}')
+                return 1
             helper.check_remaining_zenodo_requests(r)
     
     if date.year > helper.LATEST_PUBLIC_DATA:
@@ -191,24 +172,57 @@ def upload_to_zenodo(sandbox, date):
             }
         }
 
-    r = requests.put(depositURL + '/%s' % deposition_id,
-    params={'access_token': accessToken}, data=json.dumps(data), headers=headers)
+    r = requests.put(depositURL + '/%s' % deposition_id, params={'access_token': accessToken}, data=json.dumps(data), headers=headers)
     
+    if not check_response_status(r):
+        return 1
+
     helper.check_remaining_zenodo_requests(r)
+    print('Upload to Zenodo completed successfully.')
+
+
+def check_response_status(r):
+    status_codes = {
+        200: ("OK", "Request succeeded. Response included. Usually sent for GET/PUT/PATCH requests."),
+        201: ("Created", "Request succeeded. Response included. Usually sent for POST requests."),
+        202: ("Accepted", "Request succeeded. Response included. Usually sent for POST requests, where background processing is needed to fulfill the request."),
+        204: ("No Content", "Request succeeded. No response included. Usually sent for DELETE requests."),
+        400: ("Bad Request", "Request failed. Error response included."),
+        401: ("Unauthorized", "Request failed, due to an invalid access token. Error response included."),
+        403: ("Forbidden", "Request failed, due to missing authorization (e.g. deleting an already submitted upload or missing scopes for your access token). Error response included."),
+        404: ("Not Found", "Request failed, due to the resource not being found. Error response included."),
+        405: ("Method Not Allowed", "Request failed, due to unsupported HTTP method. Error response included."),
+        409: ("Conflict", "Request failed, due to the current state of the resource (e.g. edit a deposition which is not fully integrated). Error response included."),
+        415: ("Unsupported Media Type", "Request failed, due to missing or invalid request header Content-Type. Error response included."),
+        429: ("Too Many Requests", "Request failed, due to rate limiting. Error response included."),
+        500: ("Internal Server Error", "Request failed, due to an internal server error. Error response NOT included. Don’t worry, Zenodo admins have been notified and will be dealing with the problem ASAP.")
+    }
+
+    if r.status_code in [200, 201, 202, 204]:
+        return True
+    
+    if r.status_code in status_codes:
+        name, description = status_codes[r.status_code]
+        print(f"Error\nStatus Code: {r.status_code} - {name}: {description}\n\n{r.json()}")
+    else:
+        print(f"Error\nStatus Code: {r.status_code} - Unknown status code")
+
+    return False
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: python3 upload_fitacf_nc_to_zenodo.py YYYYMMDD")
+        print("Usage: python3 upload_fitacf_nc_to_zenodo.py <date> [<use_sandbox>]")
         sys.exit(1)
 
-    # Extract the day argument in 'YYYYMMDD' format
+    # Extract the date argument in 'YYYYMM' format
     date_string = sys.argv[1]
 
-    # Check if the day argument is in the correct format
-    if not date_string.isdigit() or len(date_string) != 8:
-        print("Date argument must be in 'YYYYMMDD' format.")
+    # Check if the date argument is in the correct format
+    if not date_string.isdigit() or len(date_string) != 6:
+        print("Date argument must be in 'YYYYMM' format.")
         sys.exit(1)
 
-    main(date_string)
+    use_sandbox = sys.argv[2].lower() == 'true' if len(sys.argv) > 2 else True
 
+    main(date_string, use_sandbox)

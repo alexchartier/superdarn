@@ -7,7 +7,11 @@ import matplotlib.pyplot as plt
 import datetime as dt
 import jdutil
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib
 
+font = {'size'   : 18}
+
+matplotlib.rc('font', **font)
 
 """
 Demonstrate velocity vector bearing calculation using nvector
@@ -51,14 +55,14 @@ def plot_rti(sd_data, sdrad, bmnum=0):
 
     fig, ax = plt.subplots(2)
     fig.set_figheight(6)
-    fig.set_figwidth(10)
+    fig.set_figwidth(12)
     plt.suptitle(f"Beam {bmnum}: {sdrad.brng_at_15deg_el[bmnum]:,.1f} degrees East of North")
     im0 = ax[0].pcolor(times / 60, ranges, vel.T, vmin=-200, vmax=200, cmap='bwr')
     im1 = ax[1].pcolor(times / 60, ranges, pwr.T)
     ax[1].set_xlabel('Hour (UT)')
 
     for pn in range(2):
-        ax[pn].set_ylabel('Virtual Range (km)')
+        ax[pn].set_ylabel('Range (km)')
         ax[pn].grid(which='major', color='k', linewidth=0.1)
         ax[pn].grid(which='minor', color='k', linewidth=0.02)
         ax[pn].minorticks_on()

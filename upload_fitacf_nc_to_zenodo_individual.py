@@ -155,7 +155,7 @@ def upload_to_zenodo(date, sandbox):
 
     r = requests.put(depositURL + '/%s' % deposition_id, params={'access_token': accessToken}, data=json.dumps(data), headers=headers)
     
-    if not check_response_status(r.status_code):
+    if not check_response_status(r):
         return 1
 
     helper.check_remaining_zenodo_requests(r)

@@ -289,7 +289,7 @@ def def_vars():
         'lat': dict({'units': 'deg.', 'long_name': 'Geographic Latitude'}, **stdin_flt),
         'lon': dict({'units': 'deg.', 'long_name': 'Geographic Longitude'}, **stdin_flt),
         'p_l': dict({'units': 'dB', 'long_name': 'Lambda fit SNR'}, **stdin_flt),
-        'v': dict({'units': 'm/s', 'long_name': 'LOS Vel. (+ve away from radar)'}, **stdin_flt),
+        'v': dict({'units': 'm/s', 'long_name': 'LOS Vel. (+v = towards the radar)'}, **stdin_flt),
         'v_e': dict({'units': 'm/s', 'long_name': 'LOS Vel. error'}, **stdin_flt),
         'gflg': dict({'long_name': 'Ground scatter flag for ACF, 1 - ground scatter, 0 - other scatter'}, **stdin_int),
         'elv': dict({'units': 'degrees', 'long_name': 'Elevation angle estimate'}, **stdin_flt),

@@ -21,9 +21,6 @@ chartierORCID = '0000-0002-4215-031X'
 aplAffiliation = 'JHU/APL'
 keywords = 'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, netcdf, aeronomy, cedar, gem, radar, OTHR'
 
-# TODO: Switch to false
-USE_SANDBOX = True
-
 def main(date_string, use_sandbox=True):
     date = datetime.strptime(date_string, '%Y%m')
     print(f'Starting to upload {date.strftime("%Y-%m")} fitACF files in netCDF format to Zenodo')
@@ -51,6 +48,7 @@ def upload_to_zenodo(date, sandbox):
         print('No files to upload in {0}'.format(upload_dir))
         return 1
     else:
+        file_list.sort()
         print(f'Uploading {len(file_list)} {date.strftime("%Y-%m")} files to Zenodo')
     
     headers = {
@@ -109,12 +107,8 @@ def upload_to_zenodo(date, sandbox):
                     'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, cfit, aeronomy, cedar, gem, radar'
                 ],
                 'communities': [
-                    {
-                        'identifier': 'spacephysics'
-                    }, 
-                    {
-                        'identifier': 'superdarn'
-                    }
+                    {'identifier':'spacephysics'},
+                    {'identifier':'superdarn'}
                 ],
                 'version': '1.0',
             }
@@ -141,12 +135,8 @@ def upload_to_zenodo(date, sandbox):
                     'SuperDARN, ionosphere, magnetosphere, convection, rst, fitacf, cfit, aeronomy, cedar, gem, radar'
                 ],
                 'communities': [
-                    {
-                        'identifier': 'spacephysics'
-                    }, 
-                    {
-                        'identifier': 'superdarn'
-                    }
+                    {'identifier':'spacephysics'},
+                    {'identifier':'superdarn'}
                 ],
                 'related_identifiers' : [{'relation': 'isSourceOf', 'identifier':helper.getDOI(date.year),'resource_type': 'dataset'}],
                 'version': '1.0',
@@ -161,6 +151,17 @@ def upload_to_zenodo(date, sandbox):
     helper.check_remaining_zenodo_requests(r)
     print('Upload to Zenodo completed successfully.')
 
+# def sort_files_on_zenodo(deposit_id, access_token, file_ids):
+#     url = f'https://zenodo.org/api/deposit/depositions/{deposit_id}/files?access_token={access_token}'
+#     headers = {"Content-Type": "application/json"}
+#     data = [{'id': file_id} for file_id in file_ids]
+#     r = requests.put(url, data=json.dumps(data), headers=headers)
+    
+#     if r.status_code == 200:
+#         print("Files sorted successfully")
+#     else:
+#         print(f'Error sorting files: {r.status_code}, {r.json()}')
+#         return 1
 
 def check_response_status(r):
     status_codes = {

@@ -100,12 +100,17 @@ def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
         version:     The fitACF version (2.5 or 3.0)
     """
 
-    fit_version = "-fitacf2" if version == 2.5 else "-fitacf3"    
+    fit_version = "-fitacf2" if version == 2.5 else "-fitacf3"
     command = f"make_fit {fit_version} {rawacf_file} > {fitacf_file}"
-    
+
     try:
-        subprocess.run(command, shell=True, check=True)
+        subprocess.run(command, shell=True, check=True, timeout=120)
         print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {fitacf_file}')
+    except subprocess.TimeoutExpired:
+        os.remove(fitacf_file)
+        print(f"Error: make_fit command timed out after 2 minutes:\n    {command}")
+        print(f"Removed {fitacf_file}")
+        # TODO: Add this to a problem_file log file
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
 

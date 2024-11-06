@@ -136,6 +136,23 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
 
         SDarn_read = pydarn.SuperDARNRead(in_fname)
         data = SDarn_read.read_fitacf()
+
+        # add slice index for conversion back to DMAP format if necessary
+        try:
+            for ind, rec in enumerate(data):
+                if 'time.yr' not in rec:
+                    print(f"Key 'time.yr' missing in record {ind}: {rec.keys()}\n")
+                    continue  # Skip this record and continue with the next one
+                data[ind]['rec_id'] = np.ones_like(rec['time.yr']) * ind
+        except Exception as e:
+            print(f'Error occurred: {e}')
+
+        # for ind, rec in enumerate(data):
+        #     breakpoint()
+        #     v = rec['v']
+        #     print(f'Index: {ind} of {len(data)}\nV: {v}\n')
+        #     data[ind]['rec_id'] = np.ones_like(rec['v']) * ind
+
         bmdata = {
             'rsep': [],
             'frang': [],
@@ -298,6 +315,7 @@ def def_vars():
         'tfreq': dict({'units': 'kHz','long_name': 'Transmit freq'}, **stdin_int2),
         'noise.sky': dict({'units': 'none','long_name': 'Sky noise'}, **stdin_flt),
         'cp': dict({'units': 'none','long_name': 'Control program ID'}, **stdin_int2),
+        'rec_id': dict({'units': 'none','long_name': 'DMAP record ID'}, **stdin_int2),
     }   
 
     return var_defs

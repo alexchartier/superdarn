@@ -2,7 +2,7 @@
 """
 
 __author__ = "Jordan Wiker"
-__copyright__ = "Copyright 2023, JHUAPL"
+__copyright__ = "Copyright 2024, JHUAPL"
 __version__ = "1.0.0"
 __maintainer__ = "Jordan Wiker"
 __email__ = "jordan.wiker@jhuapl.edu"
@@ -17,6 +17,7 @@ import convert_rawacf_to_fitacf
 import convert_fitacf_to_netcdf
 import convert_fitacf_to_grid_netcdf
 import convert_fitacf_to_meteorwind
+import update_netcdf_vel_description
 import os
 import helper
 import download_and_process_fitacfs
@@ -24,6 +25,21 @@ import download_and_process_fitacf_to_meteor
 import download_and_process_rawacfs
 #import upload_fit_nc_to_zenodo
 #import upload_grid_nc_to_zenodo
+
+LOG_FILE = helper.LOG_DIR + "/master_log.txt"
+
+def log_message(message):
+    """
+    Logs a message to the log file with the current date and time.
+
+    Args:
+        message (str): The message to log.
+
+    Returns:
+        None
+    """
+    with open(LOG_FILE, "a") as log_file:
+        log_file.write(f"{datetime.now().strftime('%Y%m%d %H:%M')} - {message}\n")
 
 def main(start_date, end_date):
     """
@@ -42,15 +58,23 @@ def main(start_date, end_date):
         
         start_time = time.time()
         date_string = date.strftime('%Y%m%d')
-        get_rawacfs.main(date_string, 'all', False)
+
+        log_message(f"Currently processing {date_string}")
+        
+        # update_netcdf_vel_description.main(date_string)
+        # get_rawacfs.main(date_string, 'all', False)
         convert_rawacf_to_fitacf.main(date_string)
         convert_fitacf_to_netcdf.main(date_string)
-        convert_fitacf_to_grid_netcdf.main(date_string)
-        convert_fitacf_to_meteorwind.main(date_string)
+        # convert_fitacf_to_grid_netcdf.main(date_string)
+        # convert_fitacf_to_meteorwind.main(date_string)
         # delete_rawacfs(date_string)
+
+        processing_time = helper.get_time_string(time.time() - start_time)
+        log_message(f"Finished processing {date_string} - It took {processing_time}")
+
         print("\n================================================================")
-        print(f"It took {helper.get_time_string(time.time() - start_time)} to process {date.strftime('%Y-%m-%d')}")
-        print("\n================================================================\n\n")
+        print(f"It took {processing_time} to process {date.strftime('%Y-%m-%d')}")
+        print("================================================================\n\n")
 
         date += timedelta(days=1)
 

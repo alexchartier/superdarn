@@ -209,7 +209,7 @@ def main(start_date, end_date, file_types):
         grid_nc_dir = date.strftime(helper.GRID_NC_DIR_FMT)
 
         # TODO: Update to look at mirror_data_inventory.json instead of globus
-        globus_files = get_globus_file_list()
+        #globus_files = get_globus_file_list()
         mirror_files = get_mirror_file_list()
         local_files = get_local_file_list(file_types)
         missing_files = {}

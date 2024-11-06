@@ -1,13 +1,28 @@
 #!/usr/bin/env python3
 """
 Script: Sync Wallops rawACFs
-Description: This script syncs yesterday's files from Wallops to APL
+Description: This script syncs yesterday's files from Wallops to APL.
 """
 
 import sys
 import subprocess
 import datetime
 import os
+import smtplib
+from email.mime.text import MIMEText
+
+def send_email(subject, body):
+    # Configure email settings
+    sender = "superdar@tuvalu"
+    recipient = "jordan.wiker@jhuapl.edu"
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = recipient
+    
+    # Send the email
+    with smtplib.SMTP("localhost") as server:
+        server.sendmail(sender, [recipient], msg.as_string())
 
 def parse_date(date_str):
     try:
@@ -39,22 +54,45 @@ destination_path = f"/project/superdarn/data/rawacf/{year}/{month}"
 # Create the destination directory if it doesn't exist
 os.makedirs(destination_path, exist_ok=True)
 
-# Get a list of the files to sync
-files_to_sync = subprocess.check_output(f"ssh {borealis_server} 'ls {path}'", shell=True, stderr=subprocess.DEVNULL)
-files_to_sync = files_to_sync.decode().strip().split("\n")
+try:
+    # Get a list of the files to sync
+    files_to_sync = subprocess.check_output(
+        f"ssh {borealis_server} 'ls {path}'", 
+        shell=True, 
+        stderr=subprocess.DEVNULL
+    ).decode().strip().split("\n")
 
-# Iterate over the files to sync and only sync them if they don't already exist at APL
-for file_to_sync in files_to_sync:
-    filename = os.path.basename(file_to_sync)
-    destination_file = os.path.join(destination_path, filename)
-    if not os.path.exists(destination_file):
-        # Construct the scp command
-        command = f"scp -r {borealis_server}:{file_to_sync} {destination_path}"
-        
-        # Execute the command
-        subprocess.call(command, shell=True, stderr=subprocess.DEVNULL)
-        print(f"Synced file: {filename}")
-    else:
-        print(f"File already exists: {filename}")
+    if not files_to_sync or files_to_sync == ['']:
+        send_email("Sync Notification", f"No files to sync for {year}-{month}-{day}.")
+        print("No new files to sync.")
+        sys.exit(0)
 
-print("Sync completed.")
+    # Iterate over the files to sync and only sync them if they don't already exist at APL
+    for file_to_sync in files_to_sync:
+        filename = os.path.basename(file_to_sync)
+        destination_file = os.path.join(destination_path, filename)
+        if not os.path.exists(destination_file):
+            # Construct the scp command
+            command = f"scp -r {borealis_server}:{file_to_sync} {destination_path}"
+            
+            # Execute the command
+            result = subprocess.call(command, shell=True, stderr=subprocess.DEVNULL)
+            if result != 0:
+                send_email("Error syncing Wallops rawACF file", f"Error syncing file from borealis to tuvalu: {filename}\n")
+                raise Exception(f"Error syncing file: {filename}")
+            print(f"Synced file: {filename}")
+        else:
+            print(f"File already exists: {filename}")
+
+    print("Sync completed successfully.")
+    
+    if len(files_to_sync) != 12:
+        send_email("Some Wallops Files Synced", f"{len(files_to_sync)} Wallops files successfully synced for {year}-{month}-{day}\n")
+
+except subprocess.CalledProcessError as e:
+    send_email("Sync Script Error", f"Error connecting to {borealis_server} or fetching file list.\n{e}")
+    sys.exit(1)
+
+except Exception as e:
+    send_email("Sync Script Error", f"An error occurred during file sync.\n{e}")
+    sys.exit(1)

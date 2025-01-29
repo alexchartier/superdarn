@@ -37,7 +37,7 @@ def main():
     startTime = time.time()
     emailSubject = '"Starting Data Check"'
     emailBody    = 'Starting Mirror vs Zenodo data check'
-    helper.send_email(emailSubject, emailBody)
+    # helper.send_email(emailSubject, emailBody)
 
     print(f"Starting data comparison for date range: {START_DATE.strftime('%Y-%m-%d')} to {END_DATE.strftime('%Y-%m-%d')}")
     output_file = create_new_inventory_file()
@@ -83,7 +83,7 @@ def main():
     totalTime = helper.get_time_string(time.time() - startTime)
     emailSubject = '"Data Status Check Complete"'
     emailBody    = '"Finished checking BAS vs Zenodo data.\nTotal check runtime: {0}\nNew JSON file created: {1}"'.format(totalTime, output_file)
-    helper.send_email(emailSubject, emailBody)
+    # helper.send_email(emailSubject, emailBody)
 
     print("Data comparison complete.")
 

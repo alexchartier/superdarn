@@ -56,14 +56,18 @@ os.makedirs(destination_path, exist_ok=True)
 
 try:
     # Get a list of the files to sync
-    files_to_sync = subprocess.check_output(
+    result = subprocess.run(
         f"ssh {borealis_server} 'ls {path}'", 
         shell=True, 
-        stderr=subprocess.DEVNULL
-    ).decode().strip().split("\n")
-
-    if not files_to_sync or files_to_sync == ['']:
-        send_email("Sync Notification", f"No files to sync for {year}-{month}-{day}.")
+        stdout=subprocess.PIPE, 
+        stderr=subprocess.DEVNULL,
+        text=True
+    )
+    
+    files_to_sync = result.stdout.strip().split("\n") if result.stdout.strip() else []
+    
+    if not files_to_sync:
+        send_email("Wallops SuperDARN Sync Notification", f"No files to sync for {year}-{month}-{day}.")
         print("No new files to sync.")
         sys.exit(0)
 

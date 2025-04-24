@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """
+helper.py
 Helper functions for SuperDARN processing scripts
 """
 import os
@@ -8,7 +9,7 @@ import re
 from datetime import datetime
 from glob import glob
 
-EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'#,Alex.Chartier@jhuapl.edu'
+EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'
 
 LATEST_PUBLIC_DATA = 2022
 

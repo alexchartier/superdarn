@@ -9,6 +9,9 @@ from dateutil.relativedelta import relativedelta
 import re
 import bz2
 
+RAWACF_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "get_rawacfs.py")
+PY311 = "/software/python-3.11.4/bin/python3"
+
 VALID_FILE_TYPES = ['rawacf', 'fitacf', 'fit_nc', 'meteorwind', 'meteorwind_nc', 'grid', 'grid_nc']
 
 GLOBUS_SOURCE_FILES = {'rawacf':'raw', 
@@ -116,7 +119,31 @@ def combine_files(file_list, fitVersion):
 
 
 def produce_rawacf(files):
+    """
+    Download rawACF source files via get_rawacfs.py for the radars
+    inferred from *files* (mirror-inventory filenames ending in .rawacf.bz2).
+    """
+    breakpoint()
+    stations = set()
+    for fname in files:
+        m = re.search(r"\d{8}\.\d{4}\.\d{2}\.([a-z.]+)\.rawacf\.bz2$", fname)
+        if m:
+            stations.add(m.group(1))
 
+    # If we couldn't parse any stations, fall back to 'all'
+    if not stations:
+        raise ValueError(f"Could not parse any stations from filenames: {files}")
+
+    for station in stations:
+        cmd = [
+            PY311,
+            RAWACF_SCRIPT,
+            date.strftime("%Y%m%d"),
+            station,
+            "false",  # hide rsync progress
+        ]
+        print(f"→ downloading rawACF for {station} on {date.strftime('%Y-%m-%d')}")
+        subprocess.run(cmd, check=False)
     return
 
 def produce_fitacf(files):
@@ -232,7 +259,7 @@ def main(start_date, end_date, file_types):
                 for file_type, files in missing_files.items():
                     if files:
                         print(f'{file_type}: {files}')
-
+        produce_rawacf(missing_files)
         # produce_missing_files(missing_files)
 
         date += dt.timedelta(days=1)

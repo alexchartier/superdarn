@@ -27,7 +27,8 @@ from dateutil.relativedelta import relativedelta
 import sys
 import sd_utils
 
-START_DATE = dt.datetime(1993, 9, 29)
+# START_DATE = dt.datetime(1993, 9, 29)
+START_DATE = dt.datetime.now() - relativedelta(years=15)
 END_DATE = dt.datetime.now()
 
 def main():
@@ -42,20 +43,15 @@ def main():
     print(f"Starting data comparison for date range: {START_DATE.strftime('%Y-%m-%d')} to {END_DATE.strftime('%Y-%m-%d')}")
     output_file = create_new_inventory_file()
     print(f"Created new inventory file: {output_file}")
-    data = {}
 
-    print("Retrieving Zenodo file list...")
-    getZenodoFileList()
-    print("Retrieving mirror file list...")
-    getMirrorFileList()
+    try:
+        with open(output_file, "r") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {}
 
-    print("Loading mirror data inventory...")
-    with open(os.path.join(helper.MIRROR_FILE_LIST_DIR, 'mirror_data_inventory.json'), 'r') as f:
-        mirror_data = json.load(f)
-
-    print("Loading Zenodo data inventory...")
-    with open(os.path.join(helper.ZENODO_FILE_LIST_DIR, 'zenodo_data_inventory.json'), 'r') as f:
-        zenodo_data = json.load(f)
+    zenodo_data = getZenodoFileList()
+    mirror_data = getMirrorFileList()
 
     date = START_DATE
     while date <= END_DATE:
@@ -92,7 +88,14 @@ def getZenodoFileList():
     Retrieve the list of files on Zenodo for the specified date range and save it to a JSON file.
     """
     os.makedirs(helper.ZENODO_FILE_LIST_DIR, exist_ok=True)
-    zenodoData = {}
+    try:
+        print("Loading Zenodo data inventory...")
+        with open(os.path.join(helper.ZENODO_FILE_LIST_DIR, 'zenodo_data_inventory.json'), 'r') as f:
+            zenodo_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        print("No existing Zenodo data inventory found. Creating a new one.")
+        zenodo_data = {}
+
 
     date = START_DATE
     while date <= END_DATE:
@@ -110,50 +113,50 @@ def getZenodoFileList():
                 if filename.endswith('.nc'):
                     date_str = filename.split('.')[0]
                     radar = filename.split('.')[1]
-                    if date_str not in zenodoData:
-                        zenodoData[date_str] = [radar]
-                    elif radar not in zenodoData[date_str]:
-                        zenodoData[date_str].append(radar)
+                    if date_str not in zenodo_data:
+                        zenodo_data[date_str] = [radar]
+                    elif radar not in zenodo_data[date_str]:
+                        zenodo_data[date_str].append(radar)
 
         date += relativedelta(months=1)
 
     outputFile = f"{helper.ZENODO_FILE_LIST_DIR}/zenodo_data_inventory.json"
     print(f"Saving Zenodo file list to {outputFile}")
     with open(outputFile, 'w') as outfile:
-        json.dump(zenodoData, outfile)
+        json.dump(zenodo_data, outfile)
+    
+    return zenodo_data
 
 def getMirrorFileList():
     """
     Retrieve the list of files on the BAS mirror server for the specified date range and save it to a JSON file.
     """
     os.makedirs(helper.MIRROR_FILE_LIST_DIR, exist_ok=True)
-    mirror_data = {}
+    try:
+        print("Loading mirror data inventory...")
+        with open(os.path.join(helper.MIRROR_FILE_LIST_DIR, 'mirror_data_inventory.json'), 'r') as f:
+            mirror_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        print("No existing mirror data inventory found. Creating a new one.")
+        mirror_data = {}
 
     ssh_command_raw = f"ssh bas 'ls -R /sddata/raw/' 2>/dev/null"
-    ssh_command_dat = f"ssh bas 'ls -R /sddata/dat/' 2>/dev/null"
+    # ssh_command_dat = f"ssh bas 'ls -R /sddata/dat/' 2>/dev/null"
 
     result_raw = subprocess.run(ssh_command_raw, shell=True, capture_output=True, text=True)
-    result_dat = subprocess.run(ssh_command_dat, shell=True, capture_output=True, text=True)
+    # result_dat = subprocess.run(ssh_command_dat, shell=True, capture_output=True, text=True)
 
-    lines = result_raw.stdout.split('\n') + result_dat.stdout.split('\n')
-    for line in lines:
+    for line in result_raw.stdout.split('\n'):
         filename = line.strip()
-        # print(line)
         if filename.endswith('.bz2'):
-            if filename.startswith('/sddata/raw/'):
+            if 'rawacf' in filename:
                 radar = filename.split('.')[3]
-            elif filename.startswith('/sddata/dat/'):
-                radar_letter = filename.split('.')[0].split('/')[-1][10]
-                radar = helper.get_three_letter_radar_id(radar_letter)
-            else:
-                continue
+                day = filename[:8]
 
-            day = filename.split('/')[-1][:8]  # Extract the date part from the filename
-
-            if day not in mirror_data:
-                mirror_data[day] = [radar]
-            elif radar not in mirror_data[day]:
-                mirror_data[day].append(radar)
+                if day not in mirror_data:
+                    mirror_data[day] = [radar]
+                elif radar not in mirror_data[day]:
+                    mirror_data[day].append(radar)
 
     # date = START_DATE
     # while date <= END_DATE:
@@ -191,6 +194,8 @@ def getMirrorFileList():
     print(f"Saving mirror file list to {outputFile}")
     with open(outputFile, 'w') as outfile:
         json.dump(mirror_data, outfile)
+    
+    return mirror_data
 
 def create_new_inventory_file():
     """

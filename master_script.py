@@ -59,18 +59,18 @@ def main(start_date, end_date):
         start_time = time.time()
         date_string = date.strftime('%Y%m%d')
 
-        log_message(f"Currently processing {date_string}")
+        helper.log_message(f"Currently processing {date_string}")
         
         # update_netcdf_vel_description.main(date_string)
-        # get_rawacfs.main(date_string, 'all', False)
+        get_rawacfs.main(date_string, 'all', False)
         convert_rawacf_to_fitacf.main(date_string)
         convert_fitacf_to_netcdf.main(date_string)
         # convert_fitacf_to_grid_netcdf.main(date_string)
         # convert_fitacf_to_meteorwind.main(date_string)
-        # delete_rawacfs(date_string)
+        delete_rawacfs(date_string)
 
         processing_time = helper.get_time_string(time.time() - start_time)
-        log_message(f"Finished processing {date_string} - It took {processing_time}")
+        helper.log_message(f"Finished processing {date_string} - It took {processing_time}")
 
         print("\n================================================================")
         print(f"It took {processing_time} to process {date.strftime('%Y-%m-%d')}")
@@ -98,10 +98,13 @@ def delete_rawacfs(date_string):
         try:
             os.remove(file_path)
             print(f"Deleted: {file_path}")
+            helper.log_message(f"Deleted: {file_path}")
         except Exception as e:
             print(f"Error removing {file_path}: {e}")
+            helper.log_message(f"Error removing {file_path}: {e}")
 
     print(f"Deletion completed for date: {date_string}")
+    helper.log_message(f"RawACF deletion completed for date: {date_string}")
 
 
 if __name__ == '__main__':

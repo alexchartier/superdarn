@@ -20,6 +20,7 @@ def main(date_string):
     date = datetime.strptime(date_string, '%Y%m%d')
 
     print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} rawACF files to fitACF')
+    helper.log_message(f"Starting to convert {date_string} rawACF files to fitACF")
 
     rawacf_dir = date.strftime(helper.RAWACF_DIR_FMT)
     fitacf_dir = date.strftime(helper.FITACF_DIR_FMT)
@@ -30,6 +31,8 @@ def main(date_string):
 
     # Unpack all compressed files
     print("\nUnpacking compressed rawACF files...\n===========================================")
+    helper.log_message(f"Unpacking compressed rawACF files for {date_string}")
+
     # TODO: Check if this multiprocessing really offers a benefit
     with concurrent.futures.ThreadPoolExecutor() as executor:
         executor.map(unpack_bz2_and_remove, rawacf_bz2_files)
@@ -38,6 +41,8 @@ def main(date_string):
 
     # Convert unpacked rawACFs to fitACF2 and fitACF3
     print(f'\n{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Converting rawACF to fitacf2 and fitacf3...\n===========================================')
+    helper.log_message(f"Converting rawACF to fitacf2 and fitacf3...")
+
     for rawacf_file in rawacf_files:
         rawacf_filename = os.path.basename(rawacf_file)
 
@@ -73,9 +78,11 @@ def main(date_string):
     #     concurrent.futures.wait(futures)
     
     print("Combining fitacf2 and fitacf3 into daily files...")
+    helper.log_message(f"Combining fitacf2 and fitacf3 into daily files for {date_string}")
     combine_fitacfs(date_string)
     
     print("Producing despeckled versions of fitacf3 files...")
+    helper.log_message(f"Producing despeckled versions of fitacf3 files for {date_string}")
     fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3")
     for fitacf3_file in fitacf3_files:
         perform_speck_removal(fitacf3_file)
@@ -106,13 +113,18 @@ def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
     try:
         subprocess.run(command, shell=True, check=True, timeout=120)
         print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {fitacf_file}')
+        helper.log_message(f"Created {fitacf_file}")
     except subprocess.TimeoutExpired:
         os.remove(fitacf_file)
         print(f"Error: make_fit command timed out after 2 minutes:\n    {command}")
+        helper.log_message(f"Error: make_fit command timed out after 2 minutes for {rawacf_file}")
         print(f"Removed {fitacf_file}")
+        helper.log_message
+
         # TODO: Add this to a problem_file log file
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
+        helper.log_message(f"Error: {e} for {rawacf_file}")
 
 def combine_fitacfs(date_string):
     """
@@ -141,8 +153,10 @@ def combine_fitacfs(date_string):
         try:
             subprocess.run(command, shell=True, check=True)
             print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {daily_filename}')
+            helper.log_message(f"Created {daily_filename}")
         except subprocess.CalledProcessError as e:
             print(f"Error: {e}")
+            helper.log_message(f"Error: {e} for {radar_site}")
 
         for source_file in site_fitacf2_files:
             os.remove(source_file)
@@ -160,8 +174,10 @@ def combine_fitacfs(date_string):
         try:
             subprocess.run(command, shell=True, check=True)
             print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {daily_filename}')
+            helper.log_message(f"Created {daily_filename}")
         except subprocess.CalledProcessError as e:
             print(f"Error: {e}")
+            helper.log_message(f"Error: {e} for {daily_filename}")
 
         for source_file in site_fitacf3_files:
             os.remove(source_file)
@@ -186,8 +202,10 @@ def perform_speck_removal(input_file):
     try:
         subprocess.run(command, shell=True, check=True)
         print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {output_file}')
+        helper.log_message(f"Created {output_file}")
     except subprocess.CalledProcessError as e:
         print(f"Error: {e}")
+        helper.log_message(f"Error: {e} for {input_file}")
 
 
 def unpack_bz2_and_remove(input_file):
@@ -214,6 +232,7 @@ def unpack_bz2_and_remove(input_file):
         os.remove(input_file)
     else:
         print(f'Error: {input_file} is not a .bz2 file')
+        helper.log_message(f"Error: {input_file} is not a .bz2 file")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

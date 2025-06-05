@@ -32,6 +32,7 @@ date = None
 def main(date_string):
     print(f'\n{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to netCDF')
     print("===================================================")
+    helper.log_message(f"Starting to convert {date_string} fitACFs to netCDF")
     rstpath = os.getenv('RSTPATH')
     assert rstpath, 'RSTPATH environment variable needs to be set'
     
@@ -54,6 +55,7 @@ def main(date_string):
         fn_info = os.stat(fitacf_file)
         if fn_info.st_size < MIN_FITACF_FILE_SIZE:
             print('\n\n%s %1.1f MB\nFile too small - skipping' % (fitacf_file, fn_info.st_size / 1E6))
+            helper.log_message(f"File {fitacf_file} too small - skipping")
             continue
 
         fitacf_filename = os.path.basename(fitacf_file)
@@ -110,6 +112,7 @@ def convert_fitacf_to_netcdf(date, in_fname, out_fname, radar_info):
             var.long_name = defs['long_name']
     
     print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {out_fname}')
+    helper.log_message(f"Created {out_fname}")
 
     return 0
 
@@ -173,6 +176,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                 # Log the multiple beams error in the monthly mutli beam def log
                 logText = f'{in_fname} has {len(val)} beam definitions - skipping file conversion.\n'
                 print(logText)
+                helper.log_message(logText)
                 
                 with open(multiBeamLogfile, "a+") as fp: 
                     fp.write(logText)

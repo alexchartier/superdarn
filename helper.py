@@ -54,7 +54,7 @@ GLOBUS_SUPERDARN_ENDPOINT = '8e844226-2eea-479c-b5e4-bac908b725bc'
 def send_email(subject, body, addresses = EMAIL_ADDRESSES):
     os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = body, sub = subject, addr = addresses))
 
-LOG_FILE = LOG_DIR + "/master_log.txt"
+LOG_FILE = os.path.join(LOG_DIR, f"master_log_{datetime.now().strftime('%Y%m%d')}.txt")
 
 def log_message(message):
     """

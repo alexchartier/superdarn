@@ -129,37 +129,63 @@ def getMirrorFileList():
     os.makedirs(helper.MIRROR_FILE_LIST_DIR, exist_ok=True)
     mirror_data = {}
 
-    date = START_DATE
-    while date <= END_DATE:
-        day = date.strftime('%Y%m%d')
-        month = date.strftime('%m')
-        print(f"{time.strftime('%Y-%m-%d %H:%M')}: Getting mirror data for {day}")
+    ssh_command_raw = f"ssh bas 'ls -R /sddata/raw/' 2>/dev/null"
+    ssh_command_dat = f"ssh bas 'ls -R /sddata/dat/' 2>/dev/null"
 
-        ssh_command_raw = f"ssh bas 'ls -R /sddata/raw/{date.year}/{month}/{day}*' 2>/dev/null"
-        ssh_command_dat = f"ssh bas 'ls -R /sddata/dat/{date.year}/{month}/{day}*' 2>/dev/null"
+    result_raw = subprocess.run(ssh_command_raw, shell=True, capture_output=True, text=True)
+    result_dat = subprocess.run(ssh_command_dat, shell=True, capture_output=True, text=True)
 
-        result_raw = subprocess.run(ssh_command_raw, shell=True, capture_output=True, text=True)
-        result_dat = subprocess.run(ssh_command_dat, shell=True, capture_output=True, text=True)
+    lines = result_raw.stdout.split('\n') + result_dat.stdout.split('\n')
+    for line in lines:
+        filename = line.strip()
+        # print(line)
+        if filename.endswith('.bz2'):
+            if filename.startswith('/sddata/raw/'):
+                radar = filename.split('.')[3]
+            elif filename.startswith('/sddata/dat/'):
+                radar_letter = filename.split('.')[0].split('/')[-1][10]
+                radar = helper.get_three_letter_radar_id(radar_letter)
+            else:
+                continue
 
-        lines = result_raw.stdout.split('\n') + result_dat.stdout.split('\n')
-        for line in lines:
-            filename = line.strip()
-            # print(line)
-            if filename.endswith('.bz2'):
-                if filename.startswith('/sddata/raw/'):
-                    radar = filename.split('.')[3]
-                elif filename.startswith('/sddata/dat/'):
-                    radar_letter = filename.split('.')[0].split('/')[-1][10]
-                    radar = helper.get_three_letter_radar_id(radar_letter)
-                else:
-                    continue
+            day = filename.split('/')[-1][:8]  # Extract the date part from the filename
 
-                if day not in mirror_data:
-                    mirror_data[day] = [radar]
-                elif radar not in mirror_data[day]:
-                    mirror_data[day].append(radar)
+            if day not in mirror_data:
+                mirror_data[day] = [radar]
+            elif radar not in mirror_data[day]:
+                mirror_data[day].append(radar)
 
-        date += dt.timedelta(days=1)
+    # date = START_DATE
+    # while date <= END_DATE:
+    #     day = date.strftime('%Y%m%d')
+    #     month = date.strftime('%m')
+    #     print(f"{time.strftime('%Y-%m-%d %H:%M')}: Getting mirror data for {day}")
+
+    #     ssh_command_raw = f"ssh bas 'ls -R /sddata/raw/{date.year}/{month}/{day}*' 2>/dev/null"
+    #     ssh_command_dat = f"ssh bas 'ls -R /sddata/dat/{date.year}/{month}/{day}*' 2>/dev/null"
+
+    #     result_raw = subprocess.run(ssh_command_raw, shell=True, capture_output=True, text=True)
+    #     result_dat = subprocess.run(ssh_command_dat, shell=True, capture_output=True, text=True)
+
+    #     lines = result_raw.stdout.split('\n') + result_dat.stdout.split('\n')
+    #     for line in lines:
+    #         filename = line.strip()
+    #         # print(line)
+    #         if filename.endswith('.bz2'):
+    #             if filename.startswith('/sddata/raw/'):
+    #                 radar = filename.split('.')[3]
+    #             elif filename.startswith('/sddata/dat/'):
+    #                 radar_letter = filename.split('.')[0].split('/')[-1][10]
+    #                 radar = helper.get_three_letter_radar_id(radar_letter)
+    #             else:
+    #                 continue
+
+    #             if day not in mirror_data:
+    #                 mirror_data[day] = [radar]
+    #             elif radar not in mirror_data[day]:
+    #                 mirror_data[day].append(radar)
+
+    #     date += dt.timedelta(days=1)
 
     outputFile = f"{helper.MIRROR_FILE_LIST_DIR}/mirror_data_inventory.json"
     print(f"Saving mirror file list to {outputFile}")

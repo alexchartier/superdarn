@@ -125,6 +125,15 @@ def download_files_from_bas(rawDir, radar, show_progress):
         if line.strip() and show_progress:
             update_progress_bar(line)
 
+    for line in rsyncProcess.stdout:
+        if line.strip():
+            if show_progress:
+                update_progress_bar(line)
+            else:
+                cleaned_line = line.strip()
+                if not cleaned_line.endswith('/') and not cleaned_line.startswith(('sending', 'receiving', 'sent', 'total', 'bytes/sec')):
+                    helper.log_message(f"Copied file: {cleaned_line}")
+
     rsyncExitCode = rsyncProcess.wait()
 
     if rsyncExitCode == 0:

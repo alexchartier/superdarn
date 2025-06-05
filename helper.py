@@ -54,6 +54,20 @@ GLOBUS_SUPERDARN_ENDPOINT = '8e844226-2eea-479c-b5e4-bac908b725bc'
 def send_email(subject, body, addresses = EMAIL_ADDRESSES):
     os.system('echo {bd} | mail -s {sub} {addr}'.format(bd = body, sub = subject, addr = addresses))
 
+LOG_FILE = LOG_DIR + "/master_log.txt"
+
+def log_message(message):
+    """
+    Logs a message to the log file with the current date and time.
+
+    Args:
+        message (str): The message to log.
+
+    Returns:
+        None
+    """
+    with open(LOG_FILE, "a") as log_file:
+        log_file.write(f"{datetime.now().strftime('%Y%m%d %H:%M:%S')} - {message}\n")
 
 def get_radar_list():
     radarList = ['ade','adw','bks','cve','cvw','cly','fhe','fhw','gbr',

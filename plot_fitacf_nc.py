@@ -8,6 +8,10 @@ import datetime as dt
 import jdutil
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib
+import matplotlib.pyplot as plt
+import cartopy
+import cartopy.crs as ccrs
+from scipy.interpolate import griddata
 
 font = {'size'   : 18}
 
@@ -23,27 +27,120 @@ depth = 0  # nvector uses depths in m
 
 
 def main(
-    fname=os.path.expanduser('~/Downloads/20031029.han.v3.0.despeckled.nc'),
+    in_fn_fmt='~/data/superdarn/netcdf/%Y/%m/%Y%m%d.wal.a.despeck.fitacf3.nc',
+    map_plt_fn_fmt = 'plots/%Y%m%d/maps/{radarcode}/%Y%m%d-%H%M.png',
+    beam_plt_fn_fmt = 'plots/%Y%m%d/beam_rtis/{radarcode}/beam_{bmnum}_%Y%m%d.png',
+    stime = dt.datetime(2023, 11, 18, 12, 0),
+    etime = dt.datetime(2023, 11, 18, 16, 0),
+    tstep = dt.timedelta(minutes=1),
+
+    clim = [-100, 100],
+
+    map_extent = [-80, -67.5, 37, 50,],
+    #map_extent = [-100, -67.5, 37, 50,],
+
+    rangelim = [0, 2000],
+    maxpwr = 15,
+    plot_gs = True,
 ):
-    sd_data, sdrad = nc_utils.ncread_vars(fname), nc_utils.load_nc(fname)
-    for bmnum in range(16):
-        plot_rti(sd_data, sdrad, bmnum)
-        plt.savefig(f'plots/beam_{bmnum}.png')
 
-    rlat, rlon, lats, lons, vels = load_example_data(fname)
+    in_fn = stime.strftime(in_fn_fmt)
+    radarcode = os.path.basename(in_fn_fmt).split('.')[1]
+    map_plt_fn_fmt = map_plt_fn_fmt.format(radarcode=radarcode)
+
+    os.makedirs(os.path.dirname(stime.strftime(map_plt_fn_fmt)), exist_ok=True)
+    os.makedirs(stime.strftime(os.path.dirname(beam_plt_fn_fmt).format(radarcode=radarcode)), exist_ok=True)
+
+    sd_data, sdrad = nc_utils.ncread_vars(in_fn), nc_utils.load_nc(in_fn)
+    utlim = [stime.hour + stime.minute / 60, etime.hour + etime.minute / 60]
+    for bmnum in range(sdrad.beams.max() + 1):
+        plot_rti(sd_data, sdrad, bmnum, clim, rangelim, utlim, maxpwr)
+        plt_fn = stime.strftime(beam_plt_fn_fmt.format(radarcode=radarcode, bmnum=bmnum))
+        plt.savefig(f'{plt_fn}')
+        print(f'Saved to {plt_fn}')
+        plt.close()
+
+    plot_on_map(map_plt_fn_fmt, stime, etime, tstep, sd_data, sdrad, clim, map_extent, maxpwr, plot_gs)
+    """
+    rlat, rlon, lats, lons, vels = load_example_data(in_fn)
     brng_deg = calc_bearings(rlat, rlon, lats, lons)
-    # plot_quiver(rlat, rlon, lats, lons, vels, brng_deg, fname)
+    plot_quiver(rlat, rlon, lats, lons, vels, brng_deg, fname)
+    """
+
+def plot_on_map(
+        plt_fn_fmt, stime, etime, tstep, sd_data, sdrad, clim, map_extent, maxpwr, plot_gs, 
+):
+    """ Plot LOS velocities on map with alpha=power) """
+    time = stime
+    td_mjd = tstep.total_seconds() / 86400 / 2
+    pwr = sd_data['p_l']
+    pwr_norm = pwr / maxpwr
+    pwr_norm[pwr_norm > 1] = 1
+    pwr_norm[pwr_norm < 0] = 0
+
+    lats = np.arange(min(sd_data['lat']), max(sd_data['lat']), 0.1)
+    lons = np.arange(min(sd_data['lon']), max(sd_data['lon']), 0.1)
+    grid_lat, grid_lon = np.meshgrid(lats, lons)
+
+    while time <= etime:
+        time_mjd = dt_to_mjd(time)
+        tidx = np.abs(sd_data['mjd'] - time_mjd) < td_mjd
+        gs_idx = sd_data['gflg'] == 1
+        is_idx = sd_data['gflg'] == 0
+
+        fig = plt.figure(figsize=(12, 6))
+        ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+        ax.set_extent(map_extent)
+        plt.title(time.strftime("%Y-%m-%d %H:%M"))
+        plt.set_cmap('Spectral')
+
+        ax.patch.set_facecolor(color='black')
+        ax.add_feature(cartopy.feature.LAND, color='black')
+        ax.coastlines(resolution='50m', color='w')
+        ax.add_feature(cartopy.feature.LAKES.with_scale('50m'), facecolor='k', edgecolor='w')
+        gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=True,
+                          linewidth=1, color='white', linestyle='--')
+        gl.top_labels = False
+        gl.right_labels = False
+        
+        idx = tidx & is_idx
+
+        im = ax.scatter([0, 0.1, 0.2], [0, 0.1, 0.2], c=(clim + [0.]), alpha=0, vmin=clim[0], vmax=clim[1], edgecolors='none')
+        #grid_v = griddata((sd_data['lat'][idx], sd_data['lon'][idx]), sd_data['v'][idx], (grid_lat.ravel(), grid_lon.ravel()))
+        if np.sum(idx) > 0:
+            im = ax.scatter(
+                sd_data['lon'][idx], sd_data['lat'][idx], 
+                c=sd_data['v'][idx],
+                alpha=pwr_norm[idx],
+                vmin=clim[0], vmax=clim[1],
+                edgecolors='none',
+            )
+            
+            if (np.sum(tidx & gs_idx) > 0) and plot_gs:
+                im_gs = ax.scatter(
+                    sd_data['lon'][tidx & gs_idx], sd_data['lat'][tidx & gs_idx], 
+                    c='w',
+                    alpha=pwr_norm[tidx & gs_idx],
+                )
+
+        cbar = fig.colorbar(im, ax=ax, orientation='vertical')
+        cbar.set_label('Vel. towards radar (m/s)')
+
+        ax.plot(sdrad.lon, sdrad.lat, '.r', markersize=10)
+        plt.savefig(time.strftime(plt_fn_fmt))
+        print(f'saved to {time.strftime(plt_fn_fmt)}')
+        plt.close()
+
+        time += tstep
+    
 
 
-def plot_rti(sd_data, sdrad, bmnum=0):
+def plot_rti(sd_data, sdrad, bmnum, clim, rangelim, utlim, maxpwr):
 
     bmidx = sd_data['beam'] == bmnum
-    #tidx = sd_data['mjd'] == dt_to_mjd(time)
-    idx = bmidx #np.logical_and(bmidx, tidx)
+    idx = bmidx 
 
-
-    ranges = np.linspace(0, int(sdrad.rsep_km * sdrad.maxrangegate), 
-        int(sdrad.maxrangegate) +1)
+    ranges = np.linspace(0, int(sdrad.rsep_km * sdrad.maxrangegate), int(sdrad.maxrangegate) + 1)
     times = np.arange(0, 60 * 24) 
     sdtime = np.round( (sd_data['mjd'] - np.floor(sd_data['mjd'])) * 60 * 24)
 
@@ -53,28 +150,30 @@ def plot_rti(sd_data, sdrad, bmnum=0):
         pwr[times == sdtime[idx][ind], ranges == sd_data['range'][idx][ind]] = val 
         vel[times == sdtime[idx][ind], ranges == sd_data['range'][idx][ind]] = sd_data['v'][idx][ind]
 
-    fig, ax = plt.subplots(2)
+    fig, ax = plt.subplots()
     fig.set_figheight(6)
     fig.set_figwidth(12)
     plt.suptitle(f"Beam {bmnum}: {sdrad.brng_at_15deg_el[bmnum]:,.1f} degrees East of North")
-    im0 = ax[0].pcolor(times / 60, ranges, vel.T, vmin=-200, vmax=200, cmap='bwr')
-    im1 = ax[1].pcolor(times / 60, ranges, pwr.T)
-    ax[1].set_xlabel('Hour (UT)')
+    ax.set_facecolor('k')
+    alpha = pwr.T
+    alpha /= maxpwr
+    alpha[alpha > 1] = 1
+    alpha[alpha < 0] = 0
+    alpha[np.isnan(alpha)] = 0
+    im0 = ax.pcolormesh(times / 60, ranges, vel.T, alpha=alpha, vmin=clim[0], vmax=clim[1], cmap='Spectral')
+    ax.set_xlabel('Hour (UT)')
+    ax.set_ylim(rangelim)
+    ax.set_xlim(utlim)
 
-    for pn in range(2):
-        ax[pn].set_ylabel('Range (km)')
-        ax[pn].grid(which='major', color='k', linewidth=0.1)
-        ax[pn].grid(which='minor', color='k', linewidth=0.02)
-        ax[pn].minorticks_on()
+    ax.set_ylabel('Range (km)')
+    ax.grid(which='major', color='g', linewidth=0.05)
+    ax.grid(which='minor', color='g', linewidth=0.01)
+    ax.minorticks_on()
 
-    divider = make_axes_locatable(ax[0])
+    divider = make_axes_locatable(ax)
     cax = divider.append_axes('right', size='3%', pad=0.05)
     cbar = fig.colorbar(im0, cax=cax, orientation='vertical')
     cbar.set_label('Vel. (m/s)')
-    divider = make_axes_locatable(ax[1])
-    cax = divider.append_axes('right', size='3%', pad=0.05)
-    cbar = fig.colorbar(im1, cax=cax, orientation='vertical')
-    cbar.set_label('SNR (dB)')
 
 
 def load_example_data(fname):
@@ -139,7 +238,4 @@ def mjd_to_dt(mjd):
 
 
 if __name__ == '__main__':
-    assert len(sys.argv) > 1, 'Provide a superdarn netCDF filename'
-    fname = sys.argv[-1]
-
-    main(fname)
+    main()

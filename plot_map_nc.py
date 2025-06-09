@@ -1,10 +1,7 @@
 import os
 import sys
 import numpy as np
-import nvector as nv
-import pydarn
 import datetime as dt
-import aacgmv2
 import nc_utils
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs

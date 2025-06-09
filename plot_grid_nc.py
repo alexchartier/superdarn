@@ -5,7 +5,6 @@ nc_utils from github.com/alexchartier/nc_utils
 
 import numpy as np
 import matplotlib.pyplot as plt
-import nvector as nv
 import os
 import nc_utils
 

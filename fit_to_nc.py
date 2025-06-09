@@ -65,7 +65,8 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
         os.makedirs(netDir, exist_ok=True)
 
         # Loop over the files
-        fitFnames = glob.glob(os.path.join(fitDir, FIT_EXT))
+        #fitFnames = glob.glob(os.path.join(fitDir, FIT_EXT))
+        fitFnames = "/Users/chartat1/data/superdarn/fitacf/20231118_12_to_16.wal.a.fitacf",
         print('Processing %i %s files in %s on %s' %
               (len(fitFnames), FIT_EXT, fitDir, time.strftime('%Y/%m')))
         for fit_fn in fitFnames:
@@ -175,7 +176,8 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
 
         # Store conversion info like returns outside FOV, missing slist, etc
         # for each conversion
-        conversionLogDir = '{dir}/{d}'.format(dir=multiBeamLogDir, d=day)
+        #conversionLogDir = '{dir}/{d}'.format(dir=multiBeamLogDir, d=day)
+        conversionLogDir = 'run/'
         fName = in_fname.split('/')[-1]
         conversionLogfile = '{dir}/{fit}_to_nc.log'.format(
             dir=conversionLogDir, fit=fName)
@@ -488,6 +490,6 @@ if __name__ == '__main__':
         fit_dir = args[3]
         outDir = args[4]
         fitVersion = args[5]
-    runDir = '/project/superdarn/run/run_%s' % get_random_string(4)
+    runDir = './run/run_%s' % get_random_string(4)
 
     main(stime, etime, fit_dir, outDir, fitVersion)

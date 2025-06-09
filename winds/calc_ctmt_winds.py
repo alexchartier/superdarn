@@ -12,7 +12,9 @@ import matplotlib.pyplot as plt
 import time
 from cartopy import config
 import cartopy.crs as ccrs
-
+from pymsis import msis
+import xarray as xr
+import scipy as sp
 
 def main(
     # diurnal and semidiurnal tidal filenames
@@ -88,6 +90,94 @@ def profile_calc_full_wind(month, lats, lons, alt, model_coeffs):
     return model
 
 
+def calc_full_wind_at_pressure_level(time, lats, lons, pressure, model_coeffs, plot=False):
+    """ returns a u+v lst/lat/lon distribution of model winds at specified alt and month """
+    month = time.month
+    hours = np.arange(0, 25)
+
+    comps = table_of_components()
+    dirns = 'u', 'v'
+
+    # Load the winds in LST 
+    wind_array_lst = np.zeros((len(dirns), len(hours), len(lats), len(lons)))
+    for il, lst in enumerate(hours):
+        for idn, dirn in enumerate(dirns):
+            for lati, lat in enumerate(lats):
+                for loni, lon in enumerate(lons):
+                    alt = calc_alt_at_pressure(time, lat, lon, pressure)
+                    print(f'{lat} °N, {lon} °E, {alt:.1f} km')
+                    
+                    wind_component = calc_wind_component(
+                        lat, lon, alt, month, model_coeffs, comps, lst=lst, dirn=dirn)
+                    wind_array_lst[idn, il, lati, loni] = wind_component
+   
+    # Convert to UT 
+    wind_array_ut = np.zeros_like(wind_array_lst)
+
+    for ilst, lst in enumerate(hours):
+        UTs = lst - lons * 24 / 360 
+        UTs[UTs < 0] += 24
+        for iut, ut in enumerate(hours):
+            lonidx = np.where(np.in1d(UTs, ut))[0]
+            wind_array_ut[:, iut, :, lonidx] = wind_array_lst[:, ilst, :, lonidx]
+    wind_array_ut[:, 24, :, :] = wind_array_ut[:, 0, :, :]
+
+
+
+def calc_alt_at_pressure(time, lat, lon, pressure, altitudes=np.arange(70, 120)):
+    msis_ds = load_msis(time, lat, lon, altitudes)
+    alt = sp.interpolate.interp1d(msis_ds['pressure'], altitudes)(pressure)
+
+    return alt
+
+
+
+def load_msis(time, lat, lon, altitudes):    
+    """ load the MSIS model for a location """
+    loschmidt_per_m3 = 2.686780111e25
+    zero_degrees_c_in_k = 273.15
+
+    msis_data = msis.run(time, lon, lat, altitudes, geomagnetic_activity=-1)
+
+    mass_density = msis_data[:, 0, 0, :, 0]
+    n2 = msis_data[:, 0, 0, :, 1]
+    o2 = msis_data[:, 0, 0, :, 2]
+    o = msis_data[:, 0, 0, :, 3]
+    he = msis_data[:, 0, 0, :, 4]
+    h = msis_data[:, 0, 0, :, 5]
+    ar = msis_data[:, 0, 0, :, 6]
+    n = msis_data[:, 0, 0, :, 7]
+    anomalous_o = msis_data[:, 0, 0, :, 8]
+    no = msis_data[:, 0, 0, :, 9]
+    temperature = msis_data[:, 0, 0, :, 10]    
+ 
+    msis_ds = {
+        "mass_density": mass_density.ravel(),
+        "n2": n2.ravel(),
+        "o2": o2.ravel(),
+        "o": o.ravel(),
+        "he": he.ravel(),
+        "h": h.ravel(),
+        "ar": ar.ravel(),
+        "n": n.ravel(),
+        "anomalous_o": anomalous_o.ravel(),
+        "no": no.ravel(),
+        "temperature": temperature.ravel(),
+        "altitude": altitudes,
+    }
+
+    for k, v in msis_ds.items():
+        msis_ds[k][np.isnan(v)] = 0
+    total_density = msis_ds['n2'] + msis_ds['o2']+ msis_ds['o'] + msis_ds['he'] + msis_ds['h'] + \
+        msis_ds['ar'] + msis_ds['n'] + msis_ds['anomalous_o'] + msis_ds['no']
+    pressure_ratio = (total_density * msis_ds['temperature'] / (loschmidt_per_m3 * zero_degrees_c_in_k))
+    pressure = pressure_ratio * 1013.25 # This converts the ratio to pascals (101325 is pascals at sea level)
+    msis_ds['pressure'] = pressure
+
+    return msis_ds
+
+
+
 def calc_full_wind(month, lats, lons, alt, model_coeffs, plot=False):
     """ returns a u+v lst/lat/lon distribution of model winds at specified alt and month """
     hours = np.arange(0, 25)
@@ -150,7 +240,10 @@ def calc_wind_component(lats, lons, alt, month, model_coeffs, comps, lst=18, dir
     """
 
     # Calculate the wind
-    wind = np.zeros((len(lats), len(lons)))
+    if type(lats) == int or type(lats) == np.int64:
+        wind = 0
+    else:
+        wind = np.zeros((len(lats), len(lons)))
     hours = lst - lons / 360 * 24
     for ds, comp_list in comps.items():
         for comp in comp_list:
@@ -181,16 +274,15 @@ def calc_wind(model_coeffs, lat, lon, alt, hour, month, component, direction, di
 
     # Get the dimensional indexes
     mi = model_coeffs['month'] == month
-    ai = model_coeffs['lev'] == alt
-    li = np.isin(lat, model_coeffs['lat']).ravel()
+    li = np.isin(model_coeffs['lat'], lat).ravel()
 
     #  amplitude (m/s) (east/west/north/up, depending on component)
-    amp = model_coeffs['amp_%s_%s' %
-                       (component, direction)][mi, ai, li].ravel()
+    amparr = np.squeeze(model_coeffs['amp_%s_%s' % (component, direction)][mi, :, li])
+    amp = sp.interpolate.interp1d(model_coeffs['lev'], amparr)(alt)
 
     # phase (UT of MAX at 0 deg lon)
-    phase = model_coeffs['phase_%s_%s' %
-                         (component, direction)][mi, ai, li].ravel()
+    phasearr = np.squeeze(model_coeffs['phase_%s_%s' % (component, direction)][mi, :, li])
+    phase = sp.interpolate.interp1d(model_coeffs['lev'], phasearr)(alt)
 
     # propagation direction multiplier used to determine phase at specified longitude
     if component[0] == 'e':  # eastward
@@ -246,3 +338,9 @@ def table_of_components():
 
 if __name__ == '__main__':
     main()
+
+
+
+
+
+

@@ -27,7 +27,7 @@ hr = np.arange(0, 24)
 
 def main(
     # Model params
-    alt=90,
+    pressure=0.002, # hPa
     lats=np.arange(-90, 95, 5),
     lons=np.arange(0, 375, 15),
 
@@ -62,7 +62,8 @@ def main(
     #scores_by_radar = radar_by_radar_comparison(year, sd_fn_fmt, radar_list, lats, lons, alt, ctmt_coeffs)
 
     # Compare all months of the radar data against all months of CTMT
-    scores_matrix = ctmt_sd_comparison(year, sd_fn_fmt, radar_list, lats, lons, alt, ctmt_coeffs)
+    time = dt.datetime(year, 1, 1)
+    scores_matrix = ctmt_sd_comparison(time, sd_fn_fmt, radar_list, lats, lons, pressure, ctmt_coeffs)
 
     """ fitting """
     #fit_test(year, sd_fn_fmt, radar_list, lats, lons, alt, ctmt_coeffs)
@@ -102,11 +103,16 @@ def icon_sd_comparison(year, sd_fn_fmt, radar_list, lats, lons, alt, icon_fn_fmt
 def site_model_comparison(year, month, sd_fn_fmt, radarcode, lats, lons, alt, model):
 
     sd_wind = load_sd_wind(year, month, sd_fn_fmt, [radarcode,])
+    # TODO: calculate model wind at reference pressure instead of altitude
+    
     if type(model) == str:
         time = dt.datetime(year, month, 15) 
         gridded_model = eval_icon_hme(time.strftime(model), lats, lons, alt, hr)
     else:
         gridded_model = calc_ctmt_winds.calc_full_wind(month, lats, lons, alt, model)  # CTMT winds on a grid
+
+
+
     model_wind = get_model_wind_at_sd_locs(gridded_model, sd_wind)
     plot_median_wind(sd_wind, radarcode, model=model_wind[radarcode]['model'])
 
@@ -141,7 +147,7 @@ def radar_by_radar_comparison(year, sd_fn_fmt, radar_list, lats, lons, alt, mode
     return scores
 
 
-def ctmt_sd_comparison(year, sd_fn_fmt, radar_list, lats, lons, alt, model_coeffs):
+def ctmt_sd_comparison(time, sd_fn_fmt, radar_list, lats, lons, pressure, model_coeffs):
     """ matrix evaluation of all months of SD vs all months of model """
 
     components = calc_ctmt_winds.table_of_components()
@@ -150,10 +156,11 @@ def ctmt_sd_comparison(year, sd_fn_fmt, radar_list, lats, lons, alt, model_coeff
 
     scores = np.zeros((12, 12))
     for i, sdmonth in enumerate(range(1, 13)):
-        sd_wind = load_sd_wind(year, sdmonth, sd_fn_fmt, radar_list)
+        sd_wind = load_sd_wind(time.year, sdmonth, sd_fn_fmt, radar_list)
         for j, mmonth in enumerate(range(1, 13)):
-            model = calc_ctmt_winds.calc_full_wind(
-                mmonth, lats, lons, alt, model_coeffs)  # model winds on a grid
+
+            model = calc_ctmt_winds.calc_full_wind_at_pressure_level(
+                time, lats, lons, pressure, model_coeffs)  # model winds on a grid
             scores[i, j] = calc_weighted_rmse(model, sd_wind)
 
     fig, ax = plt.subplots()
@@ -454,9 +461,8 @@ def get_model_wind_at_sd_locs(model, wind):
         np.squeeze(model['wind'][1, :, :, :]),
     )
 
-    """ Get the model wind at the radar locs """
+    # Get the model wind at the radar locs
     for radarcode, vals in wind.items():
-        """ get the model and observed winds into a structure """
         model_boresight_wind = calc_boresight_wind(
             vals['lat'], vals['lon'], vals['boresight'], interp_fn_U, interp_fn_V)
         wind[radarcode]['model'] = model_boresight_wind

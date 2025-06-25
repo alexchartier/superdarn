@@ -25,6 +25,7 @@ import json
 import requests
 from dateutil.relativedelta import relativedelta
 import sys
+from requests.adapters import HTTPAdapter, Retry
 import sd_utils
 
 # START_DATE = dt.datetime(1993, 9, 29)
@@ -82,48 +83,83 @@ def main():
 
     print("Data comparison complete.")
 
+def _make_retry_session(retries=3, backoff=2.0) -> requests.Session:
+    """Return a requests.Session that retries on *transient* errors (HTTP 5xx, 429)."""
+    retry_strategy = Retry(
+        total=retries,
+        status_forcelist=[429, 500, 502, 503, 504],
+        backoff_factor=backoff,
+        allowed_methods=["GET", "HEAD"],
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    sess = requests.Session()
+    sess.mount("https://", adapter)
+    sess.mount("http://", adapter)
+    return sess
+
+# one session reused for all Zenodo calls
+_ZENODO_SESSION = _make_retry_session()
+
 def getZenodoFileList():
     """
     Retrieve the list of files on Zenodo for the specified date range and save it to a JSON file.
+    Handles API hiccups gracefully so the whole run doesn't abort.
     """
     os.makedirs(helper.ZENODO_FILE_LIST_DIR, exist_ok=True)
     try:
         print("Loading Zenodo data inventory...")
-        with open(os.path.join(helper.ZENODO_FILE_LIST_DIR, 'zenodo_data_inventory.json'), 'r') as f:
+        with open(os.path.join(helper.ZENODO_FILE_LIST_DIR,
+                               'zenodo_data_inventory.json'), 'r') as f:
             zenodo_data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         print("No existing Zenodo data inventory found. Creating a new one.")
         zenodo_data = {}
-
 
     date = START_DATE
     while date <= END_DATE:
         month = date.strftime('%Y-%b')
         print(f"{time.strftime('%Y-%m-%d %H:%M')}: Getting Zenodo fitACF netCDF data for {month}")
 
-        response = requests.get('https://zenodo.org/api/records',
-                                params={'q': f'"SuperDARN data in netCDF format ({month})"',
-                                        'access_token': helper.ZENODO_TOKEN})
+        try:
+            resp = _ZENODO_SESSION.get(
+                'https://zenodo.org/api/records',
+                params={
+                    'q': f'"SuperDARN data in netCDF format ({month})"',
+                    'access_token': helper.ZENODO_TOKEN,
+                    'all_versions': 1,
+                    'size': 1000           # grab as many hits as allowed
+                },
+                timeout=30
+            )
+            # Make sure it’s JSON
+            resp.raise_for_status()
+            if 'application/json' not in resp.headers.get('Content-Type', ''):
+                raise ValueError(f"Unexpected content type {resp.headers.get('Content-Type')}")
+            payload = resp.json()
+        except Exception as exc:
+            # Log the problem, skip this month, and keep going
+            print(f"⚠️  Zenodo request for {month} failed: {exc}", file=sys.stderr)
+            date += relativedelta(months=1)
+            continue
 
-        if response.json()["hits"]["hits"]:
-            files = response.json()["hits"]["hits"][0].get('files')
-            for file in files:
-                filename = file['key']
-                if filename.endswith('.nc'):
-                    date_str = filename.split('.')[0]
-                    radar = filename.split('.')[1]
-                    if date_str not in zenodo_data:
-                        zenodo_data[date_str] = [radar]
-                    elif radar not in zenodo_data[date_str]:
-                        zenodo_data[date_str].append(radar)
+        for file in payload.get("hits", {}).get("hits", [])[0].get('files', []):
+            filename = file['key']
+            if filename.endswith('.nc'):
+                date_str, radar = filename.split('.')[:2]
+                zenodo_data.setdefault(date_str, []).append(radar)
 
         date += relativedelta(months=1)
+
+    # deduplicate & sort radar lists
+    for day, radars in zenodo_data.items():
+        zenodo_data[day] = sorted(set(radars))
 
     outputFile = f"{helper.ZENODO_FILE_LIST_DIR}/zenodo_data_inventory.json"
     print(f"Saving Zenodo file list to {outputFile}")
     with open(outputFile, 'w') as outfile:
         json.dump(zenodo_data, outfile, indent=4)
-    
+
     return zenodo_data
 
 def _query_bas_api(block_start: dt.datetime, block_end: dt.datetime) -> list[dict]:

@@ -42,7 +42,6 @@ def main():
 
     print(f"Starting data comparison for date range: {START_DATE.strftime('%Y-%m-%d')} to {END_DATE.strftime('%Y-%m-%d')}")
     output_file = create_new_inventory_file()
-    print(f"Created new inventory file: {output_file}")
 
     try:
         with open(output_file, "r") as f:
@@ -74,7 +73,7 @@ def main():
 
     print(f"Saving results to {output_file}")
     with open(output_file, 'w') as outfile:
-        json.dump(data, outfile)
+        json.dump(data, outfile, indent=4)
 
     totalTime = helper.get_time_string(time.time() - startTime)
     emailSubject = '"Data Status Check Complete"'
@@ -123,7 +122,7 @@ def getZenodoFileList():
     outputFile = f"{helper.ZENODO_FILE_LIST_DIR}/zenodo_data_inventory.json"
     print(f"Saving Zenodo file list to {outputFile}")
     with open(outputFile, 'w') as outfile:
-        json.dump(zenodo_data, outfile)
+        json.dump(zenodo_data, outfile, indent=4)
     
     return zenodo_data
 
@@ -193,7 +192,7 @@ def getMirrorFileList():
     outputFile = f"{helper.MIRROR_FILE_LIST_DIR}/mirror_data_inventory.json"
     print(f"Saving mirror file list to {outputFile}")
     with open(outputFile, 'w') as outfile:
-        json.dump(mirror_data, outfile)
+        json.dump(mirror_data, outfile, indent=4)
     
     return mirror_data
 

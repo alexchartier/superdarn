@@ -126,74 +126,79 @@ def getZenodoFileList():
     
     return zenodo_data
 
-def getMirrorFileList():
+def _query_bas_api(block_start: dt.datetime, block_end: dt.datetime) -> list[dict]:
+    """Helper: call the BAS mirror API for one <=1-year block and return the raw list of records."""
+    timespan = (
+        f"{block_start.strftime('%Y-%m-%dT%H:%M:%S')}/"
+        f"{block_end.strftime('%Y-%m-%dT%H:%M:%S')}"
+    )
+    curl_cmd = [
+        "curl", "-sfS",
+        f"https://api.bas.ac.uk/superdarn/mirror/v3/files?timespan={timespan}"
+    ]
+    result = subprocess.run(
+        curl_cmd,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout)
+
+def getMirrorFileList(
+        start_date: dt.datetime = START_DATE,
+        end_date:   dt.datetime = END_DATE,
+) -> dict[str, list[str]]:
     """
-    Retrieve the list of files on the BAS mirror server for the specified date range and save it to a JSON file.
+    Loop over full calendar years between start_date and end_date (inclusive),
+    query the BAS mirror API once per year-sized block, build a
+      { 'YYYYMMDD': ['radar1', 'radar2', …] }
+    mapping, and save it to MIRROR_FILE_LIST_DIR/mirror_data_inventory.json.
     """
     os.makedirs(helper.MIRROR_FILE_LIST_DIR, exist_ok=True)
-    try:
-        print("Loading mirror data inventory...")
-        with open(os.path.join(helper.MIRROR_FILE_LIST_DIR, 'mirror_data_inventory.json'), 'r') as f:
-            mirror_data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        print("No existing mirror data inventory found. Creating a new one.")
-        mirror_data = {}
 
-    ssh_command_raw = f"ssh bas 'ls -R /sddata/raw/' 2>/dev/null"
-    # ssh_command_dat = f"ssh bas 'ls -R /sddata/dat/' 2>/dev/null"
+    mirror_data: dict[str, list[str]] = {}
 
-    result_raw = subprocess.run(ssh_command_raw, shell=True, capture_output=True, text=True)
-    # result_dat = subprocess.run(ssh_command_dat, shell=True, capture_output=True, text=True)
+    # ------------------------------------------------------------------
+    # 1. Build list of year-sized chunks
+    # ------------------------------------------------------------------
+    year_blocks: list[tuple[dt.datetime, dt.datetime]] = []
+    current_year = start_date.year
+    while current_year <= end_date.year:
+        block_start = max(start_date, dt.datetime(current_year, 1, 1, 0, 0, 0))
+        block_end   = min(end_date,   dt.datetime(current_year, 12, 31, 23, 59, 59))
+        year_blocks.append((block_start, block_end))
+        current_year += 1
 
-    for line in result_raw.stdout.split('\n'):
-        filename = line.strip()
-        if filename.endswith('.bz2'):
-            if 'rawacf' in filename:
-                radar = filename.split('.')[3]
-                day = filename[:8]
+    # ------------------------------------------------------------------
+    # 2. Query BAS once per block and accumulate results
+    # ------------------------------------------------------------------
+    for block_start, block_end in year_blocks:
+        records = _query_bas_api(block_start, block_end)
 
-                if day not in mirror_data:
-                    mirror_data[day] = [radar]
-                elif radar not in mirror_data[day]:
-                    mirror_data[day].append(radar)
+        for rec in records:
+            filename = rec.get("filename", "")
+            # skip anything unexpected
+            if not filename.endswith(".bz2") or "rawacf" not in filename:
+                continue
 
-    # date = START_DATE
-    # while date <= END_DATE:
-    #     day = date.strftime('%Y%m%d')
-    #     month = date.strftime('%m')
-    #     print(f"{time.strftime('%Y-%m-%d %H:%M')}: Getting mirror data for {day}")
+            day   = filename[:8]              # 'YYYYMMDD'
+            radar = filename.split(".")[3]    # 3-letter site code
 
-    #     ssh_command_raw = f"ssh bas 'ls -R /sddata/raw/{date.year}/{month}/{day}*' 2>/dev/null"
-    #     ssh_command_dat = f"ssh bas 'ls -R /sddata/dat/{date.year}/{month}/{day}*' 2>/dev/null"
+            mirror_data.setdefault(day, []).append(radar)
 
-    #     result_raw = subprocess.run(ssh_command_raw, shell=True, capture_output=True, text=True)
-    #     result_dat = subprocess.run(ssh_command_dat, shell=True, capture_output=True, text=True)
+    # Deduplicate + sort radars for each day
+    for day, radars in mirror_data.items():
+        mirror_data[day] = sorted(set(radars))
 
-    #     lines = result_raw.stdout.split('\n') + result_dat.stdout.split('\n')
-    #     for line in lines:
-    #         filename = line.strip()
-    #         # print(line)
-    #         if filename.endswith('.bz2'):
-    #             if filename.startswith('/sddata/raw/'):
-    #                 radar = filename.split('.')[3]
-    #             elif filename.startswith('/sddata/dat/'):
-    #                 radar_letter = filename.split('.')[0].split('/')[-1][10]
-    #                 radar = helper.get_three_letter_radar_id(radar_letter)
-    #             else:
-    #                 continue
+    # ------------------------------------------------------------------
+    # 3. Save pretty-printed JSON
+    # ------------------------------------------------------------------
+    out_file = os.path.join(
+        helper.MIRROR_FILE_LIST_DIR, "mirror_data_inventory.json"
+    )
+    with open(out_file, "w") as f:
+        json.dump(mirror_data, f, indent=4)
 
-    #             if day not in mirror_data:
-    #                 mirror_data[day] = [radar]
-    #             elif radar not in mirror_data[day]:
-    #                 mirror_data[day].append(radar)
-
-    #     date += dt.timedelta(days=1)
-
-    outputFile = f"{helper.MIRROR_FILE_LIST_DIR}/mirror_data_inventory.json"
-    print(f"Saving mirror file list to {outputFile}")
-    with open(outputFile, 'w') as outfile:
-        json.dump(mirror_data, outfile, indent=4)
-    
     return mirror_data
 
 def create_new_inventory_file():

@@ -74,7 +74,7 @@ def main():
 
     print(f"Saving results to {output_file}")
     with open(output_file, 'w') as outfile:
-        json.dump(data, outfile, indent=4)
+        json.dump(data, outfile)
 
     totalTime = helper.get_time_string(time.time() - startTime)
     emailSubject = '"Data Status Check Complete"'
@@ -189,7 +189,7 @@ def getMirrorFileList(
     """
     Loop over full calendar years between start_date and end_date (inclusive),
     query the BAS mirror API once per year-sized block, build a
-      { 'YYYYMMDD': ['radar1', 'radar2', …] }
+      { 'YYYYMMDD': ['sas', 'rkn', …] }
     mapping, and save it to MIRROR_FILE_LIST_DIR/mirror_data_inventory.json.
     """
     os.makedirs(helper.MIRROR_FILE_LIST_DIR, exist_ok=True)
@@ -211,6 +211,7 @@ def getMirrorFileList(
     # 2. Query BAS once per block and accumulate results
     # ------------------------------------------------------------------
     for block_start, block_end in year_blocks:
+        print(f"Querying BAS API for data list from {block_start.strftime('%Y-%m-%d')} to {block_end.strftime('%Y-%m-%d')}")
         records = _query_bas_api(block_start, block_end)
 
         for rec in records:

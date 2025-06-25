@@ -211,16 +211,21 @@ def create_new_inventory_file():
     sorted_files = sorted(filtered_files)
     latest_inventory_file = sorted_files[-1] if sorted_files else None
     new_filename = f'{END_DATE.strftime("%Y%m%d")}_data_status.json'
+    new_file_path = os.path.join(helper.DATA_STATUS_DIR, new_filename)
 
     if latest_inventory_file:
-        shutil.copy(os.path.join(helper.DATA_STATUS_DIR, latest_inventory_file), os.path.join(helper.DATA_STATUS_DIR, new_filename))
-        print(f"Created new inventory file {new_filename} based on {latest_inventory_file}")
+        latest_path = os.path.join(helper.DATA_STATUS_DIR, latest_inventory_file)
+        if os.path.abspath(latest_path) != os.path.abspath(new_file_path):
+            shutil.copy(latest_path, new_file_path)
+            print(f"Created new inventory file {new_filename} based on {latest_inventory_file}")
+        else:
+            print(f"File {new_filename} already exists and is the latest — skipping copy.")
     else:
-        with open(os.path.join(helper.DATA_STATUS_DIR, new_filename), 'w') as f:
+        with open(new_file_path, 'w') as f:
             json.dump({}, f)
         print(f"Created new empty inventory file {new_filename}")
 
-    return os.path.join(helper.DATA_STATUS_DIR, new_filename)
+    return new_file_path
 
 def get_result(mirror_exists, zenodo_exists):
     """

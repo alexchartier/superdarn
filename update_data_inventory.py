@@ -143,11 +143,13 @@ def getZenodoFileList():
             date += relativedelta(months=1)
             continue
 
-        for file in payload.get("hits", {}).get("hits", [])[0].get('files', []):
-            filename = file['key']
-            if filename.endswith('.nc'):
-                date_str, radar = filename.split('.')[:2]
-                zenodo_data.setdefault(date_str, []).append(radar)
+        # payload.get("hits", {}).get("hits", []) returns a list of records (possibly empty)
+        for record in payload.get("hits", {}).get("hits", []):
+            for file in record.get("files", []):
+                filename = file["key"]
+                if filename.endswith(".nc"):
+                    date_str, radar = filename.split(".")[:2]
+                    zenodo_data.setdefault(date_str, []).append(radar)
 
         date += relativedelta(months=1)
 

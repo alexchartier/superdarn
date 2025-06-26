@@ -73,8 +73,8 @@ def main():
         date += dt.timedelta(days=1)
 
     print(f"Saving results to {output_file}")
-    with open(output_file, 'w') as outfile:
-        json.dump(data, outfile)
+    with open(output_file, 'w', encoding='utf-8') as outfile:
+        json.dump(data, outfile, indent=4)
 
     totalTime = helper.get_time_string(time.time() - startTime)
     emailSubject = '"Data Status Check Complete"'
@@ -159,7 +159,7 @@ def getZenodoFileList():
 
     outputFile = f"{helper.ZENODO_FILE_LIST_DIR}/zenodo_data_inventory.json"
     print(f"Saving Zenodo file list to {outputFile}")
-    with open(outputFile, 'w') as outfile:
+    with open(outputFile, 'w', encoding='utf-8') as outfile:
         json.dump(zenodo_data, outfile, indent=4)
 
     return zenodo_data
@@ -235,7 +235,7 @@ def getMirrorFileList(
     out_file = os.path.join(
         helper.MIRROR_FILE_LIST_DIR, "mirror_data_inventory.json"
     )
-    with open(out_file, "w") as f:
+    with open(out_file, "w", encoding='utf-8') as f:
         json.dump(mirror_data, f, indent=4)
 
     return mirror_data

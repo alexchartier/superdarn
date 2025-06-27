@@ -12,16 +12,16 @@ li = ismember(model_coeffs.lat, lat);
 
 %  amplitude (m/s) (east/west/north/up, depending on component)
 amparr = model_coeffs.(sprintf('amp_%s_%s', component, direction))(li, :, mi);
-amp = zeros(size(amparr, 1), 1);
-for i = 1:length(amp)
-    amp(i) = interp1(model_coeffs.lev, amparr(i, :), alt);
+amp = zeros(size(amparr, 1), length(alt));
+for i = 1:size(amp, 1)
+    amp(i, :) = interp1(model_coeffs.lev, amparr(i, :), alt);
 end
 
 % phase (UT of MAX at 0 deg lon)
 phasearr = model_coeffs.(sprintf('phase_%s_%s', component, direction))(li, :, mi);
-phase = zeros(size(phasearr, 1), 1);
-for i = 1:length(phase)
-    phase(i) = interp1(model_coeffs.lev, phasearr(i, :), alt);
+phase = zeros(size(phasearr, 1), length(alt));
+for i = 1:size(phase, 1)
+    phase(i, :) = interp1(model_coeffs.lev, phasearr(i, :), alt);
 end
 
 % propagation direction multiplier used to determine phase at specified longitude
@@ -45,8 +45,37 @@ s = str2double(component(2));
 assert(abs(s) < 5, 'wavenumbers <= 4 supported');
 
 % Wind values at the requested locations
-[~, amp2] = meshgrid(lon, amp);
-[~, phase2] = meshgrid(lon, phase);
-wind = amp2 .* cos(ds_multiplier .* pi ./ 12 .* hour - dirn_multiplier .* ...
-    s * lon2 .* pi ./ 180 - phase2 .* ds_multiplier .* pi ./ 12);
+[lon2, a12] = meshgrid(lon, phase(:, 1));
+[~, p12] = meshgrid(lon, phase(:, 1));
+
+wind = a12 .* cos(ds_multiplier .* pi ./ 12 .* hour - dirn_multiplier .* ...
+    s * lon2 .* pi ./ 180 - p12 .* ds_multiplier .* pi ./ 12);
+
+% amp2 = repmat(amp, [1, 1, length(lon)]);
+% phase2 = repmat(phase, [1, 1, length(lon)]);
+% lon3 = permute(repmat(lon2, [1, 1, size(amp2, 2)]), [1, 3, 2]);
+% hour12 = permute(repmat(hour', [1, size(amp2, 1), size(amp2, 2)]), [2, 3, 1]);
+% wind = amp2 .* cos(ds_multiplier .* pi ./ 12 .* hour12 - dirn_multiplier .* ...
+%     s * lon3 .* pi ./ 180 - phase2 .* ds_multiplier .* pi ./ 12);
+% 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

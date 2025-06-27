@@ -1,5 +1,9 @@
 %% mwr_vs_sd.m
 % Compare the Hankasalmi SuperDARN winds against the Andenes meteor winds
+
+% % TODO:
+%     1. Add Juliusruh 2008
+%     2. Add CTMT with Gaussian kernel
 clear
 
 %% Set inputs

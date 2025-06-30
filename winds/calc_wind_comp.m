@@ -1,8 +1,6 @@
-function wind = calc_wind_comp_v2(hours, lons, model_coeffs, comps, dirn)
+function wind = calc_wind_comp(hours, lons, model_coeffs, comps, dirn)
 
 %% Calculate the wind
-
-
 ds_list = fieldnames(comps);
 ct = 0;
 for ids = 1:length(ds_list)
@@ -10,7 +8,7 @@ for ids = 1:length(ds_list)
     comp_list = comps.(ds);
     for icomp = 1:length(comp_list)
         comp = comp_list{icomp};
-        wind_comp = calc_wind_v2(model_coeffs.(ds), ...
+        wind_comp = calc_wind(model_coeffs.(ds), ...
             lons, hours, comp, dirn, ds);
         
         if ct == 0
@@ -24,7 +22,7 @@ end
 end
 
 %%
-function wind = calc_wind_v2(model_coeffs, lons, lsts, component, ...
+function wind = calc_wind(model_coeffs, lons, lsts, component, ...
     direction, diurnal_semidiurnal)
 
 lats = model_coeffs.lat;
@@ -32,7 +30,6 @@ alts = model_coeffs.lev;
 months = model_coeffs.month;
 
 [alt3, lat3, month3] = meshgrid(alts, lats, months);
-
 
 %  amplitude (m/s) (east/west/north/up, depending on component)
 amp = model_coeffs.(sprintf('amp_%s_%s', component, direction));

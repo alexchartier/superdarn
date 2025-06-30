@@ -1,16 +1,13 @@
-%% calc_full_wind.m
-% returns a u+v lst/lat/lon distribution of model winds at specified alt and month
+%% calc_ctmt_wind.m
+% Calculate CTMT winds
 
 %% Set inputs
 in_fn_sd = '~/data/ctmt/ctmt_semidiurnal_2002_2008.nc';
 in_fn_d = '~/data/ctmt/ctmt_diurnal_2002_2008.nc';
+out_fn = '~/data/ctmt/ctmt.mat';
 coeff_fn = '~/data/ctmt/coeffs.mat';
-hours = 0:24;
-month = 9;
-lats = -90:5:90;
+hours = 0:23;
 lons = 0:15:360;
-alt = 100;
-lst = 0;
 
 comps.d = {'w2', 'w1', 's0', 'e1', 'e2', 'e3'};
 comps.sd = {'w4', 'w3', 'w2', 'w1', 's0', 'e1', 'e2', 'e3'};
@@ -27,19 +24,18 @@ end
 
 alts = model_coeffs.d.lev;
 months = model_coeffs.d.month;
-% wind_array_lst dimensions: [direction, LST, lon, lat, lev, month]
 
 for idn = 1:length(dirns)
     dirn = dirns{idn};
-    wind_component = calc_wind_comp_v2(hours, lons, model_coeffs, comps, dirn);
+    wind_component = calc_wind_comp(hours, lons, model_coeffs, comps, dirn);
 
     if idn == 1
+        % wind_array_lst dimensions: [direction, LST, lon, lat, lev, month]
         wind_array_lst = zeros([2, size(wind_component)]);
     end 
     wc = reshape(wind_component, [1, size(wind_component)]); 
     wind_array_lst(idn, :, :, :, :, :) = wind_array_lst(idn, :, :, :, :, :) + wc;
 end
-
 
 
 %% Convert to UT
@@ -55,12 +51,43 @@ for ilst = 1:length(hours)
     end
 end
 wind_array_ut(:, 25, :, :, :, :) = wind_array_ut(:, 1, :, :, :, :);
+hr_ut = [hours, hours(1) + 24];
+
+%% Save
+ctmt.wind = permute(wind_array_ut, [1, 6, 2, 5, 4, 3]);
+ctmt.dirns = dirns; 
+ctmt.months = double(months);
+ctmt.hours = double(hr_ut);
+ctmt.alts = alts; 
+ctmt.lats = lats; 
+ctmt.lons = lons; 
+savestruct(out_fn, ctmt)
 
 %%
-% contourf(squeeze(wind_array_ut(1, 1, :, :, alts == 100, months==9))')
+% contourf(lons, lats, squeeze(wind_array_ut(1, hi, :, :, alts == 100, months==9))')
+% 
+% for hi = 1:25
+% contourf(lons, lats, squeeze(wind_array_ut(1, hi, :, :, alts == 100, months==9))')
 % colorbar
+% pause(0.5)
+% end
 
-contourf(lons, lats, squeeze(wind_array_lst(1, hours==0, :, :, alts==100, months==9))')
+
+% contourf(lons, lats, squeeze(wind_array_lst(1, hours==0, :, :, alts==100, months==9))')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

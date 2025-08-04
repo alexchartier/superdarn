@@ -7,6 +7,8 @@ Compare SD against CTMT winds
     #3 Confirm whether valsites show better or worse performance against CTMT
     #4 Check if fit gets better when adding SH data
 """
+import sys
+sys.path.append('..')
 from icon_houghmode_viewer import eval_icon_hme
 from itertools import islice
 from line_profiler import LineProfiler
@@ -111,8 +113,6 @@ def site_model_comparison(year, month, sd_fn_fmt, radarcode, lats, lons, alt, mo
     else:
         gridded_model = calc_ctmt_winds.calc_full_wind(month, lats, lons, alt, model)  # CTMT winds on a grid
 
-
-
     model_wind = get_model_wind_at_sd_locs(gridded_model, sd_wind)
     plot_median_wind(sd_wind, radarcode, model=model_wind[radarcode]['model'])
 
@@ -161,6 +161,7 @@ def ctmt_sd_comparison(time, sd_fn_fmt, radar_list, lats, lons, pressure, model_
 
             model = calc_ctmt_winds.calc_full_wind_at_pressure_level(
                 time, lats, lons, pressure, model_coeffs)  # model winds on a grid
+
             scores[i, j] = calc_weighted_rmse(model, sd_wind)
 
     fig, ax = plt.subplots()
@@ -234,6 +235,7 @@ def disp_errs(errs, errs_fitted):
 def error_analysis(year, lats, lons, alt, model, sd_wind, verbose=False):
     """ compare the data against the model. 
     """
+    breakpoint()
     wind = get_model_wind_at_sd_locs(model, sd_wind)
 
     if verbose:

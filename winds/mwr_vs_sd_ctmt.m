@@ -2,9 +2,7 @@
 % Compare the Hankasalmi SuperDARN winds against the Andenes and Juliusruh
 % meteor winds, plus the CTMT model
 
-% % TODO:
-%     1. Add Juliusruh 2008
-%     2. Add CTMT with Gaussian kernel
+
 clear
 
 %% Set inputs
@@ -12,7 +10,6 @@ yr = 2008;
 days = datenum(yr, 1, 1):datenum(yr, 12, 31);
 months = datenum(yr, 1:12, 15);
 radarcode = 'han';
-boresight = -12; 
 hr = 0:23;
 sd_fn_fmt = '~/data/superdarn/meteorwindnc/{yyyy}/{mm}/{yyyymmmdd}.{NAME}.nc';
 mwr_fn_fmt = {'~/data/meteor_winds/SMR_{NAME}_{NAME}_32_{yyyymmdd}', '_{yyyymmdd}.h5'};
@@ -20,14 +17,15 @@ mwr_radars = {'And', 'Jul'};
 ctmt_fn = '~/data/ctmt/ctmt.mat';
 
 %% Load
+sd = load_sd(sd_fn_fmt, radarcode, days, hr);
+boresight = sd.boresight; 
+
 ctmt = loadstruct(ctmt_fn);
 for i = 1:length(mwr_radars)
     mwr_fn = [filename(mwr_fn_fmt{1}, min(days), mwr_radars{i}), ...
         filename(mwr_fn_fmt{2}, max(days), mwr_radars{i})];
     mwr.(mwr_radars{i}) = load_mwr(mwr_fn, boresight);
 end
-
-sd = load_sd(sd_fn_fmt, radarcode, days, hr);
 
 %% Interpolate CTMT to the SuperDARN location and boresight
 Vx_arr = squeeze(ctmt.wind(1, :, :, :, :, :) * sind(boresight) + ...
@@ -50,6 +48,28 @@ for im = 1:length(ctmt.months)
 end
 
 
+%% Plotting winds from meteor model vs count-weighting
+ti = ismember(months(1), days);
+figure
+hold on
+leg = {};
+
+for im = 1:length(mwr_radars)
+    plot(0:23, mwr.(mwr_radars{im}).Vx_med_avg(:, ti), 'LineWidth', 3)
+    plot(0:23, mwr.(mwr_radars{im}).Vx_med_modelavg(:, ti), 'LineWidth', 3)
+    leg = [leg, {sprintf('%s count-weighted', mwr_radars{im}), ...
+        sprintf('%s model-weighted', mwr_radars{im})}];
+end
+
+
+xlabel('Hour (UT)')
+ylabel(sprintf('January median wind %1.0f° E of N (m/s)', boresight))
+xlim([0, 24])
+grid on 
+grid minor
+legend(leg)
+
+
 
 %% Plotting mean winds 1d
 ti = ismember(months, days);
@@ -67,9 +87,6 @@ xlim([0, 24])
 grid on 
 grid minor
 legend([mwr_radars, {'Han', 'CTMT'}])
-
-
-
 
 
 %% Plot winds 2d (contourf)

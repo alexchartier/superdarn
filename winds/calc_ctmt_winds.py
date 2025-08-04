@@ -29,14 +29,15 @@ def main(
     month=9,
 ):
     model_coeffs = load_wind_coeffs(in_fn_d, in_fn_sd)
-    calc_full_wind(month, lats, lons, alt, model_coeffs)
+    wind = calc_full_wind(month, lats, lons, alt, model_coeffs)
 
     # Load the files
     comps = table_of_components()
 
+    wind_dirs = {'u': 'Zonal', 'v': 'Meridional'}
+
     # generate the Oberheide figure
     lsts = [0, 6, 12, 18]
-    wind_dirs = {'u': 'Zonal', 'v': 'Meridional'}
     for dirn, wind_str in wind_dirs.items():
         wind = []
         for lst in lsts:
@@ -61,6 +62,7 @@ def main(
 
         plt.show()
 
+    # Generate a UT wind figure
     wind = summed_wind_components_at_ut(
         lats, lons, alt, hour, month, model_coeffs, comps)
     fig, ax = plt.subplots(2, 1)
@@ -80,16 +82,6 @@ def load_wind_coeffs(in_fn_d, in_fn_sd):
     return {'d': nc_utils.ncread_vars(in_fn_d), 's': nc_utils.ncread_vars(in_fn_sd)}
 
 
-def profile_calc_full_wind(month, lats, lons, alt, model_coeffs):
-    """ wrapper just to support line profiling """
-    lp = LineProfiler()
-    lp.add_function(calc_wind)
-    lp_wrapper = lp(calc_full_wind)
-    model = lp_wrapper(month, lats, lons, alt, model_coeffs)
-    lp.print_stats(output_unit=1)
-    return model
-
-
 def calc_full_wind_at_pressure_level(time, lats, lons, pressure, model_coeffs, plot=False):
     """ returns a u+v lst/lat/lon distribution of model winds at specified alt and month """
     month = time.month
@@ -105,7 +97,7 @@ def calc_full_wind_at_pressure_level(time, lats, lons, pressure, model_coeffs, p
             for lati, lat in enumerate(lats):
                 for loni, lon in enumerate(lons):
                     alt = calc_alt_at_pressure(time, lat, lon, pressure)
-                    print(f'{lat} °N, {lon} °E, {alt:.1f} km')
+                    #print(f'{lat} °N, {lon} °E, {alt:.1f} km')
                     
                     wind_component = calc_wind_component(
                         lat, lon, alt, month, model_coeffs, comps, lst=lst, dirn=dirn)
@@ -121,6 +113,14 @@ def calc_full_wind_at_pressure_level(time, lats, lons, pressure, model_coeffs, p
             lonidx = np.where(np.in1d(UTs, ut))[0]
             wind_array_ut[:, iut, :, lonidx] = wind_array_lst[:, ilst, :, lonidx]
     wind_array_ut[:, 24, :, :] = wind_array_ut[:, 0, :, :]
+    model = {
+        'wind': wind_array_ut,
+        'lats': lats,
+        'lons': lons,
+        'UTs': UTs,
+    }
+
+    return model
 
 
 
@@ -343,4 +343,4 @@ if __name__ == '__main__':
 
 
 
-
+#

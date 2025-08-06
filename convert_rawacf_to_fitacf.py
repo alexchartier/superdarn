@@ -54,7 +54,7 @@ def main(date_string, clobber=False):
         # Convert the RAWACF file to FITACF with version 3.0.
         fitacf_filename_3 = rawacf_filename.replace("rawacf", "fitacf3")
         fitacf_file_3 = os.path.join(fitacf_dir, fitacf_filename_3)
-        convert_rawacf_to_fitacf(rawacf_file, fitacf_file_2, 3.0, clobber=clobber)
+        convert_rawacf_to_fitacf(rawacf_file, fitacf_file_3, 3.0, clobber=clobber)
 
     # Remove multithreading because it caused issues when there were
     # segmentation faults during make_fit for bad files

@@ -83,7 +83,7 @@ def main(date_string):
     
     print("Producing despeckled versions of fitacf3 files...")
     helper.log_message(f"Producing despeckled versions of fitacf3 files for {date_string}")
-    fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3")
+    fitacf3_files = [f for f in glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3") if ".despeck." not in f]    
     for fitacf3_file in fitacf3_files:
         perform_speck_removal(fitacf3_file)
 

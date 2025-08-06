@@ -3,12 +3,12 @@
 
 Daily SuperDARN processing driver.
 
-This version introduces a **--clobber / -c** flag that **forces a full re‑download
-and re‑processing** of *rawACF* files for every radar on each day in the chosen
+This version introduces a **--clobber / -c** flag that **forces a full re-download
+and re-processing** of *rawACF* files for every radar on each day in the chosen
 range. When the flag is **absent** (default), the script keeps its previous
 behaviour: it skips radars that already have a corresponding *fitacf.nc* file.
 
-Incremental re‑processing (default)
+Incremental re-processing (default)
 ----------------------------------
 * For each day, determine which **fitacf.nc** files already exist → *processed*
   radars.
@@ -16,7 +16,7 @@ Incremental re‑processing (default)
 * Run the usual conversion chain.
 * Delete the day's rawACF files (excluding Wallops as before).
 
-Full re‑processing (when `--clobber` is set)
+Full re-processing (when `--clobber` is set)
 -------------------------------------------
 * Ignore any existing **fitacf.nc** files.
 * Download *rawACF* for **all** radars and convert them.
@@ -28,7 +28,7 @@ Examples
 # Incremental (default)
 python3 master_script.py 20250101 20250131
 
-# Force full re‑processing
+# Force full re-processing
 python3 master_script.py 20250101 20250131 --clobber
 ``` 
 """
@@ -161,14 +161,14 @@ def main() -> None:
     # --------------------------------------------------------------
     parser = argparse.ArgumentParser(
         prog="master_script.py",
-        description="Daily SuperDARN processing driver with optional full re‑processing.",
+        description="Daily SuperDARN processing driver with optional full re-processing.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:\n  python3 master_script.py 20250101 20250131\n  python3 master_script.py 20250101 20250131 --clobber""",
     )
 
     parser.add_argument("start", metavar="START_YYYYMMDD", help="Start date (inclusive) in YYYYMMDD format")
     parser.add_argument("end",   metavar="END_YYYYMMDD",   help="End date (inclusive) in YYYYMMDD format")
-    parser.add_argument("-c", "--clobber", action="store_true", help="Force re‑download and re‑process ALL radars")
+    parser.add_argument("-c", "--clobber", action="store_true", help="Force re-download and re-process ALL radars")
 
     args = parser.parse_args()
 

@@ -138,8 +138,8 @@ def process_day(day: datetime, known_radars: set[str], *, clobber: bool = False)
     # 2. Convert chain (rawACF → fitACF → netCDF)
     # ------------------------------------------------------------------
     try:
-        convert_rawacf_to_fitacf.main(day_str)
-        convert_fitacf_to_netcdf.main(day_str)
+        convert_rawacf_to_fitacf.main(day_str, clobber=clobber)
+        convert_fitacf_to_netcdf.main(day_str, clobber=clobber)
         # convert_fitacf_to_grid_netcdf.main(day_str)
         # convert_fitacf_to_meteorwind.main(day_str)
     except Exception as exc:

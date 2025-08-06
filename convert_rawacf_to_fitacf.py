@@ -15,7 +15,7 @@ import helper
 # Global date variable
 date = None
 
-def main(date_string):
+def main(date_string, clobber=False):
     global date
     date = datetime.strptime(date_string, '%Y%m%d')
 
@@ -49,12 +49,12 @@ def main(date_string):
         # Convert the RAWACF file to FITACF with version 2.5.
         fitacf_filename_2 = rawacf_filename.replace("rawacf", "fitacf2")
         fitacf_file_2 = os.path.join(fitacf_dir, fitacf_filename_2)
-        convert_rawacf_to_fitacf(rawacf_file, fitacf_file_2, 2.5)
+        convert_rawacf_to_fitacf(rawacf_file, fitacf_file_2, 2.5, clobber=clobber)
 
         # Convert the RAWACF file to FITACF with version 3.0.
         fitacf_filename_3 = rawacf_filename.replace("rawacf", "fitacf3")
         fitacf_file_3 = os.path.join(fitacf_dir, fitacf_filename_3)
-        convert_rawacf_to_fitacf(rawacf_file, fitacf_file_3, 3.0)
+        convert_rawacf_to_fitacf(rawacf_file, fitacf_file_2, 3.0, clobber=clobber)
 
     # Remove multithreading because it caused issues when there were
     # segmentation faults during make_fit for bad files
@@ -97,7 +97,7 @@ def main(date_string):
     #     # Wait for all tasks to complete
     #     concurrent.futures.wait(futures)
 
-def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
+def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version, *, clobber=False):
     """
     Converts a rawACF file to a fitACF file.
 
@@ -106,6 +106,11 @@ def convert_rawacf_to_fitacf(rawacf_file, fitacf_file, version):
         fitacf_file: The path to the FITACF file to be created.
         version:     The fitACF version (2.5 or 3.0)
     """
+    # skip unless --clobber
+    if not clobber and os.path.exists(fitacf_file):
+        print(f"Exists - skip {fitacf_file}")
+        helper.log_message(f"Skip existing {fitacf_file}")
+        return
 
     fit_version = "-fitacf2" if version == 2.5 else "-fitacf3"
     command = f"make_fit {fit_version} {rawacf_file} > {fitacf_file}"
@@ -247,5 +252,5 @@ if __name__ == "__main__":
         print("Date argument must be in 'YYYYMMDD' format.")
         sys.exit(1)
 
-    main(date_string)
+    main(date_string, clobber="--clobber" in sys.argv[2:])
 

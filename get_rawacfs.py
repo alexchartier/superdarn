@@ -121,6 +121,8 @@ def download_files_from_bas(rawDir, radar, show_progress):
 
     rsyncProcess = subprocess.Popen(rsyncCommand, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
 
+    files_copied = 0
+
     for line in rsyncProcess.stdout:
         if line.strip():
             if show_progress:
@@ -128,13 +130,17 @@ def download_files_from_bas(rawDir, radar, show_progress):
             else:
                 cleaned_line = line.strip()
                 if dateString in cleaned_line:
+                    files_copied += 1
                     helper.log_message(f"Copied {cleaned_line}")
                     print(f"Copied {cleaned_line}")
 
     rsyncExitCode = rsyncProcess.wait()
 
     if rsyncExitCode == 0:
-        print(f'\nSuccessfully downloaded {dateString} rawACFs from BAS')
+        if files_copied > 0:
+            print(f'\nSuccessfully downloaded {dateString} rawACFs from BAS')
+        else:
+            print(f'\nNo {dateString} rawACFs found on BAS for the specified radar(s).')
     else:
         # Send an email and end the script if rsync didn't succeed
         emailSubject = f'"Unsuccessful attempt to copy {dateString} BAS rawACF data"'

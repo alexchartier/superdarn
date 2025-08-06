@@ -121,6 +121,7 @@ def process_day(day: datetime, known_radars: set[str], *, clobber: bool = False)
 
     action = "(clobber) processing" if clobber else "need processing"
     print(f"{day_str}: {len(pending)} radars {action} → {', '.join(pending)}")
+    print(f"Already done: {', '.join(already_done)}")
 
     # ------------------------------------------------------------------
     # 1. Download rawACF for each *pending* radar

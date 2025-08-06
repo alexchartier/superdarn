@@ -3,25 +3,40 @@
 
 Daily SuperDARN processing driver.
 
-This updated version adds **incremental re-processing** for the last *N*
-days (default: 30) so that if new *rawACF* files appear on the BAS
-server **after** an earlier run, only the *missing* radars are pulled
-and processed.
+This version introduces a **--clobber / -c** flag that **forces a full re‑download
+and re‑processing** of *rawACF* files for every radar on each day in the chosen
+range. When the flag is **absent** (default), the script keeps its previous
+behaviour: it skips radars that already have a corresponding *fitacf.nc* file.
 
-Key workflow per day
---------------------
-1. Determine which **fitacf.nc** files already exist → *processed* radars.
-2. Download *rawACF* only for radars **not** in that set.
-3. Run the normal → *fitacf2/3 → despeck.fitacf3 → netCDF* chain.
-4. Delete the day's rawACF (excluding Wallops files as before).
+Incremental re‑processing (default)
+----------------------------------
+* For each day, determine which **fitacf.nc** files already exist → *processed*
+  radars.
+* Download *rawACF* only for radars **not** in that set.
+* Run the usual conversion chain.
+* Delete the day's rawACF files (excluding Wallops as before).
 
+Full re‑processing (when `--clobber` is set)
+-------------------------------------------
+* Ignore any existing **fitacf.nc** files.
+* Download *rawACF* for **all** radars and convert them.
+* Delete rawACF files afterwards.
+
+Examples
+~~~~~~~~
+```bash
+# Incremental (default)
 python3 master_script.py 20250101 20250131
-```
+
+# Force full re‑processing
+python3 master_script.py 20250101 20250131 --clobber
+``` 
 """
 
 import os
 import sys
 import time
+import argparse
 from glob import glob
 from datetime import datetime, timedelta
 
@@ -34,7 +49,6 @@ import convert_fitacf_to_netcdf
 # import convert_fitacf_to_meteorwind        # optional
 
 LOG_FILE = os.path.join(helper.LOG_DIR, "master_log.txt")
-
 
 # ----------------------------------------------------------------------
 # Utility helpers
@@ -90,19 +104,23 @@ def delete_rawacfs(day: datetime) -> None:
 # ----------------------------------------------------------------------
 # Main daily processing routine
 # ----------------------------------------------------------------------
-def process_day(day: datetime, known_radars: set[str]) -> None:
+def process_day(day: datetime, known_radars: set[str], *, clobber: bool = False) -> None:
     day_str = day.strftime('%Y%m%d')
     log_message(f"=== {day_str}: start ===")
 
-    already_done = list_processed_radars(day)
-    pending      = sorted(known_radars - already_done)
+    if clobber:
+        pending = sorted(known_radars)
+    else:
+        already_done = list_processed_radars(day)
+        pending      = sorted(known_radars - already_done)
 
     if not pending:
         print(f"{day_str}: all radars already processed - skipping")
         log_message(f"{day_str}: nothing to do")
         return
 
-    print(f"{day_str}: {len(pending)} radars need processing → {', '.join(pending)}")
+    action = "(clobber) processing" if clobber else "need processing"
+    print(f"{day_str}: {len(pending)} radars {action} → {', '.join(pending)}")
 
     # ------------------------------------------------------------------
     # 1. Download rawACF for each *pending* radar
@@ -139,20 +157,32 @@ def process_day(day: datetime, known_radars: set[str]) -> None:
 # ----------------------------------------------------------------------
 def main() -> None:
     # --------------------------------------------------------------
-    # Date range parsing
+    # Argument parsing
     # --------------------------------------------------------------
-    if len(sys.argv) == 3:
-        # Explicit range
-        try:
-            start = datetime.strptime(sys.argv[1], '%Y%m%d')
-            end   = datetime.strptime(sys.argv[2], '%Y%m%d')
-        except ValueError:
-            sys.exit('Dates must be in YYYYMMDD format')
-    else:
-        sys.exit('Usage: python3 master_script.py [START_YYYYMMDD END_YYYYMMDD]')
+    parser = argparse.ArgumentParser(
+        prog="master_script.py",
+        description="Daily SuperDARN processing driver with optional full re‑processing.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:\n  python3 master_script.py 20250101 20250131\n  python3 master_script.py 20250101 20250131 --clobber""",
+    )
+
+    parser.add_argument("start", metavar="START_YYYYMMDD", help="Start date (inclusive) in YYYYMMDD format")
+    parser.add_argument("end",   metavar="END_YYYYMMDD",   help="End date (inclusive) in YYYYMMDD format")
+    parser.add_argument("-c", "--clobber", action="store_true", help="Force re‑download and re‑process ALL radars")
+
+    args = parser.parse_args()
+
+    # --------------------------------------------------------------
+    # Date validation
+    # --------------------------------------------------------------
+    try:
+        start = datetime.strptime(args.start, '%Y%m%d')
+        end   = datetime.strptime(args.end,   '%Y%m%d')
+    except ValueError:
+        parser.error('Dates must be in YYYYMMDD format')
 
     if start > end:
-        sys.exit('Start-date must be ≤ end-date')
+        parser.error('Start-date must be ≤ end-date')
 
     known_radars = list_known_radars()
     if not known_radars:
@@ -162,7 +192,7 @@ def main() -> None:
     current = start
     while current <= end:
         t0 = time.time()
-        process_day(current, known_radars)
+        process_day(current, known_radars, clobber=args.clobber)
         elapsed = helper.get_time_string(time.time() - t0)
         print(f"{current.strftime('%Y-%m-%d')}: finished in {elapsed}\n")
         current += timedelta(days=1)

@@ -29,7 +29,7 @@ SKIP_EXISTING = True
 # Global date variable
 date = None
 
-def main(date_string):
+def main(date_string, clobber=False):
     print(f'\n{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to netCDF')
     print("===================================================")
     helper.log_message(f"Starting to convert {date_string} fitACFs to netCDF")
@@ -61,6 +61,12 @@ def main(date_string):
         fitacf_filename = os.path.basename(fitacf_file)
         fitacf_nc_filename = fitacf_filename + ".nc"
         netcdf_file = os.path.join(fitacf_nc_dir, fitacf_nc_filename)
+
+        # skip unless --clobber
+        if os.path.exists(netcdf_file) and not clobber:
+            print(f"Exists - skip {netcdf_file}")
+            helper.log_message(f"Skip existing {netcdf_file}")
+            continue
 
         radar_code = fitacf_filename.split('.')[1]
         radar_info_t = id_hdw_params_t(date, radar_info[radar_code])
@@ -369,4 +375,4 @@ if __name__ == '__main__':
         print("Date argument must be in 'YYYYMMDD' format.")
         sys.exit(1)
 
-    main(date_string)
+    main(date_string, clobber="--clobber" in sys.argv[2:])

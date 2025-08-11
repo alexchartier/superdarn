@@ -42,7 +42,7 @@ MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 SHAPE_MISMATCH_ERROR_CODE = 2
 MIN_FITACF_FILE_SIZE = 1E5  # bytes
 MAKE_FIT_VERSIONS = [3.0, 2.5]
-FIT_EXT = '*.fit'
+FIT_EXT = '*.fitacf3'
 SKIP_EXISTING = True
 
 
@@ -65,8 +65,7 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
         os.makedirs(netDir, exist_ok=True)
 
         # Loop over the files
-        #fitFnames = glob.glob(os.path.join(fitDir, FIT_EXT))
-        fitFnames = "/Users/chartat1/data/superdarn/fitacf/20231118_12_to_16.wal.a.fitacf",
+        fitFnames = glob.glob(os.path.join(fitDir, FIT_EXT))
         print('Processing %i %s files in %s on %s' %
               (len(fitFnames), FIT_EXT, fitDir, time.strftime('%Y/%m')))
         for fit_fn in fitFnames:
@@ -232,7 +231,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         # Define fields
         short_flds = 'tfreq', 'noise.sky', 'cp',
         fov_flds = 'mjd', 'beam', 'range', 'lat', 'lon',
-        data_flds = 'p_l', 'v', 'v_e', 'gflg',
+        data_flds = 'p_l', 'v', 'v_e', 'w_l', 'w_l_e', 'gflg',
         elv_flds = 'elv', 'elv_low', 'elv_high',
 
         # Figure out if we have elevation information
@@ -350,6 +349,8 @@ def def_vars():
         'p_l': dict({'units': 'dB', 'long_name': 'Lambda fit SNR'}, **stdin_flt),
         'v': dict({'units': 'm/s', 'long_name': 'LOS Vel. (+ve away from radar)'}, **stdin_flt),
         'v_e': dict({'units': 'm/s', 'long_name': 'LOS Vel. error'}, **stdin_flt),
+        'w_l': dict({'units': 'm/s', 'long_name': 'Spectral Width (lambda fit)'}, **stdin_flt),
+        'w_l_e': dict({'units': 'm/s', 'long_name': 'Spectral Width error (lambda fit)'}, **stdin_flt),
         'gflg': dict({'long_name': 'Ground scatter flag for ACF, 1 - ground scatter, 0 - other scatter'}, **stdin_int),
         'elv': dict({'units': 'degrees', 'long_name': 'Elevation angle estimate'}, **stdin_flt),
         'elv_low': dict({'units': 'degrees', 'long_name': 'Lowest elevation angle estimate'}, **stdin_flt),

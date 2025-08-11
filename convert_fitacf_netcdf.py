@@ -39,10 +39,10 @@ def main(date_string):
     date = datetime.strptime(date_string, '%Y%m%d')
     helper.PROCESSING_ISSUE_DIR = '/Users/chartat1/Downloads/' 
     #fitacf_dir = date.strftime(helper.FITACF_DIR_FMT)
-    fitacf_nc_dir = date.strftime(helper.FIT_NC_DIR_FMT)
+    #fitacf_nc_dir = date.strftime(helper.FIT_NC_DIR_FMT)
     fitacf_nc_dir = '/Users/chartat1/Downloads/'
     #os.makedirs(fitacf_nc_dir, exist_ok=True)
-    fitacf_dir = '/Users/chartat1/data/superdarn/20220204/'
+    fitacf_dir = '/Users/chartat1/data/superdarn/fitacf/'
 
     radar_info = get_radar_params(os.getenv('SD_HDWPATH'))
 
@@ -187,7 +187,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         # Define fields 
         short_flds = 'tfreq', 'noise.sky', 'cp',
         fov_flds = 'mjd', 'beam', 'range', 'lat', 'lon', 
-        data_flds = 'p_l', 'v', 'v_e', 'gflg', 
+        data_flds = 'p_l', 'v', 'v_e', 'w_l', 'w_l_e', 'gflg', 
         elv_flds = 'elv', 'elv_low', 'elv_high',
 
         # Figure out if we have elevation information

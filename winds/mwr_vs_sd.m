@@ -16,7 +16,7 @@ mwr_fn_fmt = {'~/data/meteor_winds/SMR_And_And_32_{yyyymmdd}', '_{yyyymmdd}.h5'}
 
 %% Load
 mwr_fn = [filename(mwr_fn_fmt{1}, min(times)), filename(mwr_fn_fmt{2}, max(times))];
-mwr = load_mwr(mwr_fn);
+mwr = load_mwr(mwr_fn, boresight);
 sd.Vx = zeros(size(mwr.u0)) * NaN;
 sd.time = zeros(size(mwr.u0)) * NaN;
 hr = 0:23;
@@ -116,7 +116,7 @@ nexttile
 contourf(sd.Vx_med(:, ti))
 clim(climit)
 ylabel('Hour (UT)')
-% cb = colorbar;
+% cb = colorbar;!
 % ylabel(cb, '31-day mean Wind in SD boresight direction (m/s)', 'FontSize', 24)
 
 title(sprintf('Hankasalmi SD (not height resolved) @ %1.1f° N, %1.1f° E', sd.pos))

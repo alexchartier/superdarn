@@ -4,7 +4,7 @@
 % lat = 60;
 % lon = 15;
 % months = datenum(yr, 1:12, 15);
-% 
+%
 % Peak = zeros(length(hrs), length(months));
 % FWHM = zeros(length(hrs), length(months));
 % for i = 1:length(hrs)
@@ -16,22 +16,22 @@
 %
 % tiledlayout(2, 1, 'TileSpacing', 'compact')
 % nexttile
-% [c, h] = contourf(1:12, hrs, Peak); 
+% [c, h] = contourf(1:12, hrs, Peak);
 % clabel(c, h)
-% clim([85, 95]); 
-% set(gca, 'XTickLabels', '') 
+% clim([85, 95]);
+% set(gca, 'XTickLabels', '')
 % ylabel('Hour (UT)')
-% hc = colorbar; 
+% hc = colorbar;
 % ylabel(hc, 'Peak height (km)')
 %
 %
 % nexttile
-% [c, h] = contourf(1:12, hrs, FWHM); 
+% [c, h] = contourf(1:12, hrs, FWHM);
 % clabel(c, h)
 % clim([5, 12]);
 % xlabel('Month')
 % ylabel('Hour (UT)')
-% hc = colorbar; 
+% hc = colorbar;
 % ylabel(hc, 'Full Width Half Max (km)')
 
 %% Inputs
@@ -43,30 +43,42 @@ meteor_angle_fn = '~/data/meteor_winds/angles.nc';
 msis_fn_fmt = '~/data/meteor_winds/msis_{yyyy}_%1.1fN_%1.1fE.mat';
 year = 2008;
 Names = {'apex', 'anti_apex', 'helion', 'anti_helion', 'north_toroidal', 'south_toroidal'};
-Weights = [10, 10, 35, 35, 10, 10];
+% Weights = [10, 10, 35, 35, 10, 10];
 alts = 80:600;
-lat = 69.3; 
+lat = 69.3;
 lon = 16;
 
 % JFC=30, HTC=55. Note Nesvorny (2010) has JFC around 15, but there's a
 % double peak in the distribution and the <30 km/s are not radar-observable
 Geocentric_Speeds = [55, 55, 30, 30, 55, 55];
 
-%% load 
+%% load
 angles = load_nc(meteor_angle_fn);
 % Note angles are the same every year
 angles.times = datenum(year, double(angles.month),...
-    double(angles.day), double(angles.hour), double(angles.minute), 0); 
+    double(angles.day), double(angles.hour), double(angles.minute), 0);
 
 times = repmat(datenum(year, 1:12, 15), [24, 1]) + [0:23]'/24;
 
-
-%% Speeds 
+%% Speeds
 for i = 1:length(Names)
     speeds.(Names{i}) = sind(angles.(Names{i})) .* Geocentric_Speeds(i);
+
+    % Interpolate to station
+    for t1 = 1:size(times, 1)
+        for t2 = 1:size(times, 2)
+            ti = angles.times == times(t1, t2);
+            speeds_s.(Names{i})(t1, t2) = interp2(...
+                angles.lat, angles.lon, squeeze(speeds.(Names{i})(:, :, ti)), ...
+                lat, lon);          
+            angles_s.(Names{i})(t1, t2) = interp2(...
+                angles.lat, angles.lon, squeeze(angles.(Names{i})(:, :, ti)), ...
+                lat, lon);          
+        end
+    end
 end
 
-%% MSIS height-integrated density above X km
+%% MSIS height-integrated density above X km at the station
 msis_fn = filename(sprintf(msis_fn_fmt, lat, lon), times(1));
 try
     msis = loadstruct(msis_fn);
@@ -81,16 +93,64 @@ catch
     end
 end
 
-%% Interpolate to Andenes, see what's happening
+
+%% Calculate weighted mean
+vals = zeros([6, numel(speeds_s.apex(:))]); 
+
+for i = 1:length(Names)
+    a1 = speeds_s.(Names{i});
+    vals(i, :) = a1(:);
+end
+
+Weights = [20, 20, 0, 0, 20, 20];
+
+weights_2d = repmat(Weights', [1, numel(speeds_s.apex(:))]);
+weights_2d(vals <= 0) = 0;  % zero out the below-horizon meteors
+for i = 1:length(Names)
+    angle_weight = sind(angles_s.(Names{i}));
+    weights_2d(i, :) = weights_2d(i, :) .* angle_weight(:)';
+end
+
+speeds_s.weighted_mean = squeeze(permute(reshape(...
+    sum(vals .* weights_2d, 1) ./ sum(weights_2d, 1), ...
+    size(speeds_s.apex)), [3, 1, 2]));
+
+% calculate spread
 
 
+% estimate peak height
+pht_norm = reshape(normalize(msis(:))/10 + normalize(speeds_s.weighted_mean(:)), ...
+    size(msis));
 
-%% 
-LT = (time - floor(time)) * 24 + lon / 360 * 24;
-LT(LT >= 24) = LT(LT > 24) - 24;
-LT(LT < 0) = LT(LT > 24) + 24;
+close
+% plot
+tiledlayout(3, 1)
+nexttile
+contourf(speeds_s.weighted_mean) 
+xlabel('Month')
+ylabel('Time (UT)')
+colorbar
 
-doy = day(datetime(time, 'ConvertFrom', 'datenum'), 'dayofyear'); 
+nexttile
+contourf(msis) 
+xlabel('Month')
+ylabel('Time (UT)')
+colorbar
+
+nexttile
+contourf(pht_norm) 
+xlabel('Month')
+ylabel('Time (UT)')
+clim([-2, 2])
+colorbar
+
+
+%%
+% LT = (time - floor(time)) * 24 + lon / 360 * 24;
+% LT(LT >= 24) = LT(LT > 24) - 24;
+% LT(LT < 0) = LT(LT > 24) + 24;
+% 
+% doy = day(datetime(time, 'ConvertFrom', 'datenum'), 'dayofyear');
 
 %%
 

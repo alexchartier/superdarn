@@ -29,11 +29,6 @@ for i = 1:4800
     % fprintf('%s\n', MLP(i).fname)
 end
 
-lenv = length(unique(v))
-lenm = length(unique(mass))
-lenE = length(unique(Eletter))
-len = lenv* lenm * lenE
-lentot = length(unique(fn))
 
 
 %% Load data

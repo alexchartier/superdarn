@@ -43,10 +43,18 @@ meteor_angle_fn = '~/data/meteor_winds/angles.nc';
 msis_fn_fmt = '~/data/meteor_winds/msis_{yyyy}_%1.1fN_%1.1fE.mat';
 year = 2008;
 Names = {'apex', 'anti_apex', 'helion', 'anti_helion', 'north_toroidal', 'south_toroidal'};
+Names2 = {'north_apex', 'south_apex', 'helion', 'antihelion', 'north_toroidal', 'south_toroidal'};
+
+LTmax = [270, 270, 350, 190, 270, 270] ./ 360 .* 24 - 12; % Based on Lambda values
+
 % Weights = [10, 10, 35, 35, 10, 10];
-alts = 80:600;
+alts = 80:100;
 lat = 69.3;
 lon = 16;
+
+% lat = 54.6;
+% lon = 13.4;
+
 
 % JFC=30, HTC=55. Note Nesvorny (2010) has JFC around 15, but there's a
 % double peak in the distribution and the <30 km/s are not radar-observable
@@ -57,8 +65,14 @@ angles = load_nc(meteor_angle_fn);
 % Note angles are the same every year
 angles.times = datenum(year, double(angles.month),...
     double(angles.day), double(angles.hour), double(angles.minute), 0);
+sources = sporadic_source_model(); 
 
+%% Time calculations
 times = repmat(datenum(year, 1:12, 15), [24, 1]) + [0:23]'/24;
+LTs = (times - floor(times) + lon / 360) * 24;
+LTs(LTs >= 24) = LTs(LTs >= 24) - 24;
+LTs(LTs < 0) = LTs(LTs < 0) + 24;
+
 
 %% Speeds
 for i = 1:length(Names)
@@ -91,6 +105,7 @@ catch
             msis(t1, t2) = calc_msis_density(times(t1, t2), alts, lat, lon);
         end
     end
+    savestruct(msis_fn, msis)
 end
 
 
@@ -102,48 +117,109 @@ for i = 1:length(Names)
     vals(i, :) = a1(:);
 end
 
-Weights = [20, 20, 0, 0, 20, 20];
+% weights_2d = repmat(Weights', [1, numel(speeds_s.apex(:))]);
+source_times = datenum(year, 1, 1:366);
+ti = ismember(source_times, floor(times));
 
-weights_2d = repmat(Weights', [1, numel(speeds_s.apex(:))]);
-weights_2d(vals <= 0) = 0;  % zero out the below-horizon meteors
+weights_2d = zeros(size(vals));
 for i = 1:length(Names)
-    angle_weight = sind(angles_s.(Names{i}));
-    weights_2d(i, :) = weights_2d(i, :) .* angle_weight(:)';
+    dailyavg_weights = sources.(Names2{i})(ti);
+    LT_weight = cosd((LTs - LTmax(i))/24 * 360);
+    weights_i = repmat(dailyavg_weights', [24, 1]) .* LT_weight;
+    weights_2d(i, :) = weights_i(:);
+    % weights_2d(i, :) = weights_2d(i, :) .* LT_weight(:)';% angle_weight(:)';
+    
 end
+
+weights_2d(vals <= 0) = 0;  % zero out the below-horizon meteors
+weights_2d(weights_2d < 0) = 0;  % zero out negative weights
+
 
 speeds_s.weighted_mean = squeeze(permute(reshape(...
     sum(vals .* weights_2d, 1) ./ sum(weights_2d, 1), ...
     size(speeds_s.apex)), [3, 1, 2]));
 
 % calculate spread
+spread = zeros(size(weights_2d, 2), 1);
+for i = 1:size(weights_2d, 2)
+    spread(i) = std(vals(:, i), weights_2d(:, i));
+end
 
+spread = reshape(spread, [24, 12]);
 
-% estimate peak height
+%% estimate peak height and FWHM
 pht_norm = reshape(normalize(msis(:))/10 + normalize(speeds_s.weighted_mean(:)), ...
-    size(msis));
+    size(msis))  + 91;
+pht_norm(isnan(pht_norm)) = 90;
 
+FWHM = reshape(normalize(msis(:)) + 0.1 * normalize(speeds_s.weighted_mean(:)), ...
+    size(msis)) * 2 + 8;
+
+
+
+%% Plot model output
 close
-% plot
-tiledlayout(3, 1)
-nexttile
-contourf(speeds_s.weighted_mean) 
-xlabel('Month')
-ylabel('Time (UT)')
-colorbar
+tiledlayout(2, 1, 'TileSpacing', 'tight');
 
 nexttile
-contourf(msis) 
-xlabel('Month')
+[c, h] = contourf(pht_norm);
+clabel(c, h)
+% xlabel('Month')
 ylabel('Time (UT)')
-colorbar
+set(gca, 'XTickLabels', '')
+clim([85, 95])
+hc = colorbar;
+ylabel(hc, 'Peak height (km)')
+title('Peak height model')
 
 nexttile
-contourf(pht_norm) 
+[c, h] = contourf(FWHM);
+clabel(c, h)
 xlabel('Month')
 ylabel('Time (UT)')
-clim([-2, 2])
-colorbar
+clim([4, 12])
+hc = colorbar;
+ylabel(hc, 'Full Width @ Half Max (km)')
 
+
+
+
+
+%% plot calculated parameters
+tiledlayout(4, 1, 'TileSpacing', 'tight');
+speeds_s.weighted_mean(isnan(speeds_s.weighted_mean)) = 0;
+
+nexttile
+[c, h] = contourf(speeds_s.weighted_mean);
+clabel(c, h)
+% xlabel('Month')
+set(gca, 'XTickLabels', '')
+ylabel('Time (UT)')
+clim([0, 50])
+hc = colorbar;
+ylabel(hc, 'Speed (km/s)')
+title('Mean effective speed')
+
+nexttile
+spread(isnan(spread)) = 0;
+[c, h] = contourf(spread);
+clabel(c, h)
+%xlabel('Month')
+set(gca, 'XTickLabels', '')
+ylabel('Time (UT)')
+clim([0, 20])
+hc = colorbar;
+ylabel(hc, 'Speed (km/s)')
+title('Spread of speeds')
+
+nexttile
+[c, h] = contourf(msis);
+clabel(c, h)
+xlabel('Month')
+ylabel('Time (UT)')
+hc = colorbar;
+ylabel(hc, 'Density (kg/m^{2})')
+title('MSIS density between 80-100 km')
 
 %%
 % LT = (time - floor(time)) * 24 + lon / 360 * 24;

@@ -3,7 +3,7 @@
 % times = datenum(2008, 1, 1):datenum(2008, 12, 31);
 % months = datenum(2008, 1:12, 15);
 yr = 2008;
-station = 'JUL';
+station = 'AND';
 times = datenum(yr, 1, 1):datenum(yr, 12, 31);
 months = datenum(yr, 1:12, 15);
 hrs = 0:23;
@@ -80,7 +80,7 @@ nexttile
 clabel(c, h)
 xlabel('Month'); 
 ylabel('Hour (UT)'); 
-clim([5, 12])
+clim([4, 12])
 hc = colorbar; 
 ylabel(hc, 'Full Width @ Half Max (km)')
 

@@ -42,7 +42,7 @@ MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 SHAPE_MISMATCH_ERROR_CODE = 2
 MIN_FITACF_FILE_SIZE = 1E5  # bytes
 MAKE_FIT_VERSIONS = [3.0, 2.5]
-FIT_EXT = '*.fitacf3'
+FIT_EXT = '*.fit'
 SKIP_EXISTING = True
 
 
@@ -224,7 +224,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
             frang=bmdata['frang'], rsep=bmdata['rsep'], site=None, nbeams=int(radar_info['maxbeams']),
             ngates=int(radar_info['maxrg']), bmsep=radar_info['beamsep'], recrise=radar_info['risetime'], siteLat=radar_info['glat'],
             siteLon=radar_info['glon'], siteBore=radar_info['boresight'], siteAlt=radar_info['alt'], siteYear=date.year,
-            elevation=None, altitude=300., hop=None, model='IS',
+            elevation=None, altitude=300., hop=None, model='C',
             coords='geo', date_time=date, coord_alt=0., fov_dir='front',
         )
 

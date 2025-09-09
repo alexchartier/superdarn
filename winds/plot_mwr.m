@@ -32,7 +32,9 @@ rgb = [ ...
    158     1    66  ] / 255;
 
 %% Plot
-tidx = mwr.Time(1, :) >= mwr.Time(1) & mwr.Time(1, :) <= mwr.Time(31*24);
+t1 = datenum(2008, 5, 15);
+t2 = datenum(2008, 7, 15);
+tidx = mwr.Time(1, :) >= t1 & mwr.Time(1, :) <= t2;
 tiledlayout(2,1, 'TileSpacing', 'compact', 'Padding', 'tight'); 
 nexttile
 

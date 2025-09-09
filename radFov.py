@@ -418,12 +418,12 @@ class fov(object):
                     # Then calculate projections
                     latc, lonc = calcFieldPnt(siteLat, siteLon, siteAlt * 1e-3,
                                               siteBore, boff_center[ib],
-                                              srang_center[ig], elevation=telv,
+                                              srang_center[ig], adjusted_sr=False, elevation=telv,
                                               altitude=talt, hop=thop,
                                               model=model, fov_dir=fov_dir)
                     late, lone = calcFieldPnt(siteLat, siteLon, siteAlt * 1e-3,
                                               siteBore, boff_edge[ib],
-                                              srang_edge[ig], elevation=telv,
+                                              srang_edge[ig], adjusted_sr=False, elevation=telv,
                                               altitude=talt, hop=thop,
                                               model=model, fov_dir=fov_dir)
                 else:

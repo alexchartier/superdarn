@@ -1,35 +1,42 @@
-function [Peak, FWHM] = mwr_ct_model_v2(year, lat, lon, weights, meteor_angle_fn, msis_fn_fmt);
+function [speed, msis] = ...
+    meteor_speed_density_model(year, lat, lon, meteor_angle_fn, msis_fn_fmt)
+%
 % year = 2008;
 % lat = 69.3;
-% lon = 16;
+% lon = 0;
 % weights = [0.2, 1.2, 2, 0.2, 91, 8];
 % meteor_angle_fn = '~/data/meteor_winds/angles_v1.nc';
 % msis_fn_fmt = '~/data/meteor_winds/msis_{yyyy}_%1.1fN_%1.1fE.mat';
 % 
-% [Peak, FWHM] = mwr_ct_model_v2(year, lat, lon, weights, meteor_angle_fn, msis_fn_fmt);
+% [Peak, FWHM, speed, msis] = meteor_speed_density_model(year, lat, lon, weights, ...
+%   meteor_angle_fn, msis_fn_fmt);
+%
+%
 %
 % close
 % tiledlayout(2, 1, 'TileSpacing', 'tight');
 % 
 % nexttile
-% [c, h] = contourf(Peak);
+% [c, h] = contourf(speed);
 % clabel(c, h)
 % % xlabel('Month')
-% ylabel('Time (UT)')
+% ylabel('Time (LT)')
 % set(gca, 'XTickLabels', '')
-% clim([85, 95])
+% % clim([85, 95])
 % hc = colorbar;
-% ylabel(hc, 'Peak height (km)')
-% title('Peak height model')
+% ylabel(hc, 'Weighted mean eff. spd. (km/s)')
+% colormap(gca, 'cool')
+%
 % 
 % nexttile
-% [c, h] = contourf(FWHM);
+% [c, h] = contourf(msis);
 % clabel(c, h)
 % xlabel('Month')
-% ylabel('Time (UT)')
-% clim([4, 12])
+% ylabel('Time (LT)')
+% % clim([4, 12])
 % hc = colorbar;
-% ylabel(hc, 'Full Width @ Half Max (km)')
+% ylabel(hc, '80-100 integrated MSIS density (kg/m^{2})')
+% colormap(gca, 'Copper')
 
 
 %% Inputs
@@ -130,84 +137,13 @@ speeds_s.weighted_mean = squeeze(permute(reshape(...
     sum(vals .* weights_2d, 1) ./ sum(weights_2d, 1), ...
     size(speeds_s.north_apex_el)), [3, 1, 2]));
 
-% calculate spread
+speed = speeds_s.weighted_mean;
+
+%% calculate spread
 spread = zeros(size(weights_2d, 2), 1);
 for i = 1:size(weights_2d, 2)
     spread(i) = std(vals(:, i), weights_2d(:, i));
 end
 
 spread = reshape(spread, [24, 12]);
-
-
-%% estimate peak height and FWHM
-Peak = reshape(normalize(msis(:)) * weights(1) + normalize(speeds_s.weighted_mean(:)) * weights(2), ...
-    size(msis)) + weights(5);
-Peak(isnan(Peak)) = 90;
-
-FWHM = reshape(normalize(msis(:)) * weights(3) + normalize(speeds_s.weighted_mean(:)) * weights(4), ...
-    size(msis)) + weights(6);
-
-
-%% Plot model output
-% close
-% tiledlayout(2, 1, 'TileSpacing', 'tight');
-% 
-% nexttile
-% [c, h] = contourf(Peak);
-% clabel(c, h)
-% % xlabel('Month')
-% ylabel('Time (UT)')
-% set(gca, 'XTickLabels', '')
-% clim([85, 95])
-% hc = colorbar;
-% ylabel(hc, 'Peak height (km)')
-% title('Peak height model')
-% 
-% nexttile
-% [c, h] = contourf(FWHM);
-% clabel(c, h)
-% xlabel('Month')
-% ylabel('Time (UT)')
-% clim([4, 12])
-% hc = colorbar;
-% ylabel(hc, 'Full Width @ Half Max (km)')
-
-
-%% plot calculated parameters
-% tiledlayout(4, 1, 'TileSpacing', 'tight');
-% speeds_s.weighted_mean(isnan(speeds_s.weighted_mean)) = 0;
-% 
-% nexttile
-% [c, h] = contourf(speeds_s.weighted_mean);
-% clabel(c, h)
-% % xlabel('Month')
-% set(gca, 'XTickLabels', '')
-% ylabel('Time (UT)')
-% clim([0, 50])
-% hc = colorbar;
-% ylabel(hc, 'Speed (km/s)')
-% title('Mean effective speed')
-% 
-% nexttile
-% spread(isnan(spread)) = 0;
-% [c, h] = contourf(spread);
-% clabel(c, h)
-% %xlabel('Month')
-% set(gca, 'XTickLabels', '')
-% ylabel('Time (UT)')
-% clim([0, 20])
-% hc = colorbar;
-% ylabel(hc, 'Speed (km/s)')
-% title('Spread of speeds')
-% 
-% nexttile
-% [c, h] = contourf(msis);
-% clabel(c, h)
-% xlabel('Month')
-% ylabel('Time (UT)')
-% hc = colorbar;
-% ylabel(hc, 'Density (kg/m^{2})')
-% title('MSIS density between 80-100 km')
-
-
 

@@ -13,32 +13,7 @@ fprintf('_______________________________________________________________________
 
 
 %% m_map
-path(['/Users/chartat1/midas-3/matlab/m_map'],path);
-path(['/Users/chartat1/midas-3/matlab/utils'],path);
-path(['/Users/chartat1/midas-3/matlab/maths'],path);
-
-path(['/Users/chartat1/MATLABhaprot'],path);
-
-path(['/Users/chartat1/ampere-python/alex/swarm_val'], path);
-
-
-%% mice
-path(['/Users/chartat1/mice/'],path);
-
-%% Paths to MAGIC sub-directories (please leave)
-global MIDASROOT;
-MIDASROOT = '~/midas-3/';
-
-path([MIDASROOT,'matlab/export_fig'],path);
-path([MIDASROOT,'matlab/gps'],path);
-path([MIDASROOT,'matlab/maths'],path);
-path([MIDASROOT,'matlab/medical'],path);
-path([MIDASROOT,'source/mex'],path);
-path([MIDASROOT,'matlab/mindi'],path);
-path([MIDASROOT,'matlab/m_map'],path);
-path([MIDASROOT,'matlab/utils'],path);
-path([MIDASROOT,'matlab/utils/hexdump'],path);
-path([MIDASROOT,'matlab/utils/matlab_cdf380_patch-64/'],path);
+path(['/Users/chartat1/nebula/utils'],path);
 
 %% Set plotting defaults (edit as required)
 S = get(0,'ScreenSize');

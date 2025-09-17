@@ -16,7 +16,6 @@ for i = 1:length(mwr_radars)
 end
 mwr = mwrs.And;
 
-
 %% 
 rgb = [ ...
     94    79   162

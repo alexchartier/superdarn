@@ -8,6 +8,22 @@ function N_int = calc_msis_density(time, alts, lat, lon)
 % lon = 15;
 % 
 % N_int = calc_msis_density(time, alts, lat, lon) % returns integrated density;
+% 
+% lats = -90:5:90;
+% lons = 0:15:360;
+% alts = 80:100;
+% N_int = zeros(length(lats), length(lons));
+% time = datenum(2022, 1, 1, 12, 0, 0);
+% for i = 1:length(lats)
+%     for j = 1:length(lons)
+%         N_int(i, j) = calc_msis_density(time, alts, lats(i), lons(j));
+%     end
+% end
+% contourf(lons, lats, N_int); title(datestr(time)); grid on; 
+% y = colorbar;
+% y.Label.String = 'Density between 80-100 km (kg/m2)';
+% xlabel('Lon (°)'); ylabel('Lat (°)')
+
 
 %% Input filename for indices
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/

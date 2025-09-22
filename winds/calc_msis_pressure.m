@@ -1,13 +1,21 @@
 function hPa = calc_msis_pressure(time, alt, lat, lon)
 %% %  calc_msis_pressure.m
 % 
-% time = datenum(2022, 1, 1, 12, 0, 0);
-% dt = datetime(time, 'ConvertFrom', 'datenum');
 % alt = 90E3;
-% lat = 60;
+% lat = 50;
 % lon = 15;
 % 
-% hPa = calc_msis_pressure(time, alt, lat, lon) % returns pressure in hectopascals;
+% days = datenum(yr, 1:12, 15);
+% hrs = 0:23;
+% Times = (days + hrs')';
+% pres = zeros(length(days), length(hrs));
+% for l1 = 1:length(days)
+%     for l2 = 1:length(hrs)
+%         pres(l1, l2) = calc_msis_pressure(Times(l1, l2), alt, lat, lon);
+%     end
+% end
+% contourf(days, hrs, pres')
+% datetick
 
 %% Input filename for indices
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/

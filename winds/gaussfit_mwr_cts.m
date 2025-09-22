@@ -1,32 +1,67 @@
-%% gaussfit_mwr_cts.m
+function [A1, B1, C1] = gaussfit_mwr_cts(mwr_fn, months, hrs)
 
-% times = datenum(2008, 1, 1):datenum(2008, 12, 31);
-% months = datenum(2008, 1:12, 15);
-yr = 2008;
-station = 'AND';
-times = datenum(yr, 1, 1):datenum(yr, 12, 31);
-months = datenum(yr, 1:12, 15);
-hrs = 0:23;
-mwr_fn_fmt = {sprintf('~/data/meteor_winds/SMR_%s_%s_32_{yyyymmdd}', station, station),...
-    '_{yyyymmdd}.h5'};
-ref_ht = 200*1E3;
+%% gaussfit_mwr_cts.m
+% % Returns monthly median of gaussian fit parameters at the specified
+% % times/hours
+% 
+% yr = 2008;
+% station = 'AND';
+% months = datenum(yr, 1:12, 15); % output months
+% hrs = 0:23;  % output hours
+% mwr_fn = '~/data/meteor_winds/SMR_AND_AND_32_20080101_20081231.h5'
+% 
+% 
+% [A1, B1, C1] = gaussfit_mwr_cts(mwr_fn, months, hrs)
+% 
+%
+% %% Plot fit parameters
+% clf
+% tiledlayout(3, 1, 'TileSpacing', 'compact')
+% 
+% nexttile
+% [c, h] = contourf(1:12, hrs, A1);  % TODO: A1=Gaussian peak amplitude
+% clabel(c, h)
+% title(sprintf('%i %s meteor echoes (smoothed, monthly median)', yr, station))
+% ylabel('Hour (UT)')
+% hc = colorbar; 
+% set(gca, 'XTickLabels', '') 
+% ylabel(hc, 'Max counts (#)')
+% % clim([85, 95])
+% 
+% nexttile
+% [c, h] = contourf(1:12, hrs, B1);
+% clabel(c, h)
+% ylabel('Hour (UT)')
+% hc = colorbar; 
+% set(gca, 'XTickLabels', '') 
+% ylabel(hc, 'Peak height (km)')
+% clim([85, 95])
+% 
+% nexttile
+% [c, h] = contourf(1:12, hrs, C1); 
+% clabel(c, h)
+% xlabel('Month'); 
+% ylabel('Hour (UT)'); 
+% clim([4, 12])
+% hc = colorbar; 
+% ylabel(hc, 'Full Width @ Half Max (km)')
+% 
+% 
+% 
+% 
+% 
 
 
 %% Load
-mwr_fn = [filename(mwr_fn_fmt{1}, min(times)), filename(mwr_fn_fmt{2}, max(times))];
 mwr = load_mwr(mwr_fn, 0);
+times = unique(floor(mwr.Time(:)));
 ndays = length(unique(floor(mwr.Time)));
 mwr.counts_daily = reshape(mwr.counts, [11, 24, ndays]);
 mwr.counts_avg = movmedian(mwr.counts_daily, 31, 3, "omitnan");
 ti = ismember(times, months);
 mwr.counts_avg_monthly = mwr.counts_avg(2:end-1, :, ti);
 mwr.alt = mwr.alt(2:end-1);
-% idx = mwr.counts_avg_monthly(1, :, :) > 100;
-% mwr.counts_avg_monthly(1, idx) = 0;
 mwr.counts_avg_monthly(isnan(mwr.counts_avg_monthly)) = 0;
-
-month_times = times(ti);
-
 
 %% Fit
 A1 = zeros([length(hrs), length(months)]);  % Max
@@ -51,40 +86,4 @@ end
 % grid minor
 % xlabel('Alt (km)')
 % ylabel('# Meteor counts')
-
-%% Plot fit parameters
-clf
-tiledlayout(3, 1, 'TileSpacing', 'compact')
-
-nexttile
-[c, h] = contourf(1:12, hrs, A1);  % TODO: A1=Gaussian peak amplitude
-clabel(c, h)
-title(sprintf('%i %s meteor echoes (smoothed, monthly median)', yr, station))
-ylabel('Hour (UT)')
-hc = colorbar; 
-set(gca, 'XTickLabels', '') 
-ylabel(hc, 'Max counts (#)')
-% clim([85, 95])
-
-nexttile
-[c, h] = contourf(1:12, hrs, B1);
-clabel(c, h)
-ylabel('Hour (UT)')
-hc = colorbar; 
-set(gca, 'XTickLabels', '') 
-ylabel(hc, 'Peak height (km)')
-clim([85, 95])
-
-nexttile
-[c, h] = contourf(1:12, hrs, C1); 
-clabel(c, h)
-xlabel('Month'); 
-ylabel('Hour (UT)'); 
-clim([4, 12])
-hc = colorbar; 
-ylabel(hc, 'Full Width @ Half Max (km)')
-
-
-
-
 

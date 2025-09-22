@@ -231,9 +231,11 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         # Define fields
         short_flds = 'tfreq', 'noise.sky', 'cp',
         fov_flds = 'mjd', 'beam', 'range', 'lat', 'lon',
-        data_flds = 'p_l', 'v', 'v_e', 'w_l', 'w_l_e', 'gflg',
+        data_flds = 'p_l', 'v', 'v_e', 'w_l', 'w_l_e', 'gflg', 
         elv_flds = 'elv', 'elv_low', 'elv_high',
 
+        """
+        elv_flds = 'elv', 'elv_low', 'elv_high',
         # Figure out if we have elevation information
         elv_exists = True
         for rec in data:
@@ -241,10 +243,11 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                 elv_exists = False
         if elv_exists:
             data_flds += elv_flds
+        """
 
         # Set up data storage
         out = {}
-        for fld in (fov_flds + data_flds + short_flds):
+        for fld in (fov_flds + data_flds + short_flds + elv_flds):
             out[fld] = []
 
         # Run through each beam record and store
@@ -289,6 +292,11 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                 out[fld] += rec[fld].tolist()
             for fld in short_flds:  # expand out to size
                 out[fld] += (one_obj * rec[fld]).tolist()
+            for fld in elv_flds:
+                try:  
+                    out[fld] += rec[fld].tolist()
+                except:
+                    out[fld] += (one_obj * 0).tolist()
 
         # Convert to numpy arrays
         for k, v in out.items():

@@ -1,4 +1,4 @@
-function [A1, B1, C1] = gaussfit_mwr_cts(mwr_fn, months, hrs)
+function [A1, B1, C1] = gaussfit_mwr_cts(mwr, months, hrs)
 
 %% gaussfit_mwr_cts.m
 % % Returns monthly median of gaussian fit parameters at the specified
@@ -10,8 +10,8 @@ function [A1, B1, C1] = gaussfit_mwr_cts(mwr_fn, months, hrs)
 % hrs = 0:23;  % output hours
 % mwr_fn = '~/data/meteor_winds/SMR_AND_AND_32_20080101_20081231.h5'
 % 
-% 
-% [A1, B1, C1] = gaussfit_mwr_cts(mwr_fn, months, hrs)
+% mwr = load_mwr(mwr_fn, 0);
+% [A1, B1, C1] = gaussfit_mwr_cts(mwr, months, hrs)
 % 
 %
 % %% Plot fit parameters
@@ -53,9 +53,8 @@ function [A1, B1, C1] = gaussfit_mwr_cts(mwr_fn, months, hrs)
 
 
 %% Load
-mwr = load_mwr(mwr_fn, 0);
 times = unique(floor(mwr.Time(:)));
-ndays = length(unique(floor(mwr.Time)));
+ndays = length(times);
 mwr.counts_daily = reshape(mwr.counts, [11, 24, ndays]);
 mwr.counts_avg = movmedian(mwr.counts_daily, 31, 3, "omitnan");
 ti = ismember(times, months);

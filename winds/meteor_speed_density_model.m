@@ -46,7 +46,8 @@ Names = {...
     'north_apex_el', 'south_apex_el', ...
     'helion_el', 'anti_helion_el', ...
     'north_toroidal_el', 'south_toroidal_el'};
-Names2 = {'north_apex', 'south_apex', 'helion', 'antihelion', 'north_toroidal', 'south_toroidal'};
+Names2 = {'north_apex', 'south_apex', 'helion', 'antihelion',...
+    'north_toroidal', 'south_toroidal'};
 
 
 % Weights = [10, 10, 35, 35, 10, 10];
@@ -56,7 +57,7 @@ alts = 80:100;
 % JFC=30, HTC=55. Note Nesvorny (2010) has JFC around 15, but there's a
 % double peak in the distribution and the <30 km/s are not radar-observable
 Geocentric_Speeds = [55, 55, 30, 30, 55, 55];
-
+lon(lon < 0) = lon(lon < 0) + 360;
 
 %% load
 angles = load_nc(meteor_angle_fn);

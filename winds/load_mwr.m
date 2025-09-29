@@ -57,6 +57,7 @@ mwr_2d.hour = unique(hour(mwr_2d.Time));
 mwr_2d.counts = reshape(mwr.counts, [11, 24, 366]);
 mwr_2d.u0_raw = reshape(mwr.u0, [size(mwr.u0, 1), size(mwr_2d.Time, 1), size(mwr_2d.Time, 2)]);
 mwr_2d.alt = mwr.alt;
+
 %% Extract lat/lon
 mwr_2d.lat = mwr.pos(1);
 mwr_2d.lon = mwr.pos(2);

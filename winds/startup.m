@@ -13,7 +13,10 @@ fprintf('_______________________________________________________________________
 
 
 %% m_map
-path(['/Users/chartat1/nebula/utils'],path);
+path(['/Users/chartat1/itsi/nebula/utils'],path);
+path(['/Users/chartat1/itsi/nebula/utils/madmatlab'],path);
+path(['/opt/homebrew/bin'],path);
+
 
 %% Set plotting defaults (edit as required)
 S = get(0,'ScreenSize');

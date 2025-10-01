@@ -5,7 +5,7 @@ clear
 %% Set inputs
 days = datenum(2020, 1, 1):datenum(2020, 12, 31);
 in_fn_fmt = '~/Downloads/MPD_{yyyy}/mp{yyyymmdd}.riogrande.mpd';
-out_fn_fmt = '~/data/meteor_winds/riogrande_{yyyy}.mat';
+out_fn_fmt = '~/data/meteor_winds/mat/riogrande_{yyyy}.mat';
 % times = [];
 % hts = [];
 alt_bins = 79:2:101;

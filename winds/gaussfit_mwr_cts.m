@@ -53,9 +53,16 @@ function [A1, B1, C1] = gaussfit_mwr_cts(mwr, months, hrs)
 
 
 %% Load
-times = unique(floor(mwr.Time(:)));
+% times = unique(floor(mwr.Time(:)));
+times = datenum(year(min(mwr.Time(:))), min(month(months)), 1): ...
+    datenum(year(min(mwr.Time(:))), max(month(months)), 31);
+
 ndays = length(times);
-mwr.counts_daily = reshape(mwr.counts, [11, 24, ndays]);
+% mwr.counts_daily = reshape(mwr.counts, [length(mwr.alt), 24, ndays]);
+mwr.counts_daily = zeros([length(mwr.alt), 24, ndays]) * NaN;
+idx = ismember(times, floor(mwr.Time(:)));
+mwr.counts_daily(:, :, idx) = reshape(mwr.counts, [length(mwr.alt), 24, sum(idx)]);
+
 mwr.counts_avg = movmedian(mwr.counts_daily, 31, 3, "omitnan");
 ti = ismember(times, months);
 mwr.counts_avg_monthly = mwr.counts_avg(2:end-1, :, ti);

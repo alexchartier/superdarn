@@ -31,4 +31,24 @@ for i = 1:length(codes)
     end
 end
 
-% codes
+%% codes
+
+%%  Check for meteor counts in
+maddirn = '~/data/meteor_winds/madrigal/';
+dirs = dir(maddirn);
+for i = 3:length(dirs)
+    fprintf('%i %s\n', i, dirs(i).name)
+    flist = dir([maddirn, '/', dirs(i).name]);
+    if length(flist) > 2
+        try
+            vn = ncinfo([flist(3).folder, '/', flist(3).name]);
+            for ij = 1:length(vn.Variables)
+                fprintf('%s\n', vn.Variables(ij).Name)
+            end
+        catch
+            fprintf('Failed on %s\n', dirs(i).name)
+        end
+    end
+end
+good = {'South_Pole_meteor_radar', 'McMurdo_Meteor_Radar', ...
+    'CONDOR_multi-static_meteor_radar_system'};

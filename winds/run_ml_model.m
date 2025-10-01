@@ -21,7 +21,7 @@ LT = ((Times(:) - floor(Times(:))) + mwr.lon/360) * 24;
 yr = year(min(Times(:)));
 
 % Meteor model
-[speed, msis] = meteor_speed_density_model(yr, mwr.lat, mwr.lon, ...
+[speed, msis] = meteor_speed_density_model(Times, mwr.lat, mwr.lon, ...
     meteor_angle_fn, msis_fn_fmt);
 pres = zeros(length(days), length(hrs))';
 for l1 = 1:length(hrs)

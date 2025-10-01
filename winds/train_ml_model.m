@@ -1,18 +1,13 @@
 %% mwr_ct_corr.m
 % Correlate the mwr counts against geophysical parameters
 clear
+
 %%
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
-koki_radars = {'And', 'Jul'};
-% diego_radar = {'riogrande'};
-
-koki_fn_fmt = {'~/data/meteor_winds/SMR_{NAME}_{NAME}_32_{yyyymmdd}', '_{yyyymmdd}.h5'};
-% diego_fn_fmt = '~/data/meteor_winds/riogrande_{yyyy}.mat';
-
+radar_dir = '~/data/meteor_winds/mat/';
 meteor_angle_fn = '~/data/meteor_winds/angles_v3.nc';
 msis_fn_fmt = '~/data/meteor_winds/msis_{yyyy}_%1.1fN_%1.1fE.mat';
 ml_model_fn = '~/data/meteor_winds/ml_model.mat';
-yrs = [2008, 2020];
 hrs = 0:23;
 ref_alt = 90E3;
 
@@ -20,74 +15,64 @@ ref_alt = 90E3;
 %% Load
 % Solar params
 sw = readtable(sw_fn_csv);
-mwr_radars = koki_radars; % [koki_radars, diego_radar];
+
+
 %% Generate model input
 % MWR data
-for y = 1:length(yrs)
-    yr = yrs(y);
-    mwr_times = datenum(yr, 1, 1):datenum(yr, 12, 31);
-    days = datenum(yr, 1:12, 15); % output months
+flist = dir(radar_dir);
+flist = flist(3:end);
+for i = 1:length(flist)
+    mwr = loadstruct([flist(i).folder, '/', flist(i).name]);
 
-    for i = 1:length(mwr_radars)
-        if ismember(mwr_radars{i}, koki_radars)
-            koki_fn = [filename(koki_fn_fmt{1}, min(mwr_times), mwr_radars{i}), ...
-                filename(koki_fn_fmt{2}, max(mwr_times), mwr_radars{i})];
-            mwr = load_mwr(koki_fn, 0);
-        % elseif ismember(mwr_radars{i}, diego_radars)
-        %         mwr = loadstruct(filename(diego_fn_fmt, yr));
+    yr = year(min(mwr.Time(:)));
+    months = unique(month(floor(mwr.Time(:))))';
+    days = datenum(yr, months, 15);
+    Times = days + (hrs/24)';
+
+    % meteor observed params (monthly median)
+    [~, Peak, FWHM] = gaussfit_mwr_cts(mwr, days, hrs);
+
+    % Meteor model
+    [speed, ~] = meteor_speed_density_model(Times, mwr.lat, mwr.lon, ...
+        meteor_angle_fn, msis_fn_fmt);
+
+    % DOY and LT
+    DOY = floor(Times(:)) - datenum(yr, 1, 1) + 1;
+    LT = ((Times(:) - floor(Times(:))) + mwr.lon/360) * 24;
+    LT(LT < 0) = LT(LT < 0) + 24;
+    LT(LT >= 24) = LT(LT >= 24) - 24;
+
+    % Pressure
+    pres = zeros(length(days), length(hrs))';
+    for l1 = 1:length(hrs)
+        for l2 = 1:length(days)
+            pres(l1, l2) = calc_msis_pressure(Times(l1, l2), ref_alt, mwr.lat, mwr.lon);
         end
-
-        % meteor observed params (monthly median)
-        [~, Peak, FWHM] = gaussfit_mwr_cts(mwr, days, hrs);
-
-        % Meteor model
-        [speed, msis] = meteor_speed_density_model(yr, mwr.lat, mwr.lon, ...
-            meteor_angle_fn, msis_fn_fmt);
-
-        % DOY and LT
-        Times = days + (hrs/24)';
-        DOY = floor(Times(:)) - datenum(yr, 1, 1) + 1;
-        LT = ((Times(:) - floor(Times(:))) + mwr.lon/360) * 24;
-        LT(LT < 0) = LT(LT < 0) + 24;
-        LT(LT >= 24) = LT(LT >= 24) - 24;
-
-        % Pressure
-        pres = zeros(length(days), length(hrs))';
-        for l1 = 1:length(hrs)
-            for l2 = 1:length(days)
-                pres(l1, l2) = calc_msis_pressure(Times(l1, l2), ref_alt, mwr.lat, mwr.lon);
-            end
-        end
+    end
 
 
-        %% Generate param table
-        % Params:
-        % abs_lat, LT, F10.7_ADJ, speed, msis, spread, DOY, solar_zenith_angle
-        %
+    %% Generate param table
+    Tbl = table;
+    Tbl.DOY = DOY(:);
+    Tbl.LT = LT(:);
+    Tbl.SinDOY = sin(DOY(:) / 365 * pi);
+    Tbl.SinLT = sin(LT(:) / 24 * pi);
+    Tbl.Peak = Peak(:);
+    Tbl.FWHM = FWHM(:);
 
-        % Create the table:
-        Tbl = table;
-        Tbl.DOY = DOY(:);        
-        Tbl.LT = LT(:);
-        Tbl.SinDOY = sin(DOY(:) / 365 * pi);
-        Tbl.SinLT = sin(LT(:) / 24 * pi);
-        Tbl.Peak = Peak(:);
-        Tbl.FWHM = FWHM(:);
-        
-        Tbl.abs_lat = abs(mwr.lat) * ones(size(DOY(:)));
-        Tbl.F107 = interp1(sw.DATE, sw.F10_7_ADJ_CENTER81, ...
-            datetime(Times(:), 'ConvertFrom', 'datenum'));
-        Tbl.speed = speed(:);
-        Tbl.pressure = pres(:);
+    Tbl.abs_lat = abs(mwr.lat) * ones(size(DOY(:)));
+    Tbl.F107 = interp1(sw.DATE, sw.F10_7_ADJ_CENTER81, ...
+        datetime(Times(:), 'ConvertFrom', 'datenum'));
+    Tbl.speed = speed(:);
+    Tbl.pressure = pres(:);
 
-        if i == 1 && y == 1
-            Tbl_full = Tbl;
-        else
-            Tbl_full = [Tbl_full; Tbl];
-        end
+    if i == 1 
+        Tbl_full = Tbl;
+    else
+        Tbl_full = [Tbl_full; Tbl];
+    end
 
-    end %loop over radars
-end % loop over years
+end %loop over radars
 
 %% Training
 % Training: Mdl_peak = fitrsvm(Tbl,'Peak'), Mdl_FWHM = fitrsvm(Tbl, 'FWHM')
@@ -97,63 +82,64 @@ Mdl.Peak = fitrsvm(Tbl_peak,'Peak');
 Mdl.FWHM = fitrsvm(Tbl_FWHM, 'FWHM');
 
 savestruct(ml_model_fn, Mdl)
+fprintf('Saved to %s\n', ml_model_fn)
 
-%% Testing 
-
-Mdl = loadstruct(ml_model_fn);
-
-yr = 2020;
-days = datenum(yr, 1:12, 15); % output months
-hrs = 0:23;
-mwr_fn = '~/data/meteor_winds/SMR_Jul_Jul_32_20200101_20201231.h5';
-mwr = load_mwr(mwr_fn, 0);
-[~, Peak, FWHM] = gaussfit_mwr_cts(mwr, days, hrs);
-
-[speed, msis] = meteor_speed_density_model(yr, mwr.lat, mwr.lon, ...
-    meteor_angle_fn, msis_fn_fmt);
-pres = zeros(length(days), length(hrs))';
-Times = days + (hrs/24)';
-
-for l1 = 1:length(hrs)
-    for l2 = 1:length(days)
-        pres(l1, l2) = calc_msis_pressure(Times(l1, l2), ref_alt, mwr.lat, mwr.lon);
-    end
-end
-
-DOY = floor(Times(:)) - datenum(yr, 1, 1) + 1;
-LT = ((Times(:) - floor(Times(:))) + mwr.lon/360) * 24;
-
-Tbl_pred = table; 
-
-Tbl_pred.DOY = DOY(:);
-Tbl_pred.LT = LT(:);
-Tbl_pred.SinDOY = sin(DOY(:)/365 * pi);
-Tbl_pred.SinLT = sin(LT(:) / 24 * pi);
-Tbl_pred.abs_lat = 55 .* ones(size(LT(:)));
-
-Tbl_pred.F107 = interp1(sw.DATE, sw.F10_7_ADJ_CENTER81, ...
-            datetime(Times(:), 'ConvertFrom', 'datenum'));
-
-Tbl_pred.speed = speed(:);
-Tbl_pred.pressure = pres(:);
-Mod.Peak = Mdl.Peak.predict(Tbl_pred);
-Mod.FWHM = Mdl.FWHM.predict(Tbl_pred);
-
-Mod.Peak = reshape(Mod.Peak, [length(hrs), length(days)]);
-Mod.FWHM = reshape(Mod.FWHM, [length(hrs), length(days)]);
-
-
-
-%%
-clf
-subplot(3, 1, 1)
-contourf(Mod.Peak)
-clim([88, 92])
-colorbar
-subplot(3, 1, 2)
-contourf(Peak)
-clim([88, 92])
-colorbar
-subplot(3, 1, 3)
-contourf(Mod.Peak- Peak)
-colorbar
+%% Testing
+% 
+% Mdl = loadstruct(ml_model_fn);
+% 
+% yr = 2020;
+% days = datenum(yr, 1:12, 15); % output months
+% hrs = 0:23;
+% mwr_fn = '~/data/meteor_winds/SMR_Jul_Jul_32_20200101_20201231.h5';
+% mwr = load_mwr(mwr_fn, 0);
+% [~, Peak, FWHM] = gaussfit_mwr_cts(mwr, days, hrs);
+% 
+% [speed, msis] = meteor_speed_density_model(yr, mwr.lat, mwr.lon, ...
+%     meteor_angle_fn, msis_fn_fmt);
+% pres = zeros(length(days), length(hrs))';
+% Times = days + (hrs/24)';
+% 
+% for l1 = 1:length(hrs)
+%     for l2 = 1:length(days)
+%         pres(l1, l2) = calc_msis_pressure(Times(l1, l2), ref_alt, mwr.lat, mwr.lon);
+%     end
+% end
+% 
+% DOY = floor(Times(:)) - datenum(yr, 1, 1) + 1;
+% LT = ((Times(:) - floor(Times(:))) + mwr.lon/360) * 24;
+% 
+% Tbl_pred = table;
+% 
+% Tbl_pred.DOY = DOY(:);
+% Tbl_pred.LT = LT(:);
+% Tbl_pred.SinDOY = sin(DOY(:)/365 * pi);
+% Tbl_pred.SinLT = sin(LT(:) / 24 * pi);
+% Tbl_pred.abs_lat = 55 .* ones(size(LT(:)));
+% 
+% Tbl_pred.F107 = interp1(sw.DATE, sw.F10_7_ADJ_CENTER81, ...
+%     datetime(Times(:), 'ConvertFrom', 'datenum'));
+% 
+% Tbl_pred.speed = speed(:);
+% Tbl_pred.pressure = pres(:);
+% Mod.Peak = Mdl.Peak.predict(Tbl_pred);
+% Mod.FWHM = Mdl.FWHM.predict(Tbl_pred);
+% 
+% Mod.Peak = reshape(Mod.Peak, [length(hrs), length(days)]);
+% Mod.FWHM = reshape(Mod.FWHM, [length(hrs), length(days)]);
+% 
+% 
+% 
+% %%
+% clf
+% subplot(3, 1, 1)
+% contourf(Mod.Peak)
+% clim([88, 92])
+% colorbar
+% subplot(3, 1, 2)
+% contourf(Peak)
+% clim([88, 92])
+% colorbar
+% subplot(3, 1, 3)
+% contourf(Mod.Peak- Peak)
+% colorbar

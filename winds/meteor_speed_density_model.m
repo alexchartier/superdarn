@@ -1,5 +1,5 @@
 function [speed, msis] = ...
-    meteor_speed_density_model(year, lat, lon, meteor_angle_fn, msis_fn_fmt)
+    meteor_speed_density_model(times, lat, lon, meteor_angle_fn, msis_fn_fmt)
 %
 % year = 2008;
 % lat = 69.3;
@@ -62,13 +62,14 @@ lon(lon < 0) = lon(lon < 0) + 360;
 %% load
 angles = load_nc(meteor_angle_fn);
 % Note angles are the same every year
-angles.times = datenum(year, double(angles.month),...
+yr = year(min(times(:)));
+angles.times = datenum(yr, double(angles.month),...
     double(angles.day), double(angles.hour), double(angles.minute), 0);
 sources = sporadic_source_model(); 
 
 
 %% Time calculations
-times = repmat(datenum(year, 1:12, 15), [24, 1]) + [0:23]'/24;
+% times = repmat(datenum(year, 1:12, 15), [24, 1]) + [0:23]'/24;
 LTs = (times - floor(times) + lon / 360) * 24;
 LTs(LTs >= 24) = LTs(LTs >= 24) - 24;
 LTs(LTs < 0) = LTs(LTs < 0) + 24;
@@ -118,7 +119,7 @@ for i = 1:length(Names)
     vals(i, :) = a1(:);
 end
 
-source_times = datenum(year, 1, 1:366);
+source_times = datenum(yr, 1, 1:366);
 ti = ismember(source_times, floor(times));
 
 weights_2d = zeros(size(vals));
@@ -146,5 +147,5 @@ for i = 1:size(weights_2d, 2)
     spread(i) = std(vals(:, i), weights_2d(:, i));
 end
 
-spread = reshape(spread, [24, 12]);
+spread = reshape(spread, size(times));
 

@@ -1,5 +1,5 @@
 function [speed, msis] = ...
-    meteor_speed_density_model(times, lat, lon, meteor_angle_fn, msis_fn_fmt)
+    meteor_speed_density_model(times, lat, lon, angles, msis_fn_fmt)
 %
 % year = 2008;
 % lat = 69.3;
@@ -60,10 +60,10 @@ Geocentric_Speeds = [55, 55, 30, 30, 55, 55];
 lon(lon < 0) = lon(lon < 0) + 360;
 
 %% load
-angles = load_nc(meteor_angle_fn);
 % Note angles are the same every year
 yr = year(min(times(:)));
-angles.times = datenum(yr, double(angles.month),...
+yr_vec = double(yr + (angles.year - yr));
+angles.times = datenum(yr_vec, double(angles.month),...
     double(angles.day), double(angles.hour), double(angles.minute), 0);
 sources = sporadic_source_model(); 
 
@@ -82,13 +82,21 @@ for i = 1:length(Names)
     % Interpolate to station
     for t1 = 1:size(times, 1)
         for t2 = 1:size(times, 2)
-            ti = angles.times == times(t1, t2);
+            % fprintf('t1: %i t2: %i\n', t1, t2)
+            ti = round(angles.times *1E5) == round(times(t1, t2) *1E5);
+
+            % if sum(ti) ~= 1
+            %     disp(1)
+            % end
+            assert(sum(ti) == 1, 'Looking for exactly 1 time')
+
             speeds_s.(Names{i})(t1, t2) = interp2(...
                 angles.lat, angles.lon, squeeze(speeds.(Names{i})(:, :, ti)), ...
                 lat, lon);          
             angles_s.(Names{i})(t1, t2) = interp2(...
                 angles.lat, angles.lon, squeeze(angles.(Names{i})(:, :, ti)), ...
-                lat, lon);          
+                lat, lon);
+
         end
     end
 end

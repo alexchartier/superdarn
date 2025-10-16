@@ -1,9 +1,10 @@
-function hPa = calc_msis_pressure(time, alt, lat, lon)
+function hPa = calc_msis_pressure(time, alt, lat, lon, sw)
 %% %  calc_msis_pressure.m
 % 
 % alt = 90E3;
 % lat = 50;
 % lon = 15;
+% sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
 % 
 % days = datenum(yr, 1:12, 15);
 % hrs = 0:23;
@@ -18,7 +19,7 @@ function hPa = calc_msis_pressure(time, alt, lat, lon)
 % datetick
 
 %% Input filename for indices
-sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
+
 
 %% Calculate time
 dt = datetime(time, 'ConvertFrom', 'datenum');
@@ -28,7 +29,6 @@ utcsec = seconds(timeofday(dt));
 
 %% Load Ap and F107
 warning('off', 'MATLAB:table:ModifiedAndSavedVarnames'); 
-sw = readtable(sw_fn_csv);
 f107a = sw.F10_7_ADJ_CENTER81(sw.DATE == dateshift(dt, 'start', 'day'));
 f107d = sw.F10_7_ADJ(sw.DATE == dateshift(dt, 'start', 'day'));
 Apd = sw.AP_AVG(sw.DATE == dateshift(dt, 'start', 'day'));

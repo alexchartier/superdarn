@@ -5,8 +5,9 @@ clear
 %%
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
 radar_dir = '~/data/meteor_winds/mat/';
-meteor_angle_fn = '~/data/meteor_winds/angles_v3.nc';
-msis_fn_fmt = '~/data/meteor_winds/msis_{yyyy}_%1.1fN_%1.1fE.mat';
+meteor_angle_fn = '~/data/meteor_winds/angles_2008.nc';
+mem_fn = '~/data/meteor_winds/mem_3_output_v1.nc';
+msis_fn_fmt = '~/data/meteor_winds/msis/msis_{yyyy}_%1.1fN_%1.1fE.mat';
 ml_model_fn = '~/data/meteor_winds/ml_model.mat';
 hrs = 0:23;
 ref_alt = 90E3;
@@ -15,7 +16,7 @@ ref_alt = 90E3;
 %% Load
 % Solar params
 sw = readtable(sw_fn_csv);
-
+mem = load_mem(mem_fn);
 
 %% Generate model input
 % MWR data
@@ -36,6 +37,9 @@ for i = 1:length(flist)
     [speed, ~] = meteor_speed_density_model(Times, mwr.lat, mwr.lon, ...
         meteor_angle_fn, msis_fn_fmt);
 
+    % MEM model interpolation
+    interp_mem(mem, Times, mwr.lat, mwr.lon);
+
     % DOY and LT
     DOY = floor(Times(:)) - datenum(yr, 1, 1) + 1;
     LT = ((Times(:) - floor(Times(:))) + mwr.lon/360) * 24;
@@ -55,16 +59,21 @@ for i = 1:length(flist)
     Tbl = table;
     Tbl.DOY = DOY(:);
     Tbl.LT = LT(:);
-    Tbl.SinDOY = sin(DOY(:) / 365 * pi);
+    if mwr.lat > 0
+        Tbl.SinDOY = sin(DOY(:)/365 * pi);
+    else
+        Tbl.SinDOY = sin(DOY(:)/365 * pi + pi);
+    end
     Tbl.SinLT = sin(LT(:) / 24 * pi);
     Tbl.Peak = Peak(:);
     Tbl.FWHM = FWHM(:);
-
+    Tbl.lat = mwr.lat * ones(size(DOY(:)));
     Tbl.abs_lat = abs(mwr.lat) * ones(size(DOY(:)));
     Tbl.F107 = interp1(sw.DATE, sw.F10_7_ADJ_CENTER81, ...
         datetime(Times(:), 'ConvertFrom', 'datenum'));
     Tbl.speed = speed(:);
     Tbl.pressure = pres(:);
+    Tbl.norm_pressure = normalize(pres(:));
 
     if i == 1 
         Tbl_full = Tbl;
@@ -84,62 +93,40 @@ Mdl.FWHM = fitrsvm(Tbl_FWHM, 'FWHM');
 savestruct(ml_model_fn, Mdl)
 fprintf('Saved to %s\n', ml_model_fn)
 
-%% Testing
+% %% Testing
+% close all
+% flist = dir(radar_dir);
+% flist = flist(3:end);
+% for i = 1:length(flist)
+%     fn = [flist(i).folder, '/', flist(i).name];
+%     mwr = loadstruct(fn);
 % 
-% Mdl = loadstruct(ml_model_fn);
+%     yr = year(min(mwr.Time(:)));
+%     months = unique(month(floor(mwr.Time(:))))';
+%     days = datenum(yr, months, 15);
+%     Times = days + (hrs/24)';
 % 
-% yr = 2020;
-% days = datenum(yr, 1:12, 15); % output months
-% hrs = 0:23;
-% mwr_fn = '~/data/meteor_winds/SMR_Jul_Jul_32_20200101_20201231.h5';
-% mwr = load_mwr(mwr_fn, 0);
-% [~, Peak, FWHM] = gaussfit_mwr_cts(mwr, days, hrs);
+%     % meteor observed params (monthly median)
+%     [~, Peak, FWHM] = gaussfit_mwr_cts(mwr, days, hrs);
 % 
-% [speed, msis] = meteor_speed_density_model(yr, mwr.lat, mwr.lon, ...
-%     meteor_angle_fn, msis_fn_fmt);
-% pres = zeros(length(days), length(hrs))';
-% Times = days + (hrs/24)';
-% 
-% for l1 = 1:length(hrs)
-%     for l2 = 1:length(days)
-%         pres(l1, l2) = calc_msis_pressure(Times(l1, l2), ref_alt, mwr.lat, mwr.lon);
+%     % Pressure
+%     pres = zeros(length(days), length(hrs))';
+%     for l1 = 1:length(hrs)
+%         for l2 = 1:length(days)
+%             pres(l1, l2) = calc_msis_pressure(Times(l1, l2), ref_alt, mwr.lat, mwr.lon);
+%         end
 %     end
+% 
+%     tiledlayout(2, 1, "TileSpacing",'compact')
+%     nexttile
+%     contourf(FWHM)
+%     title(fn)
+%     colorbar
+% 
+%     nexttile
+%     contourf(pres)
+%     colorbar
+% 
+% 
+%     figure
 % end
-% 
-% DOY = floor(Times(:)) - datenum(yr, 1, 1) + 1;
-% LT = ((Times(:) - floor(Times(:))) + mwr.lon/360) * 24;
-% 
-% Tbl_pred = table;
-% 
-% Tbl_pred.DOY = DOY(:);
-% Tbl_pred.LT = LT(:);
-% Tbl_pred.SinDOY = sin(DOY(:)/365 * pi);
-% Tbl_pred.SinLT = sin(LT(:) / 24 * pi);
-% Tbl_pred.abs_lat = 55 .* ones(size(LT(:)));
-% 
-% Tbl_pred.F107 = interp1(sw.DATE, sw.F10_7_ADJ_CENTER81, ...
-%     datetime(Times(:), 'ConvertFrom', 'datenum'));
-% 
-% Tbl_pred.speed = speed(:);
-% Tbl_pred.pressure = pres(:);
-% Mod.Peak = Mdl.Peak.predict(Tbl_pred);
-% Mod.FWHM = Mdl.FWHM.predict(Tbl_pred);
-% 
-% Mod.Peak = reshape(Mod.Peak, [length(hrs), length(days)]);
-% Mod.FWHM = reshape(Mod.FWHM, [length(hrs), length(days)]);
-% 
-% 
-% 
-% %%
-% clf
-% subplot(3, 1, 1)
-% contourf(Mod.Peak)
-% clim([88, 92])
-% colorbar
-% subplot(3, 1, 2)
-% contourf(Peak)
-% clim([88, 92])
-% colorbar
-% subplot(3, 1, 3)
-% contourf(Mod.Peak- Peak)
-% colorbar

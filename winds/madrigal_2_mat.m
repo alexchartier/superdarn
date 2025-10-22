@@ -9,8 +9,8 @@ fn_fmt = {['~/data/meteor_winds/madrigal/McMurdo_Meteor_Radar/',...
 out_fn_fmt = '~/data/meteor_winds/mat/{NAME}_{yyyy}.mat';
 
 %% Loop through and store
-for ri = 2%1:length(radar_names)
-    for yi = 1%:length(yrs{ri})
+for ri = 1:length(radar_names)
+    for yi = 1:length(yrs{ri})
         clear data_full out
         time = datenum(yrs{ri}(yi), 1, 1);
         flist = dir(filename(fn_fmt{ri}, time));

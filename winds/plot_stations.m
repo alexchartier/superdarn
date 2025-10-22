@@ -1,25 +1,31 @@
 
 %% 
 % python3 get_radar_coords.py
+code_fn = '~/data/meteor_winds/madrigal/mwr_madrigal_codes.xlsx';
+mwr_dir = '~/data/meteor_winds/mat';
+
+%% 
+
+flist = dir(mwr_dir);
+mwr_coords = [];
+mwr_sites = {};
+for i = 3:length(flist)
+    D = loadstruct([mwr_dir, '/', flist(i).name]);
+    mwr_coords = [mwr_coords; [D.lat, D.lon]];
+end
+
+
 
 %% Load 
+
 mwr_coords = [
-    53.5, 122.3
-    40.3, 116.2
-    30.5, 114.6
-    -77.8, 166.7
-    -69, 78
-    -68, 292
-    -7.4, -36.5
-    -0.2, 100.3
-    -53.786, -67.751
-    43.26, -80.77
-    -68.5762, 77.9696
-    54.6207, 13.3719
-    69.3161, 16.1202
-    67.9, 21.1
-    67.4160, 26.5890
-    -35.68, 138.54];
+   69.2691   16.0396
+  -30.3000  -70.0000
+   54.6305   13.3741
+  -77.8297  166.6625
+  -53.7000  -67.7000
+  ];
+Sites = {'AND', 'CON', 'JUL', 'MCM' 'RIO'};
 
 
 sdr_coords = [
@@ -72,12 +78,16 @@ sdr_coords = [
     -69.37669 76.36646
     70.487 -68.504
     -49.35073 70.26652];
-
-
+SD_sites = {'sye', 'inv', 'ekb', 'gbr', 'tig', 'sze', 'kap', 'szw', 'unw', ...
+    'cvw', 'dce', 'hok', 'cve', 'wal', 'fir', 'jme', 'pyk', 'hkw', 'fhe', ...
+    'hal', 'sch', 'fhw', 'rkn', 'ice', 'kod', 'mcm', 'bpk', 'pgr', 'icw', ...
+    'sys', 'adw', 'sps', 'ade', 'hjw', 'san', 'hje', 'ksr', 'lje', 'sas', ...
+    'ljw', 'dcn', 'han', 'bks', 'tst', 'sto', 'lyr', 'zho', 'cly', 'ker'};
 
 load coastlines
 land = readgeotable("landareas.shp");
 
+close all
 figure
 newmap
 geoplot(land)
@@ -87,7 +97,31 @@ ms = 30;
 
 % mwr_coords(mwr_coords(:, 2) > 180, 2) = mwr_coords(mwr_coords(:, 2) > 180, 2) - 360;
 plot(mwr_coords(:, 1), mwr_coords(:, 2), '.g', 'MarkerSize', ms)
+for i = 1:length(mwr_coords(:, 1))
+    text(mwr_coords(i, 1), mwr_coords(i, 2), Sites{i}, ...
+        'VerticalAlignment', 'top', 'HorizontalAlignment', 'right', 'color', 'g');
+end
 plot(sdr_coords(:, 1), sdr_coords(:, 2), '.r', 'MarkerSize', ms)
+
+left_list = {'SCH', 'ICE', 'HJE', 'SZE', 'FHE', 'ADE', 'CVE', 'DCE', 'SYE', 'BKS'};
+south_list = {'HOK', 'KSR', 'GBR', 'LJE', 'PYK'};
+leftsouth_list = {'ICW'};
+for i = 1:length(sdr_coords(:, 1))
+    if ismember(upper(SD_sites{i}), left_list)
+        text(sdr_coords(i, 1), sdr_coords(i, 2), upper(SD_sites{i}), ...
+        'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'right', 'color', 'r');
+    elseif ismember(upper(SD_sites{i}), south_list)
+        text(sdr_coords(i, 1), sdr_coords(i, 2), upper(SD_sites{i}), ...
+        'VerticalAlignment', 'top', 'HorizontalAlignment', 'left', 'color', 'r');
+    elseif ismember(upper(SD_sites{i}), leftsouth_list)
+        text(sdr_coords(i, 1), sdr_coords(i, 2), upper(SD_sites{i}), ...
+        'VerticalAlignment', 'top', 'HorizontalAlignment', 'right', 'color', 'r');
+    else
+    text(sdr_coords(i, 1), sdr_coords(i, 2), upper(SD_sites{i}), ...
+        'VerticalAlignment', 'bottom', 'HorizontalAlignment', 'left', 'color', 'r');
+    end
+end
+
 set(gca, 'FontSize', 24)
 legend({'', 'MWR', 'SDR'})
-hold off
+% hold off

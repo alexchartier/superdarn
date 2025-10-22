@@ -4,29 +4,19 @@ function [A1, B1, C1] = gaussfit_mwr_cts(mwr, months, hrs)
 % % Returns monthly median of gaussian fit parameters at the specified
 % % times/hours
 % 
-% yr = 2008;
-% station = 'AND';
+% yr = 2020;
+% station = 'JUL';
 % months = datenum(yr, 1:12, 15); % output months
 % hrs = 0:23;  % output hours
-% mwr_fn = '~/data/meteor_winds/SMR_AND_AND_32_20080101_20081231.h5'
-% 
-% mwr = load_mwr(mwr_fn, 0);
+% mwr_mat_fn_fmt = '~/data/meteor_winds/notused_mat/{NAME}_{yyyy}.mat';
+% mwr = loadstruct(filename(mwr_mat_fn_fmt, min(months), station));
 % [A1, B1, C1] = gaussfit_mwr_cts(mwr, months, hrs)
 % 
 %
 % %% Plot fit parameters
 % clf
-% tiledlayout(3, 1, 'TileSpacing', 'compact')
+% tiledlayout(2, 1, 'TileSpacing', 'compact')
 % 
-% nexttile
-% [c, h] = contourf(1:12, hrs, A1);  % TODO: A1=Gaussian peak amplitude
-% clabel(c, h)
-% title(sprintf('%i %s meteor echoes (smoothed, monthly median)', yr, station))
-% ylabel('Hour (UT)')
-% hc = colorbar; 
-% set(gca, 'XTickLabels', '') 
-% ylabel(hc, 'Max counts (#)')
-% % clim([85, 95])
 % 
 % nexttile
 % [c, h] = contourf(1:12, hrs, B1);
@@ -43,6 +33,7 @@ function [A1, B1, C1] = gaussfit_mwr_cts(mwr, months, hrs)
 % xlabel('Month'); 
 % ylabel('Hour (UT)'); 
 % clim([4, 12])
+% colormap(gca, spring)
 % hc = colorbar; 
 % ylabel(hc, 'Full Width @ Half Max (km)')
 % 
@@ -52,13 +43,11 @@ function [A1, B1, C1] = gaussfit_mwr_cts(mwr, months, hrs)
 % 
 
 
-%% Load
-% times = unique(floor(mwr.Time(:)));
+%% Calculate average counts
 times = datenum(year(min(mwr.Time(:))), min(month(months)), 1): ...
     datenum(year(min(mwr.Time(:))), max(month(months)), 31);
 
 ndays = length(times);
-% mwr.counts_daily = reshape(mwr.counts, [length(mwr.alt), 24, ndays]);
 mwr.counts_daily = zeros([length(mwr.alt), 24, ndays]) * NaN;
 idx = ismember(times, floor(mwr.Time(:)));
 mwr.counts_daily(:, :, idx) = reshape(mwr.counts, [length(mwr.alt), 24, sum(idx)]);

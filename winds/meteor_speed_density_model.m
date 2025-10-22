@@ -1,43 +1,4 @@
-function [speed, msis] = ...
-    meteor_speed_density_model(times, lat, lon, angles, msis_fn_fmt)
-%
-% year = 2008;
-% lat = 69.3;
-% lon = 0;
-% weights = [0.2, 1.2, 2, 0.2, 91, 8];
-% meteor_angle_fn = '~/data/meteor_winds/angles_v1.nc';
-% msis_fn_fmt = '~/data/meteor_winds/msis_{yyyy}_%1.1fN_%1.1fE.mat';
-% 
-% [Peak, FWHM, speed, msis] = meteor_speed_density_model(year, lat, lon, weights, ...
-%   meteor_angle_fn, msis_fn_fmt);
-%
-%
-%
-% close
-% tiledlayout(2, 1, 'TileSpacing', 'tight');
-% 
-% nexttile
-% [c, h] = contourf(speed);
-% clabel(c, h)
-% % xlabel('Month')
-% ylabel('Time (LT)')
-% set(gca, 'XTickLabels', '')
-% % clim([85, 95])
-% hc = colorbar;
-% ylabel(hc, 'Weighted mean eff. spd. (km/s)')
-% colormap(gca, 'cool')
-%
-% 
-% nexttile
-% [c, h] = contourf(msis);
-% clabel(c, h)
-% xlabel('Month')
-% ylabel('Time (LT)')
-% % clim([4, 12])
-% hc = colorbar;
-% ylabel(hc, '80-100 integrated MSIS density (kg/m^{2})')
-% colormap(gca, 'Copper')
-
+function speed = meteor_speed_density_model(times, lat, lon, angles)
 
 %% Inputs
 
@@ -49,11 +10,6 @@ Names = {...
 Names2 = {'north_apex', 'south_apex', 'helion', 'antihelion',...
     'north_toroidal', 'south_toroidal'};
 
-
-% Weights = [10, 10, 35, 35, 10, 10];
-alts = 80:100;
-
-
 % JFC=30, HTC=55. Note Nesvorny (2010) has JFC around 15, but there's a
 % double peak in the distribution and the <30 km/s are not radar-observable
 Geocentric_Speeds = [55, 55, 30, 30, 55, 55];
@@ -62,7 +18,7 @@ lon(lon < 0) = lon(lon < 0) + 360;
 %% load
 % Note angles are the same every year
 yr = year(min(times(:)));
-yr_vec = double(yr + (angles.year - yr));
+yr_vec = double((yr - min(angles.year(:))) + angles.year);
 angles.times = datenum(yr_vec, double(angles.month),...
     double(angles.day), double(angles.hour), double(angles.minute), 0);
 sources = sporadic_source_model(); 
@@ -82,14 +38,8 @@ for i = 1:length(Names)
     % Interpolate to station
     for t1 = 1:size(times, 1)
         for t2 = 1:size(times, 2)
-            % fprintf('t1: %i t2: %i\n', t1, t2)
             ti = round(angles.times *1E5) == round(times(t1, t2) *1E5);
-
-            % if sum(ti) ~= 1
-            %     disp(1)
-            % end
             assert(sum(ti) == 1, 'Looking for exactly 1 time')
-
             speeds_s.(Names{i})(t1, t2) = interp2(...
                 angles.lat, angles.lon, squeeze(speeds.(Names{i})(:, :, ti)), ...
                 lat, lon);          
@@ -99,23 +49,6 @@ for i = 1:length(Names)
 
         end
     end
-end
-
-
-%% MSIS height-integrated density above X km at the station
-msis_fn = filename(sprintf(msis_fn_fmt, lat, lon), times(1));
-try
-    msis = loadstruct(msis_fn);
-catch
-    fprintf('MSIS file not found: %s\nLoading...\n', msis_fn)
-    msis = zeros(size(times));
-    for t1 = 1:size(times, 1)
-        for t2 = 1:size(times, 2)
-            disp(datestr(times(t1, t2)));
-            msis(t1, t2) = calc_msis_density(times(t1, t2), alts, lat, lon);
-        end
-    end
-    savestruct(msis_fn, msis)
 end
 
 

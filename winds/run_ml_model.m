@@ -1,4 +1,4 @@
-function [Peak, FWHM] = run_ml_model(Mdl, mwr, sw, meteor_angles, msis_fn_fmt)
+function [Peak, FWHM] = run_ml_model(Mdl, mwr, mem_int, sw, meteor_angles)
 %% run_ml_model(times, mwr, sw_fn_csv)
 % [Peak, FWHM] = run_ml_model(times, mwr, sw_fn_csv)
 
@@ -22,8 +22,7 @@ LT = ((Times(:) - floor(Times(:))) + mwr.lon/360) * 24;
 yr = year(min(Times(:)));
 
 % Meteor model
-[speed, msis] = meteor_speed_density_model(Times, mwr.lat, mwr.lon, ...
-    meteor_angles, msis_fn_fmt);
+speed = meteor_speed_density_model(Times, mwr.lat, mwr.lon, meteor_angles);
 pres = zeros(length(days), length(hrs))';
 for l1 = 1:length(hrs)
     for l2 = 1:length(days)
@@ -54,6 +53,15 @@ Tbl.pressure = pres(:);
 Tbl.norm_pressure = normalize(pres(:));
 
 Peak = Mdl.Peak.predict(Tbl);
+
+% better not to use the MEM stuff in the peak model, but it helps with FWHM
+% model
+fields = fieldnames(mem_int);
+for fi = 1:length(fields)
+    Tbl.(fields{fi}) = mem_int.(fields{fi})(:);
+end
+
+
 FWHM = Mdl.FWHM.predict(Tbl);
 
 

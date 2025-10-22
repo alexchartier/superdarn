@@ -2,6 +2,8 @@
 ml_model_fn = '~/data/meteor_winds/ml_model.mat';
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
 meteor_angle_fn = '~/data/meteor_winds/angles_2008.nc';
+mem_fn = '~/data/meteor_winds/mem_3_output_v1.nc';
+mem_fields = {'lo_dens_flux', 'hi_dens_flux', 'lo_dens_speed', 'hi_dens_speed'};
 
 hr = 0:23;
 mw_radarcode = 'Jul';
@@ -9,10 +11,11 @@ koki_fn_fmt = {'~/data/meteor_winds/SMR_{NAME}_{NAME}_32_{yyyymmdd}', ...
     '_{yyyymmdd}.h5'};
 msis_fn_fmt = '~/data/meteor_winds/msis/msis_{yyyy}_%1.1fN_%1.1fE.mat';
 
-yr = 2008;
+yr = 2020;
 days = datenum(yr, 1, 1):datenum(yr, 12, 31);
 months = datenum(yr, 1:12, 15);
 
+boresight = 90;
 
 %% Load
 koki_fn = [filename(koki_fn_fmt{1}, min(days), mw_radarcode ), ...
@@ -20,14 +23,17 @@ koki_fn = [filename(koki_fn_fmt{1}, min(days), mw_radarcode ), ...
 mwr = load_mwr_simple(koki_fn);
 Mdl = loadstruct(ml_model_fn);
 meteor_angles = load_nc(meteor_angle_fn);
-[Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, mwr, sw, meteor_angles, ...
-    msis_fn_fmt);
+
+mem = load_mem(mem_fn);
+mem_int = interp_mem(mem, mem_fields, mwr.Time, mwr.lat, mwr.lon);
+
+[Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, mwr, mem_int, sw, meteor_angles);
 
 %TODO: interpolate Mod_Peak, Mod_FWHM to the full year, or similar
 
 %% Calculate observed 
 maxct = squeeze(max(mwr.counts, [], 1));
-mwr.Vx = sind(sd.boresight) .* mwr.u0 + cosd(sd.boresight) .* mwr.v0;
+mwr.Vx = sind(boresight) .* mwr.u0 + cosd(boresight) .* mwr.v0;
 mwr.Vx_ctwt = nan(size(mwr.Time));
 for hri = 1:size(mwr.Time, 1)
     for ti = 1:size(mwr.Time, 2)
@@ -57,9 +63,9 @@ end
 tidx = ismember(days, months);
 med = movmedian(mwr.Vx_ctwt, 31, 2, "omitnan");
 mwr.Vx_ctwt_med = med(:, tidx);
+
 med = movmedian(mwr.Vx_modwt, 31, 2, "omitnan");
 mwr.Vx_modwt_med = med(:, tidx);
-
 
 %% Plot
 rgb = [ ...

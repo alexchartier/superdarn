@@ -16,7 +16,7 @@ sd_fn_fmt = '~/data/superdarn/meteorwindnc/{yyyy}/{mm}/{yyyymmmdd}.{NAME}.nc';
 
 %% Load
 Mdl = loadstruct(ml_model_fn);
-
+!
 sd = load_sd(sd_fn_fmt, radarcode, days, hr);
 boresight = sd.boresight; 
 

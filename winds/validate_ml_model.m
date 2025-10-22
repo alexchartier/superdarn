@@ -1,9 +1,9 @@
 %%
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
-meteor_angle_fn = '~/data/meteor_winds/angles_v3.nc';
+meteor_angle_fn = '~/data/meteor_winds/angles_2008.nc';
 msis_fn_fmt = '~/data/meteor_winds/msis/msis_{yyyy}_%1.1fN_%1.1fE.mat';
 ml_model_fn = '~/data/meteor_winds/ml_model.mat';
-
+mem_fn = '~/data/meteor_winds/mem_3_output_v1.nc';
 
 %% Compare against a radar
 sw = readtable(sw_fn_csv);
@@ -22,8 +22,17 @@ hrs = 0:23;
 [~, Peak, FWHM] = gaussfit_mwr_cts(mwr, days, hrs);
 
 meteor_angles = load_nc(meteor_angle_fn);
-[Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, mwr, sw, meteor_angles, ...
+mem_int = interp_mem(mem, mem_fields, mwr.Time, mwr.lat, mwr.lon);
+
+[Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, mwr, mem_int, sw, meteor_angles, ...
     msis_fn_fmt);
+
+times = days + hrs'/24;
+ti = ismember(round(mwr.Time * 1E5), round(times * 1E5));
+
+Mod_Peak = reshape(Mod_Peak(ti), size(Peak));
+Mod_FWHM = reshape(Mod_FWHM(ti), size(FWHM));
+
 
 %% Plot
 rmse_peak = rmse(Mod_Peak, Peak, 'all');
@@ -39,7 +48,8 @@ fprintf('Peak RMSE: %1.2f Bias: %1.2f Corr: %1.2f\n', ...
     rmse_peak, bias_peak, corr_peak)
 fprintf('FWHM RMSE: %1.2f Bias: %1.2f Corr: %1.2f\n', ...
     rmse_fwhm, bias_fwhm, corr_fwhm)
-
+coeff1 = polyfit(Peak(:), Mod_Peak(:), 1);
+coeff2 = polyfit(FWHM(:), Mod_FWHM(:), 1);
 ms = 10;
 tiledlayout(1, 2, 'TileSpacing','compact')
 nexttile
@@ -47,13 +57,17 @@ plot(Peak(:), Mod_Peak(:), '.', 'MarkerSize', ms)
 lim =[85, 95];
 xlim(lim)
 ylim(lim)
+xlabel('Observed Peak (km)')
+ylabel('Modeled Peak (km)')
 grid on
 grid minor
 
 nexttile
 plot(FWHM(:), Mod_FWHM(:), '.', 'MarkerSize', ms)
-lim =[5, 12];
+lim = [4, 12];
 xlim(lim)
 ylim(lim)
+xlabel('Observed FWHM (km)')
+ylabel('Modeled FWHM (km)')
 grid on
 grid minor

@@ -6,13 +6,14 @@ function hPa = calc_msis_pressure(time, alt, lat, lon, sw)
 % lon = 15;
 % sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
 % 
+% sw  = readtable(sw_fn_csv
 % days = datenum(yr, 1:12, 15);
 % hrs = 0:23;
 % Times = (days + hrs')';
 % pres = zeros(length(days), length(hrs));
 % for l1 = 1:length(days)
 %     for l2 = 1:length(hrs)
-%         pres(l1, l2) = calc_msis_pressure(Times(l1, l2), alt, lat, lon);
+%         pres(l1, l2) = calc_msis_pressure(Times(l1, l2), alt, lat, lon, sw);
 %     end
 % end
 % contourf(days, hrs, pres')

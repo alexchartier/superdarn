@@ -91,7 +91,7 @@ end
 
 %% Training
 Tbl_train_FWHM = removevars(Tbl_full, {'Peak', 'FWHM'});
-Tbl_train_peak = removevars(Tbl_train_FWHM, mem_fields);
+Tbl_train_peak = Tbl_train_FWHM; %removevars(Tbl_train_FWHM, mem_fields);
 Mdl.Peak = fitrsvm(Tbl_train_peak, Tbl_full.Peak);
 Mdl.FWHM = fitrsvm(Tbl_train_FWHM, Tbl_full.FWHM);
 

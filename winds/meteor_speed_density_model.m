@@ -18,18 +18,32 @@ lon(lon < 0) = lon(lon < 0) + 360;
 %% load
 % Note angles are the same every year
 yr = year(min(times(:)));
+flds = fieldnames(angles);
+if ~leapyear(yr)
+    lyi = angles.month == 2 & angles.day == 29;
+    for i =1:length(flds)
+        if contains(flds{i}, 'az') || contains(flds{i}, 'el')
+            angles.(flds{i}) = angles.(flds{i})(:, :, ~lyi);
+        elseif strcmp(flds{i}, 'lat') || strcmp(flds{i}, 'lon') 
+            continue
+        else
+            angles.(flds{i}) = angles.(flds{i})(~lyi);
+        end
+
+    end
+end
+
 yr_vec = double((yr - min(angles.year(:))) + angles.year);
 angles.times = datenum(yr_vec, double(angles.month),...
     double(angles.day), double(angles.hour), double(angles.minute), 0);
-sources = sporadic_source_model(); 
 
+sources = sporadic_source_model(); 
 
 %% Time calculations
 % times = repmat(datenum(year, 1:12, 15), [24, 1]) + [0:23]'/24;
 LTs = (times - floor(times) + lon / 360) * 24;
 LTs(LTs >= 24) = LTs(LTs >= 24) - 24;
 LTs(LTs < 0) = LTs(LTs < 0) + 24;
-
 
 %% Speeds
 for i = 1:length(Names)
@@ -38,7 +52,11 @@ for i = 1:length(Names)
     % Interpolate to station
     for t1 = 1:size(times, 1)
         for t2 = 1:size(times, 2)
-            ti = round(angles.times *1E5) == round(times(t1, t2) *1E5);
+            ti = round(angles.times *86400) == round(times(t1, t2) *86400);
+
+            if sum(ti) ~= 1
+                disp('1')
+            end
             assert(sum(ti) == 1, 'Looking for exactly 1 time')
             speeds_s.(Names{i})(t1, t2) = interp2(...
                 angles.lat, angles.lon, squeeze(speeds.(Names{i})(:, :, ti)), ...

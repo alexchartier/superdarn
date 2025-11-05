@@ -13,6 +13,8 @@ mwr.alt = h5read(mwr_fn, '/info/altitude');
 mwr.pos = h5read(mwr_fn, '/info/RadarPos');
 mwr.counts = h5read(mwr_fn, '/info/counts');
 mwr.time = h5read(mwr_fn, '/info/datenums');
+mwr.freq = h5read(mwr_fn, '/info/RadarFrequ');
+
 
 %% calculate weighted average winds in the SD direction
 maxct = max(mwr.counts, [], 1);
@@ -49,6 +51,9 @@ mwr_2d.v0_30daymed_avg = movmedian(mwr_2d.v0_daily_avg, 31, 2, "omitnan");
 
 mwr_2d.Vx_med_avg = mwr_2d.u0_30daymed_avg * sind(boresight) + ...
     mwr_2d.v0_30daymed_avg * cosd(boresight);
+mwr_2d.Vy_med_avg = mwr_2d.u0_30daymed_avg * sind(boresight - 90) + ...
+    mwr_2d.v0_30daymed_avg * cosd(boresight - 90);
+
 % mwr_2d.Vx_med_modelavg = mwr_2d.u0_30daymed_modelavg * sind(boresight) + ...
 %     mwr_2d.v0_30daymed_modelavg * cosd(boresight);
 mwr_2d.pos = mwr.pos;
@@ -56,6 +61,7 @@ mwr_2d.hour = unique(hour(mwr_2d.Time));
 mwr_2d.counts = reshape(mwr.counts, [length(mwr.alt), 24, 366]);
 mwr_2d.u0_raw = reshape(mwr.u0, [size(mwr.u0, 1), size(mwr_2d.Time, 1), size(mwr_2d.Time, 2)]);
 mwr_2d.alt = mwr.alt;
+mwr_2d.freq = mwr.freq;
 
 %% Extract lat/lon
 mwr_2d.lat = mwr.pos(1);

@@ -1,12 +1,10 @@
 %% inputs
-radar_names = {'McMurdo', 'CONDOR'};
-yrs = {[2018, 2019], 2020:2023};
-fn_fmt = {['~/data/meteor_winds/madrigal/McMurdo_Meteor_Radar/',...
-    'mcr{yyyy}*_001.hdf5.nc'], ...
-    ['~/data/meteor_winds/madrigal/',...
-    'CONDOR_multi-static_meteor_radar_system/alo{yyyy}*_001.hdf5.nc']};
+radar_name = 'RIO';
+yr = 2019;
+fn_fmt = {['~/data/meteor_winds/madrigal/' ...
+    'Southern_Argentina_Agile_Meteor_Radar/amr{yyyy}*.hdf5.nc']};
 
-out_fn_fmt = '~/data/meteor_winds/mat/{NAME}_{yyyy}.mat';
+out_fn_fmt = '~/data/meteor_winds/notused_mat/{NAME}_{yyyy}.mat';
 
 %% Loop through and store
 for ri = 1:length(radar_names)
@@ -38,12 +36,9 @@ for ri = 1:length(radar_names)
         out.Time = datenum(datetime(squeeze(data_full.timestamps), ...
             'ConvertFrom', 'posixtime'));
         out.counts = data_full.met_count;
-        out.u = data_full.vn1;
-        out.v = data_full.vn2;
         out.alt = squeeze(data_full.gdalt(:, 1, 1));
         out.lat = lat;
         out.lon = lon;
-        
 
         out_fn = filename(out_fn_fmt, time, radar_names{ri});
         savestruct(out_fn, out)

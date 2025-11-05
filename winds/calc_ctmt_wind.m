@@ -72,7 +72,7 @@ wind_array_ut(:, 25, :, :, :, :) = wind_array_ut(:, 1, :, :, :, :);
 hr_ut = [hours, hours(1) + 24];
 
 
-%% Save
+%% Store
 ctmt.wind_ut = permute(wind_array_ut, [1, 6, 2, 5, 4, 3]);
 ctmt.wind_lst = permute(wind_array_lst, [1, 6, 2, 5, 4, 3]);
 ctmt.dirns = dirns; 

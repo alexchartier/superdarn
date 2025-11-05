@@ -10,10 +10,7 @@ sw = readtable(sw_fn_csv);
 
 Mdl = loadstruct(ml_model_fn);
 
-mwr = loadstruct('~/data/meteor_winds/notused_mat/Jul_2020.mat');
-% mwr = loadstruct('~/data/meteor_winds/mat/And_2008.mat');
-% mwr = loadstruct('~/data/meteor_winds/mat/Jul_2008.mat');
-
+mwr = loadstruct('~/data/meteor_winds/notused_mat/Jul_2008.mat');
 
 yr = year(min(mwr.Time(:)));
 days = datenum(yr, 1:12, 15); % output months
@@ -24,8 +21,8 @@ hrs = 0:23;
 meteor_angles = load_nc(meteor_angle_fn);
 mem_int = interp_mem(mem, mem_fields, mwr.Time, mwr.lat, mwr.lon);
 
-[Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, mwr, mem_int, sw, meteor_angles, ...
-    msis_fn_fmt);
+[Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, mwr.Time, mwr.lat, mwr.lon, ...
+    mem_int, sw, meteor_angles);
 
 times = days + hrs'/24;
 ti = ismember(round(mwr.Time * 1E5), round(times * 1E5));
@@ -54,7 +51,7 @@ ms = 10;
 tiledlayout(1, 2, 'TileSpacing','compact')
 nexttile
 plot(Peak(:), Mod_Peak(:), '.', 'MarkerSize', ms)
-lim =[85, 95];
+lim =[86, 96];
 xlim(lim)
 ylim(lim)
 xlabel('Observed Peak (km)')

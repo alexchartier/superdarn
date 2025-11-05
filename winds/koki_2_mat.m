@@ -14,7 +14,7 @@ for i = 1:length(yrs)
     for j = 1:length(koki_radars)
         koki_fn = [filename(koki_fn_fmt{1}, min(mwr_times), koki_radars{j}), ...
             filename(koki_fn_fmt{2}, max(mwr_times), koki_radars{j})];
-        mwr = load_mwr(koki_fn, 0);
+        mwr = load_mwr_simple(koki_fn);
 
         savestruct(filename(koki_mat_fn_fmt, min(mwr_times), ...
             koki_radars{j}), mwr)

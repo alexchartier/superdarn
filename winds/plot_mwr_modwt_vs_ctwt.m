@@ -11,7 +11,7 @@ koki_fn_fmt = {'~/data/meteor_winds/SMR_{NAME}_{NAME}_32_{yyyymmdd}', ...
     '_{yyyymmdd}.h5'};
 msis_fn_fmt = '~/data/meteor_winds/msis/msis_{yyyy}_%1.1fN_%1.1fE.mat';
 
-yr = 2020;
+yr = 2008;
 days = datenum(yr, 1, 1):datenum(yr, 12, 31);
 months = datenum(yr, 1:12, 15);
 
@@ -23,11 +23,12 @@ koki_fn = [filename(koki_fn_fmt{1}, min(days), mw_radarcode ), ...
 mwr = load_mwr_simple(koki_fn);
 Mdl = loadstruct(ml_model_fn);
 meteor_angles = load_nc(meteor_angle_fn);
-
+sw = readtable(sw_fn_csv);
 mem = load_mem(mem_fn);
 mem_int = interp_mem(mem, mem_fields, mwr.Time, mwr.lat, mwr.lon);
 
-[Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, mwr, mem_int, sw, meteor_angles);
+[Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, mwr.Time, mwr.lat, mwr.lon, ...
+    mem_int, sw, meteor_angles);
 
 %TODO: interpolate Mod_Peak, Mod_FWHM to the full year, or similar
 

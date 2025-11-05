@@ -3,12 +3,12 @@
 % files
 clear
 %% Set inputs
-days = datenum(2020, 1, 1):datenum(2020, 12, 31);
-in_fn_fmt = '~/Downloads/MPD_{yyyy}/mp{yyyymmdd}.riogrande.mpd';
+days = datenum(2019, 1, 1):datenum(2019, 12, 31);
+in_fn_fmt = '~/data/meteor_winds/riogrande/MPD_{yyyy}/mp{yyyymmdd}.riogrande.mpd';
 out_fn_fmt = '~/data/meteor_winds/mat/riogrande_{yyyy}.mat';
 % times = [];
 % hts = [];
-alt_bins = 79:2:101;
+alt_bins = 69:2:121;
 hr_bins = 0:24;
 
 %% Load
@@ -16,7 +16,7 @@ vals = zeros([length(alt_bins) - 1, length(hr_bins)-1, length(days)]);
 for d = 1:length(days)
     disp(datestr(days(d)))
     in_fn = filename(in_fn_fmt, days(d));
-    try 
+    try
         [times, hts, sitename, lat, lon] = read_diego_file(in_fn);
     catch
         fprintf('%s not loaded', in_fn)
@@ -28,7 +28,7 @@ for d = 1:length(days)
         vals(:, h, d) = histcounts(...
             hts(hrs >= hr_bins(h) & hrs < hr_bins(h + 1)), alt_bins);
     end
-    
+
 end
 
 %% Store and save
@@ -60,7 +60,7 @@ npts = size(vals, 1);
 times = zeros(npts, 1);
 hts = zeros(npts, 1);
 for i = 1:npts
-line = strsplit(vals(i, :));
+    line = strsplit(vals(i, :));
     times(i) = datenum(datetime([line{2}, ' ', line{3}], ...
         'InputFormat', 'yyyy/MM/dd HH:mm:ss.SSS'));
     hts(i) = str2double(line{6});

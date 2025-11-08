@@ -32,7 +32,7 @@ def get_dates():
 # Define the server and source directories
 borealis_server = "radar@wallops.invalid"
 sources = [
-    "/borealis_nfs/borealis_data/antennas_iq",
+    "/borealis_nfs/borealis_data/antennas_iq_array",
     "/borealis_nfs/borealis_data/daily"
 ]
 

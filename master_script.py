@@ -108,11 +108,8 @@ def process_day(day: datetime, known_radars: set[str], *, clobber: bool = False)
     day_str = day.strftime('%Y%m%d')
     log_message(f"=== {day_str}: start ===")
 
-    if clobber:
-        pending = sorted(known_radars)
-    else:
-        already_done = list_processed_radars(day)
-        pending      = sorted(known_radars - already_done)
+    already_done = list_processed_radars(day)
+    pending = sorted(known_radars) if clobber else sorted(known_radars - already_done)
 
     if not pending:
         print(f"{day_str}: all radars already processed - skipping")
@@ -121,7 +118,10 @@ def process_day(day: datetime, known_radars: set[str], *, clobber: bool = False)
 
     action = "(clobber) processing" if clobber else "need processing"
     print(f"{day_str}: {len(pending)} radars {action} → {', '.join(pending)}")
-    print(f"Already done: {', '.join(already_done)}")
+    if already_done:
+        print(f"Already done: {', '.join(sorted(already_done))}")
+    else:
+        print("Already done: none")
 
     # ------------------------------------------------------------------
     # 1. Download rawACF for each *pending* radar

@@ -49,11 +49,15 @@ sd.boresight = str2double(boresight{1});
 %      sd.boresight(sd.boresight > 360) = sd.boresight(sd.boresight > 360) - 360;
 % end
 
-sd.u = sd.Vx * sind(sd.boresight) - sd.Vy * cosd(sd.boresight);
-sd.v = sd.Vx * cosd(sd.boresight) - sd.Vy * sind(sd.boresight);
+sd.u = sd.Vx * sind(sd.boresight) + sd.Vy * sind(sd.boresight + 90);
+sd.v = sd.Vx * cosd(sd.boresight) + sd.Vy * cosd(sd.boresight + 90);
 
-sd.u_med = sd.Vx_med * sind(sd.boresight) - sd.Vy_med * cosd(sd.boresight);
-sd.v_med = sd.Vx_med * cosd(sd.boresight) - sd.Vy_med * sind(sd.boresight);
+% sd.u_med = sd.Vx_med * sind(sd.boresight) + sd.Vy_med * cosd(sd.boresight);
+% sd.v_med = sd.Vx_med * cosd(sd.boresight) + sd.Vy_med * sind(sd.boresight);
+
+sd.u_med = sd.Vx_med * sind(sd.boresight) + sd.Vy_med * sind(sd.boresight + 90);
+sd.v_med = sd.Vx_med * cosd(sd.boresight) + sd.Vy_med * cosd(sd.boresight + 90);
+
 
 sd.radarcode = radarcode;
 

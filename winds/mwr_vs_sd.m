@@ -17,8 +17,8 @@ mwr_fn_fmt = {'~/data/meteor_winds/SMR_And_And_32_{yyyymmdd}', '_{yyyymmdd}.h5'}
 %% Load
 mwr_fn = [filename(mwr_fn_fmt{1}, min(times)), filename(mwr_fn_fmt{2}, max(times))];
 mwr = load_mwr(mwr_fn, boresight);
-sd.Vx = zeros(size(mwr.u0)) * NaN;
-sd.time = zeros(size(mwr.u0)) * NaN;
+sd.Vx = zeros(size(mwr.u0_daily_avg)) * NaN;
+sd.time = zeros(size(mwr.u0_daily_avg)) * NaN;
 hr = 0:23;
 for t = 1:length(times)
     
@@ -38,12 +38,12 @@ sd.pos = [ncreadatt(sd_fn, '//', 'lat'), ncreadatt(sd_fn, '//', 'lon')];
 
 %% Calculate
 maxct = max(mwr.counts, [], 1);
-mwr.u0_max = zeros(size(mwr.time)) * NaN;
-mwr.v0_max = zeros(size(mwr.time)) * NaN;
-mwr.u0_avg = zeros(size(mwr.time)) * NaN;
-mwr.v0_avg = zeros(size(mwr.time)) * NaN;
-mwr.u0_modelavg = zeros(size(mwr.time)) * NaN;
-mwr.v0_modelavg = zeros(size(mwr.time)) * NaN;
+mwr.u0_max = zeros(size(mwr.Time)) * NaN;
+mwr.v0_max = zeros(size(mwr.Time)) * NaN;
+mwr.u0_avg = zeros(size(mwr.Time)) * NaN;
+mwr.v0_avg = zeros(size(mwr.Time)) * NaN;
+mwr.u0_modelavg = zeros(size(mwr.Time)) * NaN;
+mwr.v0_modelavg = zeros(size(mwr.Time)) * NaN;
 for i = 1:length(mwr.time)
     if ~isnan(maxct(i))
         mwr.u0_max(i) = mwr.u0(mwr.counts(:, i) == maxct(i), i);
@@ -51,7 +51,7 @@ for i = 1:length(mwr.time)
         mwr.u0_avg(i) = nansum(mwr.u0(:, i) .* mwr.counts(:, i)) / nansum(mwr.counts(:, i));
         mwr.v0_avg(i) = nansum(mwr.v0(:, i) .* mwr.counts(:, i)) / nansum(mwr.counts(:, i));
 
-        [Peak, FWHM] = mwr_ct_model(mwr.time(i), mwr.pos(1), mwr.pos(2));
+        [Peak, FWHM] = mwr_ct_model(mwr.Time(i), mwr.pos(1), mwr.pos(2));
         model_cts = exp(-((mwr.alt - Peak).^2 / FWHM.^2));
         mwr.u0_modelavg(i) = nansum(mwr.u0(:, i) .* model_cts /...
             sum(model_cts(~isnan(mwr.u0(:, i)))));

@@ -2,7 +2,6 @@
 % Compare the FIR SuperDARN winds against the RIO 
 % meteor winds, plus the CTMT model
 
-
 clear
 
 %% Set inputs
@@ -22,6 +21,7 @@ meteor_angle_fn = '~/data/meteor_winds/angles_2008.nc';
 
 radarcode = 'fir'; % 'han';
 mwr_radar = 'rio';
+
 
 %% Load
 yr = year(min(days));

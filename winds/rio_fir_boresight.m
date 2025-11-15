@@ -1,7 +1,6 @@
-%% mcm_mcm_ctmt.m
+%% rio_fir_ctmt.m
 % Compare the FIR SuperDARN winds against the RIO 
 % meteor winds, plus the CTMT model
-
 
 clear
 
@@ -10,7 +9,8 @@ days = datenum(2019, 1, 1):datenum(2019,12,31);
 hr = 0:23;
 sd_fn_fmt = '~/data/superdarn/meteorwindnc/{yyyy}/{mm}/{yyyymmmdd}.{NAME}.nc';
 sd_mat_fn_fmt = '~/data/meteor_winds/sd_mat/{YYYY}_{NAME}.mat';
-mwr_fn_fmt = '~/data/meteor_winds/mat/McMurdo_{yyyy}';
+wind_fn_fmt = ['~/data/meteor_winds/riogrande/Winds/', '' ...
+    'wind_Rio_GW_w_errors_{yyyymm}.txt'];
 
 ctmt_coeff_fn = '~/data/ctmt/coeffs.mat';
 ml_model_fn = '~/data/meteor_winds/ml_model.mat';
@@ -19,8 +19,9 @@ mem_fields = {'lo_dens_flux', 'hi_dens_flux', 'lo_dens_speed', 'hi_dens_speed'};
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
 meteor_angle_fn = '~/data/meteor_winds/angles_2008.nc';
 
-radarcode = 'mcm'; % 'han';
-mwr_radar = 'mcm';
+radarcode = 'fir'; % 'han';
+mwr_radar = 'rio';
+
 
 %% Load
 yr = year(min(days));
@@ -32,7 +33,24 @@ catch
     savestruct(sd_fn, sd);
 end
 boresight = sd.boresight; 
-mwr = loadstruct(filename(mwr_fn_fmt, min(days)));
+
+for ti = 1:length(days)
+    if ti == 1 
+       mwr = load_rio_wind(filename(wind_fn_fmt, days(ti)));
+       fn = fieldnames(mwr);
+    elseif month(days(ti)) ~= month(days(ti - 1))
+        mwr_t = load_rio_wind(filename(wind_fn_fmt, days(ti)));
+        for fi = 1:length(fn)
+            mwr.(fn{fi}) = cat(1, mwr.(fn{fi}), mwr_t.(fn{fi}));
+            mwr.alt = mwr_t.alt;
+            mwr.lat = mwr_t.lat;
+            mwr.lon = mwr_t.lon;
+            mwr.hour = mwr_t.hour;
+
+        end
+        
+    end
+end
 
 ctmt = calc_ctmt_wind(loadstruct(ctmt_coeff_fn), hr, sd.pos(2));
 ctmt.wind_lst = cat(3, ctmt.wind_lst, ctmt.wind_lst(:, :, 1, :, :));
@@ -45,34 +63,21 @@ meteor_angles = load_nc(meteor_angle_fn);
 
 %% MWR height-avg
 Times = days + hr'/24;
-mwr_arr = nan(length(mwr.alt), length(hr), length(Times));
-mwr_ti = ismember(days, mwr.Time(1, :));
-mwr_u = mwr_arr;
-mwr_v = mwr_arr;
-mwr_counts = mwr_arr;
-mwr_u(:, :, mwr_ti) = mwr.u;
-mwr_v(:, :, mwr_ti) = mwr.v;
-mwr_counts(:, :, mwr_ti) = mwr.counts;
-
-mwr.u = mwr_u;
-mwr.v = mwr_v;
-mwr.counts = mwr_counts;
-mwr.Time = Times;
-mwr.hour = [0:23]';
-
 mem_int = interp_mem(mem, mem_fields, Times, mwr.lat, mwr.lon);
 [Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, Times, mwr.lat, mwr.lon, ...
     mem_int, sw, meteor_angles);
 
 mwr.Time = reshape(mwr.Time, 24, 365);
+mwr.u_3d = permute(reshape(mwr.u, [24, 365, length(mwr.alt)]), [3, 1, 2]);
+mwr.v_3d = permute(reshape(mwr.v, [24, 365, length(mwr.alt)]), [3, 1, 2]);
 mwr.u_modwt = zeros(24, 365);
 mwr.v_modwt = zeros(24, 365);
 for hri = 1:size(mwr.Time, 1)
     for ti = 1:size(mwr.Time, 2)
         modcts = normpdf(mwr.alt, Mod_Peak(hri, ti), Mod_FWHM(hri, ti) / 2);
-        mwr.u_modwt(hri, ti) = nansum(mwr.u(:, hri, ti) .* modcts) ...
+        mwr.u_modwt(hri, ti) = nansum(mwr.u_3d(:, hri, ti) .* modcts) ...
             / nansum(modcts);
-        mwr.v_modwt(hri, ti) = nansum(mwr.v(:, hri, ti) .* modcts) ...
+        mwr.v_modwt(hri, ti) = nansum(mwr.v_3d(:, hri, ti) .* modcts) ...
             / nansum(modcts);
     end
 end
@@ -144,16 +149,15 @@ rgb = [ ...
 tidx = ismember(round(mwr.Time * 1E5), round(Times * 1E5));
 LTwinds_mwr_u = UT_to_LT(mwr.u0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
 LTwinds_mwr_v = UT_to_LT(mwr.v0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
-LTwinds_sd_u = UT_to_LT(sd.u_med, sd.hour', 0:23, sd.pos(2));
-LTwinds_sd_v = UT_to_LT(sd.v_med, sd.hour', 0:23, sd.pos(2));
+LTwinds_sd_Vx = UT_to_LT(sd.Vx_med, sd.hour', 0:23, sd.pos(2));
 
-tiledlayout(2, 3, 'TileSpacing', 'compact')
+tiledlayout(2, 1, 'TileSpacing', 'compact')
 
 nexttile
-contourf(LTwinds_mwr_u)
+contourf(LTwinds_mwr_u * sind(boresight) + LTwinds_mwr_v * cosd(boresight))
 colormap(gca, rgb)
-title(sprintf('%s MWR (%1.1f°S, %1.1f°E)', ...
-    upper(mwr_radar), abs(mwr.lat), mwr.lon))
+title(sprintf('%s (%1.1f°N, %1.1f°E)', ...
+    upper(mwr_radar), mwr.lat, mwr.lon))
 ylabel(['\bf{Zonal}\rm', newline,'LST (hr)'])
 grid on
 grid minor
@@ -161,54 +165,16 @@ clim([-50, 50])
 xticklabels('')
 
 nexttile
-contourf(LTwinds_sd_u)
+contourf(LTwinds_sd_Vx)
 colormap(gca, rgb)
-title(sprintf('%s SD', upper(radarcode)))
+title(sprintf('%s (%1.1f°N, %1.1f°E)', ...
+    upper(radarcode), sd.pos(1),sd.pos(2)))
 grid on
 grid minor
 clim([-50, 50])
 xticklabels('')
 yticklabels('')
 
-nexttile
-contourf(ctmt_ui * 3)
-colormap(gca, rgb)
-title(sprintf('CTMT @ %s', upper(radarcode)))
-grid on
-grid minor
-clim([-50, 50])
-xticklabels('')
-yticklabels('')
-
-
-nexttile
-contourf(LTwinds_mwr_v)
-colormap(gca, rgb)
-ylabel(['\bf{Meridional}\rm', newline,'LST (hr)'])
-grid on
-grid minor
-clim([-50, 50])
-xlabel("Day of Year")
-
-
-nexttile
-contourf(LTwinds_sd_v)
-colormap(gca, rgb)
-grid on
-grid minor
-clim([-50, 50])
-yticklabels('')
-xlabel("Day of Year")
-
-
-nexttile
-contourf(ctmt_vi * 3)
-colormap(gca, rgb)
-grid on
-grid minor
-clim([-50, 50])
-yticklabels('')
-xlabel("Day of Year")
 
 
 colorbar
@@ -216,34 +182,6 @@ cb = colorbar;
 cb.Layout.Tile = 'east';
 ylabel(cb, 'Wind (m/s)', 'FontSize', 24)
 
-
-
-
-
-
-
-%% correlations
-crr = xcorr2(LTwinds_mwr_u, LTwinds_sd_u);
-[ssr, snd] = max(crr(:));
-[ij,ji] = ind2sub(size(crr),snd);
-fprintf('MWR vs SD: %i, %i\n', ij, ji)
-
-
-crr = xcorr2(LTwinds_mwr_v, LTwinds_sd_v);
-[ssr, snd] = max(crr(:));
-[ij,ji] = ind2sub(size(crr),snd);
-fprintf('MWR vs SD: %i, %i\n', ij, ji)
-
-
-crr = xcorr2(ctmt_ui, LTwinds_sd_u);
-[ssr, snd] = max(crr(:));
-[ij,ji] = ind2sub(size(crr),snd);
-fprintf('CTMT vs SD: %i, %i\n', ij, ji)
-
-crr = xcorr2(ctmt_vi, LTwinds_sd_v);
-[ssr, snd] = max(crr(:));
-[ij,ji] = ind2sub(size(crr),snd);
-fprintf('CTMT vs SD: %i, %i\n', ij, ji)
 
 
 

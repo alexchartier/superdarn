@@ -55,8 +55,6 @@ meteor_angles = load_nc(meteor_angle_fn);
 
 %% Interpolate CTMT to the SuperDARN location and boresight
 % TODO: simplify and just get the LT
-
-
 Vx_arr = squeeze(ctmt.wind_lst(1, :, :, :, :, :) * sind(boresight) + ...
     ctmt.wind_lst(2, :, :, :, :, :) * cosd(boresight));
 

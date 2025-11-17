@@ -1,6 +1,4 @@
-%% rio_fir_ctmt.m
-% Compare the FIR SuperDARN winds against the RIO 
-% meteor winds, plus the CTMT model
+%% fir_annual_plot.m
 
 clear
 
@@ -29,17 +27,6 @@ catch
     savestruct(sd_fn, sd);
 end
 boresight = sd.boresight; 
-
-
-ctmt = calc_ctmt_wind(loadstruct(ctmt_coeff_fn), hr, sd.pos(2));
-ctmt.wind_lst = cat(3, ctmt.wind_lst, ctmt.wind_lst(:, :, 1, :, :));
-
-
-Mdl = loadstruct(ml_model_fn);
-mem = load_mem(mem_fn);
-sw = readtable(sw_fn_csv);
-meteor_angles = load_nc(meteor_angle_fn);
-Times = days + hr'/24;
 
 
 %% Plot 

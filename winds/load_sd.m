@@ -23,7 +23,6 @@ for di = 1:length(days)
     end
 
     hri = ismember(hours, sd_t.hour);
-    % NOTE: SD defined positive POLEWARD, not north... 
     sd.Vx(hri, di) = sd_t.Vx;
     sd.Vy(hri, di) = sd_t.Vy;
     sd.time(hri, di) = days(di) + hours(hri) / 24;
@@ -44,20 +43,8 @@ sd.Vy_med = movmedian(sd.Vy, 31, 2, "omitnan");
 boresight = strsplit(ncreadatt(good_sd_fn, '/', 'boresight'), ' ');
 sd.boresight = str2double(boresight{1});
 
-% if sign(sd.pos(1)) == -1  % Southern hemisphere flip
-%      sd.boresight = sd.boresight + 180;
-%      sd.boresight(sd.boresight > 360) = sd.boresight(sd.boresight > 360) - 360;
-% end
-
-sd.u = sd.Vx * sind(sd.boresight) + sd.Vy * sind(sd.boresight + 90);
-sd.v = sd.Vx * cosd(sd.boresight) + sd.Vy * cosd(sd.boresight + 90);
-
-% sd.u_med = sd.Vx_med * sind(sd.boresight) + sd.Vy_med * cosd(sd.boresight);
-% sd.v_med = sd.Vx_med * cosd(sd.boresight) + sd.Vy_med * sind(sd.boresight);
-
-sd.u_med = sd.Vx_med * sind(sd.boresight) + sd.Vy_med * sind(sd.boresight + 90);
-sd.v_med = sd.Vx_med * cosd(sd.boresight) + sd.Vy_med * cosd(sd.boresight + 90);
-
+sd.u_med = -sd.Vy_med;
+sd.v_med = sd.Vx_med;
 
 sd.radarcode = radarcode;
 

@@ -147,8 +147,6 @@ clim([-50, 50])
 xticklabels('')
 yticklabels('')
 
-
-
 nexttile
 contourf(LTwinds_mwr_v)
 colormap(gca, rgb)
@@ -157,7 +155,6 @@ grid on
 grid minor
 clim([-50, 50])
 xlabel("Day of Year")
-
 
 nexttile
 contourf(LTwinds_sd_v)
@@ -168,7 +165,6 @@ clim([-50, 50])
 yticklabels('')
 xlabel("Day of Year")
 
-
 nexttile
 contourf(ctmt_vi)
 colormap(gca, rgb)
@@ -177,7 +173,6 @@ grid minor
 clim([-50, 50])
 yticklabels('')
 xlabel("Day of Year")
-
 
 colorbar
 cb = colorbar;

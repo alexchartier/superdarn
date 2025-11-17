@@ -149,8 +149,8 @@ rgb = [ ...
 tidx = ismember(round(mwr.Time * 1E5), round(Times * 1E5));
 LTwinds_mwr_u = UT_to_LT(mwr.u0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
 LTwinds_mwr_v = UT_to_LT(mwr.v0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
-LTwinds_sd_u = UT_to_LT(sd.u_med, sd.hour', 0:23, sd.pos(2));
-LTwinds_sd_v = UT_to_LT(sd.v_med, sd.hour', 0:23, sd.pos(2));
+LTwinds_sd_u = UT_to_LT(sd.Vy_med, sd.hour', 0:23, sd.pos(2));
+LTwinds_sd_v = UT_to_LT(-sd.Vx_med, sd.hour', 0:23, sd.pos(2));
 LTwinds_sd_u(abs(LTwinds_sd_u) > 50) = NaN;
 tiledlayout(2, 3, 'TileSpacing', 'compact')
 

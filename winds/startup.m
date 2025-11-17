@@ -33,6 +33,8 @@ set(0,'DefaultAxesFontName','arial');              % Axis Font
 set(0,'DefaultTextFontName','arial');              % Axis Font
 
 
+
+setenv(SD_HDWPATH='~/rst/tables/superdarn/hdw/')
 %%
 
 % Plot

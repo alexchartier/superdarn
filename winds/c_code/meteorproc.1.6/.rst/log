@@ -1,0 +1,35 @@
+commit 9e346cdab2200f60865d3a8f67e5ea2bf5c1a153
+Author: Robin Barnes <robin.barnes@jhuapl.edu>
+Date:   Tue Dec 11 21:42:47 2018 -0500
+
+    Fixed makefile
+
+commit bee9bcd85ea3152d4c0350f732d916c51509cf64
+Author: Robin Barnes <robin.barnes@jhuapl.edu>
+Date:   Mon Sep 5 09:48:54 2016 -0400
+
+    Fixed beam limits.
+
+commit 0d3bfb457198052084b9bafc626235cad47aeb52
+Author: Robin Barnes <robin.barnes@jhuapl.edu>
+Date:   Wed Aug 31 16:18:29 2016 -0400
+
+    Modifications to deal with radars with more than sixteen beams.
+
+commit c9a6751e47500a592c13288ff3b3b7d34c794e5a
+Author: Robin Barnes <robin.barnes@jhuapl.edu>
+Date:   Wed Aug 31 15:42:52 2016 -0400
+
+    Removed debugging code.
+
+commit b6c2a7a155958dd4952e323e1d34705b24e44960
+Author: Robin Barnes <robin.barnes@jhuapl.edu>
+Date:   Wed Aug 31 15:36:47 2016 -0400
+
+    Derive meridional beam from radar hardware configuration.
+
+commit 7878fedae0c2d62d719e7a7a255af18e1fa417ec
+Author: Robin Barnes <robin.barnes@jhuapl.edu>
+Date:   Wed Aug 31 14:52:04 2016 -0400
+
+    Meteor winds processing software.

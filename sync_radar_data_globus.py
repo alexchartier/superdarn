@@ -40,11 +40,14 @@ from globus_sdk.scopes import TransferScopes
 import time
 import sys
 import platform
+import os
 
 if sys.version_info >= (3, 0):
     PYTHON3 = True
 else:
     PYTHON3 = False
+
+SCOPES = "openid profile email urn:globus:auth:scope:transfer.api.globus.org:all"
 
 USER_HOME_DIRECTORY = expanduser("~")
 # The following is a path to a file that contains the globus transfer refresh tokens used
@@ -287,22 +290,36 @@ Examples:
                 return ep['id']
         sys.exit("No endpoint found for SuperDARN mirror. Exiting")
 
+
     def get_refresh_token_authorizer(self):
-        """ Attempts to get an authorizer object that uses refresh tokens (for
-        automatic authentication). It requires a refresh token to work.
+        """
+        Returns a Globus authorizer that uses a cached refresh token.
+        If the token is invalid or expired, prompts for login once and caches a new one.
+        """
 
-        :returns: Globus SDK authorizer object """
-
-        # Get client from globus sdk to act on
+        SCOPES = "openid profile email urn:globus:auth:scope:transfer.api.globus.org:all"
         client = globus_sdk.NativeAppAuthClient(self.CLIENT_ID)
-        client.oauth2_start_flow(refresh_tokens=True)
 
-        # Get authorizer that handles the refreshing of token
         try:
+            # Try the existing token
             return globus_sdk.RefreshTokenAuthorizer(self.TRANSFER_RT, client)
-        except globus_sdk.exc.AuthAPIError as e:
-            sys.exit("Transfer refresh token file {} is outdated, "
-                     "please remove and try running again".format(self.transfer_rt_filename))
+
+        except (globus_sdk.GlobusAPIError, Exception):
+            # Token is invalid — run a login flow *once*
+            print("Transfer refresh token is invalid or outdated.")
+            client.oauth2_start_flow(requested_scopes=SCOPES, refresh_tokens=True)
+            print("Go to this URL and log in:\n", client.oauth2_get_authorize_url())
+            code = input("Paste auth code: ").strip()
+
+            tokens = client.oauth2_exchange_code_for_tokens(code)
+            rt = tokens.by_resource_server["transfer.api.globus.org"]["refresh_token"]
+
+            with open(self.transfer_rt_filename, "w") as f:
+                f.write(rt + "\n")
+
+            print(f"New refresh token saved to {self.transfer_rt_filename}")
+            self.TRANSFER_RT = rt
+            return globus_sdk.RefreshTokenAuthorizer(rt, client)
 
     def get_client_secret_authorizer(self):
         """ Attempts to get an authorizer object that uses a client secret for authentication.
@@ -391,35 +408,53 @@ Examples:
                 self.consents.extend(err.info.consent_required.required_scopes)
 
     def sync_files_from_list(self, files_list, source_uuid=None, dest_uuid=None):
-        """ Takes a list of files to synchronize as well as source and destination endpoint UUIDs.
-        It is hard coded to place the files in the correct YYYY/MM directories on the SuperDARN
-        globus mirror, the default source and destination UUIDs are fine for 99% of usage.
+        """
+        Takes a list of files to synchronize as well as source and destination endpoint UUIDs.
+        Places the files in the correct YYYY/MM directories on the SuperDARN Globus mirror.
 
-        :param files_list: python list of file names to synchronize
-        :param source_uuid: UUID of the source endpoint of the files
-        :param dest_uuid: UUID of the destination endpoint for the files
-        :returns: Globus SDK transfer result object """
+        :param files_list: list of file names to synchronize
+        :param source_uuid: UUID of the source endpoint
+        :param dest_uuid: UUID of the destination endpoint
+        :returns: Globus SDK transfer result object
+        """
 
         if dest_uuid is None:
             dest_uuid = PERSONAL_UUID
         if source_uuid is None:
             source_uuid = self.mirror_uuid
-        function_name = inspect.currentframe().f_code.co_name
-        transfer_data = globus_sdk.TransferData(self.transfer_client, source_uuid, dest_uuid,
-                                                label=function_name, sync_level="checksum",
-                                                notify_on_succeeded=False,
-                                                notify_on_failed=True)
 
-        source_dir_prefix = "{root}/{type}/{year}/{month}/".format(root=self.mirror_root_dir,
-                                                                   type=self.data_type,
-                                                                   year=self.sync_year,
-                                                                   month=self.sync_month)
+        function_name = inspect.currentframe().f_code.co_name
+
+        # Build the TransferData object — all args after the first three must be keyword-only in SDK 4.x
+        transfer_data = globus_sdk.TransferData(
+            source_uuid,
+            dest_uuid,
+            label=function_name,
+            sync_level="checksum",
+            notify_on_succeeded=False,
+            notify_on_failed=True,
+            verify_checksum=False,
+            preserve_timestamp=True,
+            encrypt_data=False,
+        )
+
+        # Construct source and destination directory prefixes
+        source_dir_prefix = "{root}/{type}/{year}/{month}/".format(
+            root=self.mirror_root_dir,
+            type=self.data_type,
+            year=self.sync_year,
+            month=self.sync_month,
+        )
         dest_dir_prefix = self.sync_local_dir
+
+        # Add each file to the transfer manifest
         for data_file in files_list:
-            transfer_data.add_item("{source_dir}/{file_name}".format(source_dir=source_dir_prefix,
-                                                                     file_name=data_file),
-                                   "{dest_dir}/{file_name}".format(dest_dir=dest_dir_prefix,
-                                                                   file_name=data_file))
+            transfer_data.add_item(
+                f"{source_dir_prefix}{data_file}",
+                f"{dest_dir_prefix}/{data_file}",
+            )
+
+        # Submit the transfer to Globus
         transfer_result = self.transfer_client.submit_transfer(transfer_data)
         return transfer_result
 

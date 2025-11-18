@@ -30,8 +30,10 @@ Examples
 
 Notes
 -----
-- This script shells out to `sync_radar_data_globus.py`. Make sure it is available
-  alongside this script or provide the correct path via --sync-script.
+- This script invokes `sync_radar_data_globus.py`. You can point to it with
+  --sync-script, or set an environment variable:
+      GLOBUS_SYNC_SCRIPT=/path/to/sync_radar_data_globus.py
+  If neither is set, we search common locations including a local 'globus/' folder.
 - Globus Connect Personal must be installed and authorized on the host
   used as the destination endpoint (see the README referenced in the sync script).
 """
@@ -43,7 +45,6 @@ import re
 import shutil
 import subprocess
 import sys
-from glob import glob
 from pathlib import Path
 
 # Optional helper import (used by other project scripts for standard paths)
@@ -76,8 +77,8 @@ def _parse_args(argv=None):
     p.add_argument("-d", "--dest", default=None,
                    help="Destination directory. Defaults to helper.FITACF_DIR_FMT for the given date, "
                         "or ./fitacf/YYYY/MM if helper is unavailable.")
-    p.add_argument("--sync-script", default=str(Path(__file__).with_name("sync_radar_data_globus.py")),
-                   help="Path to sync_radar_data_globus.py")
+    p.add_argument("--sync-script", default=None,
+                   help="Path to sync_radar_data_globus.py (overrides auto-detection).")
     p.add_argument("-v", "--verbose", action="store_true",
                    help="Verbose: print filenames as they are fetched and other details.")
     return p.parse_args(argv)
@@ -112,6 +113,57 @@ def _existing_set(dest_dir: str):
     return set(os.listdir(dest_dir))
 
 
+def _resolve_sync_script(user_arg: str | None, verbose: bool = False) -> str:
+    """Resolve the path to sync_radar_data_globus.py with sensible fallbacks.
+    Returns a path (or executable name) suitable for passing to subprocess.
+    Raises FileNotFoundError if nothing plausible is found.
+    """
+    # 1) Environment variable overrides all
+    env = os.getenv("GLOBUS_SYNC_SCRIPT") or os.getenv("SYNC_RADAR_DATA_GLOBUS")
+    if env:
+        p = Path(env).expanduser()
+        if p.is_file():
+            if verbose:
+                print(f"[INFO] Using sync script from env: {p}")
+            return str(p)
+        raise FileNotFoundError(f"Environment variable points to missing sync script: {p}")
+
+    # 2) Explicit CLI arg
+    if user_arg:
+        p = Path(user_arg).expanduser()
+        if p.is_file():
+            if verbose:
+                print(f"[INFO] Using sync script from --sync-script: {p}")
+            return str(p)
+        raise FileNotFoundError(f"--sync-script path does not exist: {p}")
+
+    # 3) Common locations relative to this file and CWD
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here / "sync_radar_data_globus.py",
+        here / "globus" / "sync_radar_data_globus.py",   # e.g., /homes/.../superdarn/globus/...
+        Path.cwd() / "sync_radar_data_globus.py",
+        Path.cwd() / "globus" / "sync_radar_data_globus.py",
+    ]
+    for c in candidates:
+        if c.is_file():
+            if verbose:
+                print(f"[INFO] Using detected sync script: {c}")
+            return str(c)
+
+    # 4) Last resort: search PATH
+    which = shutil.which("sync_radar_data_globus.py")
+    if which:
+        if verbose:
+            print(f"[INFO] Using sync script found in PATH: {which}")
+        return which
+
+    raise FileNotFoundError(
+        "Could not locate sync_radar_data_globus.py. "
+        "Set --sync-script or GLOBUS_SYNC_SCRIPT, or place the script in ./globus/ next to get_fitacfs.py"
+    )
+
+
 def _run_sync(sync_script: str, year: int, month: int, data_type: str, pattern: str, station: str, dest_dir: str, verbose: bool):
     """Invoke the sync script for a single type. Returns (returncode, stdout, stderr)."""
     cmd = [
@@ -141,6 +193,13 @@ def main(argv=None):
     # Determine destination directory
     dest_dir = args.dest or _default_dest(date_obj)
     _ensure_dir(dest_dir)
+
+    # Resolve sync script path
+    try:
+        sync_script_path = _resolve_sync_script(args.sync_script, args.verbose)
+    except FileNotFoundError as e:
+        print(f"[ERROR] {e}")
+        return 2
 
     # Normalize and expand types
     if not args.types or len(args.types) == 0:
@@ -178,7 +237,7 @@ def main(argv=None):
         data_type = TYPE_MAP[t]
 
         before = _existing_set(dest_dir)
-        rc, out, err = _run_sync(args.sync_script, year, month, data_type, pattern, station, dest_dir, args.verbose)
+        rc, out, err = _run_sync(sync_script_path, year, month, data_type, pattern, station, dest_dir, args.verbose)
         after = _existing_set(dest_dir)
         new_files = sorted(list(after - before))
 

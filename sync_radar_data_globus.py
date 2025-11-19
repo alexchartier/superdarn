@@ -41,6 +41,8 @@ import time
 import sys
 import platform
 import os
+import helper
+import subprocess
 
 if sys.version_info >= (3, 0):
     PYTHON3 = True
@@ -460,6 +462,7 @@ Examples:
 
 
 if __name__ == '__main__':
+
     """ Open the transfer refresh token file if it exists and use it to initialize a Synchronizer
     object. Then synchronize! """
     if isfile(TRANSFER_RT_FILENAME):
@@ -476,3 +479,14 @@ if __name__ == '__main__':
         sync.get_auth_with_login(sync.consents)
 
     sync.synchronize()
+
+
+
+
+"""
+    # Allow access to write directory
+    subprocess.call('{0} -start -restrict-paths \'rw~/,rw{1}\' &'.format(
+        helper.GLOBUS_PATH, sync.sync_local_dir), shell=True)
+
+"""
+

@@ -41,7 +41,7 @@ def main(date, two_five, three_zero):
 #        os.rmdir(fitDir)
 
 
-    totalTime = helper.getTimeString(time.time() - startTime)
+    totalTime = helper.get_time_string(time.time() - startTime)
     emailSubject = '"FitACF Download and Conversion Complete"'
     emailBody    = '"Finished downloading and converting {month} fitACF data\nTotal time: {time}"'.format(month = startDate.strftime('%Y/%m'), time = totalTime)
     helper.send_email(emailSubject, emailBody)

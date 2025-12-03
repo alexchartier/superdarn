@@ -39,7 +39,7 @@ tiledlayout(1, 2, 'TileSpacing', 'compact')
 
 
 nexttile
-contourf(days, hr, LTwinds_sd_v)
+contourf(days, lt, LTwinds_sd_v)
 colormap(gca, jet)
 title('Meridional')
 grid on
@@ -50,7 +50,7 @@ datetick('x', 'mmm', 'keepticks', 'keeplimits')
 
 
 nexttile
-contourf(days, hr, LTwinds_sd_u)
+contourf(days, lt, LTwinds_sd_u)
 colormap(gca, jet)
 title('Zonal')
 grid on

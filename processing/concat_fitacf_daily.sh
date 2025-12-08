@@ -67,6 +67,11 @@ is_allowed_radar() {
 
 current_key=""
 skip_current_key=0
+index_count=0
+processed_count=0
+
+echo "Scanning input directory for .fitacf.bz2 files (progress every 500 files)..."
+echo "  This step sorts the full list first, so a large tree can take a while before concatenation starts."
 
 find "${input_dir}" -type f -name "*.fitacf.bz2" \
   | while read -r file; do
@@ -77,6 +82,10 @@ find "${input_dir}" -type f -name "*.fitacf.bz2" \
       fi
       if ! is_allowed_radar "${radar}"; then
         continue
+      fi
+      ((index_count++))
+      if (( index_count % 500 == 0 )); then
+        echo "  Indexed ${index_count} files so far..." >&2
       fi
       printf "%s\t%s\t%s\t%s\t%s\n" "${ymd}" "${radar}" "${hhmm}" "${ss}" "${file}"
     done \
@@ -102,6 +111,10 @@ find "${input_dir}" -type f -name "*.fitacf.bz2" \
 
       if [[ ${skip_current_key} -eq 1 ]]; then
         continue
+      fi
+      ((processed_count++))
+      if (( processed_count % 100 == 0 )); then
+        echo "  Concatenated ${processed_count} files so far..." >&2
       fi
 
       echo "  Appending ${file} to ${out_file}"

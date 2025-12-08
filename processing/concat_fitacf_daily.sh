@@ -87,6 +87,7 @@ tmp_root="$(mktemp -d)"
 find_error_log=""
 entries_file=""
 group_counts_file=""
+job_status_log=""
 
 cleanup() {
   rm -rf "${tmp_root}"
@@ -95,6 +96,9 @@ cleanup() {
   fi
   if [[ -n "${group_counts_file:-}" && -f "${group_counts_file}" ]]; then
     rm -f "${group_counts_file}"
+  fi
+  if [[ -n "${job_status_log:-}" && -f "${job_status_log}" ]]; then
+    rm -f "${job_status_log}"
   fi
   # Best-effort kill of any remaining background jobs
   if [[ ${#job_pids[@]} -gt 0 ]]; then
@@ -140,13 +144,19 @@ run_group_job() {
   for f in "${files[@]}"; do
     [[ -z "${f}" ]] && continue
     ((count++))
-    bzip2 -dc "${f}" >> "${out_file}"
+    if ! bzip2 -dc "${f}" >> "${out_file}"; then
+      echo "  [${ymd} ${radar}] FAILED to decompress ${f}" >&2
+      echo "FAIL ${ymd} ${radar} ${f}" >> "${job_status_log}"
+      rm -f "${list_file}"
+      return 1
+    fi
     if (( count % 100 == 0 )); then
       echo "  [${ymd} ${radar}] ${count}/${total} files done" >&2
     fi
   done
 
   rm -f "${list_file}"
+  echo "OK ${ymd} ${radar} ${count}" >> "${job_status_log}"
   echo "  [${ymd} ${radar}] completed ${count} files -> ${out_file}"
 }
 
@@ -186,6 +196,7 @@ radar=""
 skip_current_key=0
 find_error_log="${tmp_root}/find_errors.log"
 entries_file="$(mktemp "${tmp_root}/entries.XXXX")"
+job_status_log="$(mktemp "${tmp_root}/job_status.XXXX")"
 : > "${find_error_log}"
 
 echo "Quick visibility check (first match, maxdepth 3)..."
@@ -306,3 +317,17 @@ while (( ${#job_pids[@]} > 0 )); do
     echo "Background job ${pid} failed with exit ${status}" >&2
   fi
 done
+
+ok_groups=0
+fail_groups=0
+if [[ -f "${job_status_log}" ]]; then
+  ok_groups=$(grep -c '^OK ' "${job_status_log}" 2>/dev/null || true)
+  fail_groups=$(grep -c '^FAIL ' "${job_status_log}" 2>/dev/null || true)
+fi
+
+echo "Summary: queued ${processed_count} files into ${ok_groups} completed groups; ${fail_groups} groups failed; skipped existing outputs: ${skipped_existing}"
+if (( fail_groups > 0 )); then
+  echo "Failed groups (first 10 entries):"
+  grep '^FAIL ' "${job_status_log}" | head
+  exit 1
+fi

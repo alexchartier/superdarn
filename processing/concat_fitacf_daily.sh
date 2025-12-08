@@ -78,11 +78,17 @@ current_key=""
 skip_current_key=0
 index_count=0
 processed_count=0
+skipped_existing=0
 declare -a job_pids=()
 tmp_root="$(mktemp -d)"
+find_error_log=""
+entries_file=""
 
 cleanup() {
   rm -rf "${tmp_root}"
+  if [[ -n "${entries_file:-}" && -f "${entries_file}" ]]; then
+    rm -f "${entries_file}"
+  fi
   # Best-effort kill of any remaining background jobs
   if [[ ${#job_pids[@]} -gt 0 ]]; then
     kill "${job_pids[@]}" 2>/dev/null || true
@@ -126,7 +132,7 @@ echo "Scanning input directory for .fitacf.bz2 files (progress every 500 files).
 echo "  This step sorts the full list first, so a large tree can take a while before concatenation starts."
 
 generate_entries() {
-  find "${input_dir}" -type f -name "*.fitacf.bz2" \
+  if ! find "${input_dir}" -type f -name "*.fitacf.bz2" 2>>"${find_error_log}" \
     | while read -r file; do
         base="$(basename "${file}")"
         IFS='.' read -r ymd hhmm ss radar _rest <<< "${base}"
@@ -142,6 +148,11 @@ generate_entries() {
         fi
         printf "%s\t%s\t%s\t%s\t%s\n" "${ymd}" "${radar}" "${hhmm}" "${ss}" "${file}"
       done
+  then
+    local find_status=${PIPESTATUS[0]:-1}
+    echo "find failed while scanning ${input_dir} (exit ${find_status}). See ${find_error_log}." >&2
+    return "${find_status}"
+  fi
 }
 
 current_key=""
@@ -151,6 +162,35 @@ out_dir=""
 ymd=""
 radar=""
 skip_current_key=0
+find_error_log="${tmp_root}/find_errors.log"
+entries_file="$(mktemp "${tmp_root}/entries.XXXX")"
+: > "${find_error_log}"
+
+echo "Quick visibility check (first match, maxdepth 3)..."
+sample_match="$(find "${input_dir}" -maxdepth 3 -type f -name "*.fitacf.bz2" -print -quit 2>/dev/null || true)"
+if [[ -n "${sample_match}" ]]; then
+  echo "  Found: ${sample_match}"
+else
+  echo "  No files seen in the quick sample; continuing to full scan..." >&2
+fi
+
+echo "Building file list..."
+if ! generate_entries > "${entries_file}"; then
+  echo "Aborting because find reported an error. See ${find_error_log} for details." >&2
+  exit 1
+fi
+
+entry_count=$(wc -l < "${entries_file}")
+echo "Indexed ${entry_count} files before sorting."
+
+if (( entry_count == 0 )); then
+  echo "No .fitacf.bz2 files found under ${input_dir}. Is the path correct/mounted and readable?" >&2
+  if [[ -s "${find_error_log}" ]]; then
+    echo "find stderr (last 20 lines):" >&2
+    tail -n 20 "${find_error_log}" >&2
+  fi
+  exit 1
+fi
 
 while IFS=$'\t' read -r ymd radar hhmm ss file; do
   key="${ymd}.${radar}"
@@ -175,6 +215,7 @@ while IFS=$'\t' read -r ymd radar hhmm ss file; do
       echo "Skipping existing output: ${prev_out_file}"
       skip_current_key=1
       group_list_file=""
+      ((skipped_existing++))
       continue
     fi
 
@@ -194,7 +235,7 @@ while IFS=$'\t' read -r ymd radar hhmm ss file; do
   fi
 
   echo "${file}" >> "${group_list_file}"
-done < <(generate_entries | sort -t $'\t' -k1,1 -k2,2 -k3,3 -k4,4)
+done < <(sort -t $'\t' -k1,1 -k2,2 -k3,3 -k4,4 "${entries_file}")
 
 # Final group
 if [[ -n "${current_key}" && ${skip_current_key} -eq 0 && -n "${group_list_file}" ]]; then
@@ -205,7 +246,11 @@ elif [[ -n "${group_list_file}" ]]; then
 fi
 
 if (( processed_count == 0 )); then
-  echo "No .fitacf.bz2 files found under ${input_dir}. Is the path correct/mounted and readable?" >&2
+  if (( skipped_existing > 0 )); then
+    echo "All ${skipped_existing} outputs already exist. Use -f to overwrite." >&2
+    exit 0
+  fi
+  echo "No .fitacf.bz2 files queued for processing under ${input_dir}." >&2
   exit 1
 fi
 

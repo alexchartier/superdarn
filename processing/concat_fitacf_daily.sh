@@ -40,6 +40,9 @@ echo "  Radar filter: ${radar_filter:-all}"
 echo "  Force overwrite: ${force}"
 echo "  Parallel jobs: ${parallel_jobs}"
 
+input_dir="${input_dir%/}"
+output_dir="${output_dir%/}"
+
 if [[ ! -d "${input_dir}" ]]; then
   echo "Input directory not found: ${input_dir}" >&2
   exit 1
@@ -83,11 +86,15 @@ declare -a job_pids=()
 tmp_root="$(mktemp -d)"
 find_error_log=""
 entries_file=""
+group_counts_file=""
 
 cleanup() {
   rm -rf "${tmp_root}"
   if [[ -n "${entries_file:-}" && -f "${entries_file}" ]]; then
     rm -f "${entries_file}"
+  fi
+  if [[ -n "${group_counts_file:-}" && -f "${group_counts_file}" ]]; then
+    rm -f "${group_counts_file}"
   fi
   # Best-effort kill of any remaining background jobs
   if [[ ${#job_pids[@]} -gt 0 ]]; then
@@ -110,29 +117,39 @@ run_group_job() {
   local out_file="${3}"
   local list_file="${4}"
 
-  (
-    local count=0
-    local total
-    total="$(wc -l < "${list_file}")"
-    echo "  [${ymd} ${radar}] concatenating ${total} files -> ${out_file}"
-    while read -r file; do
-      ((count++))
-      bzip2 -dc "${file}" >> "${out_file}"
-      if (( count % 100 == 0 )); then
-        echo "  [${ymd} ${radar}] ${count}/${total} files done" >&2
-      fi
-    done < "${list_file}"
+  local count=0
+  local total=0
+  local -a files=()
+  while IFS= read -r f; do
+    files+=( "${f}" )
+    [[ -n "${f}" ]] && ((total++))
+  done < "${list_file}"
+
+  if (( total == 0 )); then
+    echo "  [${ymd} ${radar}] no files found in list ${list_file}, skipping" >&2
     rm -f "${list_file}"
-    echo "  [${ymd} ${radar}] completed ${count} files -> ${out_file}"
-  ) &
-  job_pids+=( "$!" )
+    return 0
+  fi
+
+  echo "  [${ymd} ${radar}] concatenating ${total} files -> ${out_file}"
+  for f in "${files[@]}"; do
+    [[ -z "${f}" ]] && continue
+    ((count++))
+    bzip2 -dc "${f}" >> "${out_file}"
+    if (( count % 100 == 0 )); then
+      echo "  [${ymd} ${radar}] ${count}/${total} files done" >&2
+    fi
+  done
+
+  rm -f "${list_file}"
+  echo "  [${ymd} ${radar}] completed ${count} files -> ${out_file}"
 }
 
 echo "Scanning input directory for .fitacf.bz2 files (progress every 500 files)..."
 echo "  This step sorts the full list first, so a large tree can take a while before concatenation starts."
 
 generate_entries() {
-  if ! find "${input_dir}" -type f -name "*.fitacf.bz2" 2>>"${find_error_log}" \
+  if ! find -L "${input_dir}" -type f -name "*.fitacf.bz2" 2>>"${find_error_log}" \
     | while read -r file; do
         base="$(basename "${file}")"
         IFS='.' read -r ymd hhmm ss radar _rest <<< "${base}"
@@ -167,21 +184,28 @@ entries_file="$(mktemp "${tmp_root}/entries.XXXX")"
 : > "${find_error_log}"
 
 echo "Quick visibility check (first match, maxdepth 3)..."
-sample_match="$(find "${input_dir}" -maxdepth 3 -type f -name "*.fitacf.bz2" -print -quit 2>/dev/null || true)"
+sample_match="$(find -L "${input_dir}" -maxdepth 3 -type f -name "*.fitacf.bz2" -print -quit 2>/dev/null || true)"
 if [[ -n "${sample_match}" ]]; then
   echo "  Found: ${sample_match}"
 else
   echo "  No files seen in the quick sample; continuing to full scan..." >&2
 fi
 
-echo "Building file list..."
+echo "Building file list (following symlinks)..."
 if ! generate_entries > "${entries_file}"; then
   echo "Aborting because find reported an error. See ${find_error_log} for details." >&2
   exit 1
 fi
 
+group_counts_file="$(mktemp "${tmp_root}/group_counts.XXXX")"
+cut -f1,2 "${entries_file}" | sort | uniq -c | sort -nr > "${group_counts_file}"
+
 entry_count=$(wc -l < "${entries_file}")
+group_count=$(wc -l < "${group_counts_file}")
 echo "Indexed ${entry_count} files before sorting."
+echo "Unique day/radar groups: ${group_count}"
+echo "Top groups (count day.radar):"
+head -n 10 "${group_counts_file}"
 
 if (( entry_count == 0 )); then
   echo "No .fitacf.bz2 files found under ${input_dir}. Is the path correct/mounted and readable?" >&2
@@ -199,7 +223,12 @@ while IFS=$'\t' read -r ymd radar hhmm ss file; do
     # Launch previous group if needed
     if [[ -n "${current_key}" && ${skip_current_key} -eq 0 && -n "${group_list_file}" ]]; then
       wait_for_slot
-      run_group_job "${prev_ymd}" "${prev_radar}" "${prev_out_file}" "${group_list_file}"
+      if (( parallel_jobs == 1 )); then
+        run_group_job "${prev_ymd}" "${prev_radar}" "${prev_out_file}" "${group_list_file}"
+      else
+        run_group_job "${prev_ymd}" "${prev_radar}" "${prev_out_file}" "${group_list_file}" &
+        job_pids+=( "$!" )
+      fi
     elif [[ -n "${group_list_file}" ]]; then
       rm -f "${group_list_file}"
     fi
@@ -240,7 +269,12 @@ done < <(sort -t $'\t' -k1,1 -k2,2 -k3,3 -k4,4 "${entries_file}")
 # Final group
 if [[ -n "${current_key}" && ${skip_current_key} -eq 0 && -n "${group_list_file}" ]]; then
   wait_for_slot
-  run_group_job "${prev_ymd}" "${prev_radar}" "${prev_out_file}" "${group_list_file}"
+  if (( parallel_jobs == 1 )); then
+    run_group_job "${prev_ymd}" "${prev_radar}" "${prev_out_file}" "${group_list_file}"
+  else
+    run_group_job "${prev_ymd}" "${prev_radar}" "${prev_out_file}" "${group_list_file}" &
+    job_pids+=( "$!" )
+  fi
 elif [[ -n "${group_list_file}" ]]; then
   rm -f "${group_list_file}"
 fi

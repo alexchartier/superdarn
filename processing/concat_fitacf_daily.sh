@@ -5,10 +5,11 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: ./concat_fitacf_daily.sh [-i INPUT_DIR] [-o OUTPUT_DIR] [-r radar1,radar2] [-f]
+Usage: ./concat_fitacf_daily.sh [-i INPUT_DIR] [-o OUTPUT_DIR] [-r radar1,radar2] [-p JOBS] [-f]
   -i  Root directory containing the year/month subfolders with *.fitacf.bz2 files (default: fitacf_bzip)
   -o  Output directory for concatenated daily files (default: fitacf_daily)
   -r  Comma-separated radar codes to include; if omitted, process all radars
+  -p  Number of radar/day concatenations to run in parallel (default: 1)
   -f  Overwrite existing daily outputs instead of skipping them
   -h  Show this help
 EOF
@@ -18,12 +19,14 @@ input_dir="fitacf_bzip"
 output_dir="fitacf_daily"
 radar_filter=""
 force=0
+parallel_jobs=1
 
-while getopts "i:o:r:fh" opt; do
+while getopts "i:o:r:p:fh" opt; do
   case "${opt}" in
     i) input_dir="${OPTARG}" ;;
     o) output_dir="${OPTARG}" ;;
     r) radar_filter="${OPTARG}" ;;
+    p) parallel_jobs="${OPTARG}" ;;
     f) force=1 ;;
     h) usage; exit 0 ;;
     *) usage >&2; exit 1 ;;
@@ -35,9 +38,15 @@ echo "  Input directory: ${input_dir}"
 echo "  Output directory: ${output_dir}"
 echo "  Radar filter: ${radar_filter:-all}"
 echo "  Force overwrite: ${force}"
+echo "  Parallel jobs: ${parallel_jobs}"
 
 if [[ ! -d "${input_dir}" ]]; then
   echo "Input directory not found: ${input_dir}" >&2
+  exit 1
+fi
+
+if ! [[ "${parallel_jobs}" =~ ^[0-9]+$ ]] || [[ "${parallel_jobs}" -lt 1 ]]; then
+  echo "Parallel jobs must be a positive integer: ${parallel_jobs}" >&2
   exit 1
 fi
 
@@ -69,54 +78,139 @@ current_key=""
 skip_current_key=0
 index_count=0
 processed_count=0
+declare -a job_pids=()
+tmp_root="$(mktemp -d)"
+
+cleanup() {
+  rm -rf "${tmp_root}"
+  # Best-effort kill of any remaining background jobs
+  if [[ ${#job_pids[@]} -gt 0 ]]; then
+    kill "${job_pids[@]}" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+wait_for_slot() {
+  # Wait until the number of running jobs is below the limit
+  while (( ${#job_pids[@]} >= parallel_jobs )); do
+    wait "${job_pids[0]}"
+    job_pids=( "${job_pids[@]:1}" )
+  done
+}
+
+run_group_job() {
+  local ymd="${1}"
+  local radar="${2}"
+  local out_file="${3}"
+  local list_file="${4}"
+
+  (
+    local count=0
+    local total
+    total="$(wc -l < "${list_file}")"
+    echo "  [${ymd} ${radar}] concatenating ${total} files -> ${out_file}"
+    while read -r file; do
+      ((count++))
+      bzip2 -dc "${file}" >> "${out_file}"
+      if (( count % 100 == 0 )); then
+        echo "  [${ymd} ${radar}] ${count}/${total} files done" >&2
+      fi
+    done < "${list_file}"
+    rm -f "${list_file}"
+    echo "  [${ymd} ${radar}] completed ${count} files -> ${out_file}"
+  ) &
+  job_pids+=( "$!" )
+}
 
 echo "Scanning input directory for .fitacf.bz2 files (progress every 500 files)..."
 echo "  This step sorts the full list first, so a large tree can take a while before concatenation starts."
 
-find "${input_dir}" -type f -name "*.fitacf.bz2" \
-  | while read -r file; do
-      base="$(basename "${file}")"
-      IFS='.' read -r ymd hhmm ss radar _rest <<< "${base}"
-      if [[ -z "${ymd:-}" || -z "${radar:-}" ]]; then
-        continue
-      fi
-      if ! is_allowed_radar "${radar}"; then
-        continue
-      fi
-      ((index_count++))
-      if (( index_count % 500 == 0 )); then
-        echo "  Indexed ${index_count} files so far..." >&2
-      fi
-      printf "%s\t%s\t%s\t%s\t%s\n" "${ymd}" "${radar}" "${hhmm}" "${ss}" "${file}"
-    done \
-  | sort -t $'\t' -k1,1 -k2,2 -k3,3 -k4,4 \
-  | while IFS=$'\t' read -r ymd radar hhmm ss file; do
-      key="${ymd}.${radar}"
-      if [[ "${key}" != "${current_key}" ]]; then
-        current_key="${key}"
-        skip_current_key=0
-        out_dir="${output_dir}/${ymd:0:4}/${ymd:4:2}"
-        out_file="${out_dir}/${ymd}.${radar}.fitacf"
-
-        if [[ -f "${out_file}" && ${force} -eq 0 ]]; then
-          echo "Skipping existing output: ${out_file}"
-          skip_current_key=1
+generate_entries() {
+  find "${input_dir}" -type f -name "*.fitacf.bz2" \
+    | while read -r file; do
+        base="$(basename "${file}")"
+        IFS='.' read -r ymd hhmm ss radar _rest <<< "${base}"
+        if [[ -z "${ymd:-}" || -z "${radar:-}" ]]; then
           continue
         fi
+        if ! is_allowed_radar "${radar}"; then
+          continue
+        fi
+        ((index_count++))
+        if (( index_count % 500 == 0 )); then
+          echo "  Indexed ${index_count} files so far..." >&2
+        fi
+        printf "%s\t%s\t%s\t%s\t%s\n" "${ymd}" "${radar}" "${hhmm}" "${ss}" "${file}"
+      done
+}
 
-        mkdir -p "${out_dir}"
-        : > "${out_file}"
-        echo "Writing ${ymd} ${radar} -> ${out_file}"
-      fi
+current_key=""
+group_list_file=""
+out_file=""
+out_dir=""
+ymd=""
+radar=""
+skip_current_key=0
 
-      if [[ ${skip_current_key} -eq 1 ]]; then
-        continue
-      fi
-      ((processed_count++))
-      if (( processed_count % 100 == 0 )); then
-        echo "  Concatenated ${processed_count} files so far..." >&2
-      fi
+while IFS=$'\t' read -r ymd radar hhmm ss file; do
+  key="${ymd}.${radar}"
 
-      echo "  Appending ${file} to ${out_file}"
-      bzip2 -dc "${file}" >> "${out_file}"
-    done
+  if [[ "${key}" != "${current_key}" ]]; then
+    # Launch previous group if needed
+    if [[ -n "${current_key}" && ${skip_current_key} -eq 0 && -n "${group_list_file}" ]]; then
+      wait_for_slot
+      run_group_job "${prev_ymd}" "${prev_radar}" "${prev_out_file}" "${group_list_file}"
+    elif [[ -n "${group_list_file}" ]]; then
+      rm -f "${group_list_file}"
+    fi
+
+    current_key="${key}"
+    prev_ymd="${ymd}"
+    prev_radar="${radar}"
+    out_dir="${output_dir}/${ymd:0:4}/${ymd:4:2}"
+    prev_out_file="${out_dir}/${ymd}.${radar}.fitacf"
+    skip_current_key=0
+
+    if [[ -f "${prev_out_file}" && ${force} -eq 0 ]]; then
+      echo "Skipping existing output: ${prev_out_file}"
+      skip_current_key=1
+      group_list_file=""
+      continue
+    fi
+
+    mkdir -p "${out_dir}"
+    : > "${prev_out_file}"
+    echo "Writing ${ymd} ${radar} -> ${prev_out_file}"
+    group_list_file="$(mktemp "${tmp_root}/group.${ymd}.${radar}.XXXX")"
+  fi
+
+  if [[ ${skip_current_key} -eq 1 ]]; then
+    continue
+  fi
+
+  ((processed_count++))
+  if (( processed_count % 100 == 0 )); then
+    echo "  Queued ${processed_count} files so far..." >&2
+  fi
+
+  echo "${file}" >> "${group_list_file}"
+done < <(generate_entries | sort -t $'\t' -k1,1 -k2,2 -k3,3 -k4,4)
+
+# Final group
+if [[ -n "${current_key}" && ${skip_current_key} -eq 0 && -n "${group_list_file}" ]]; then
+  wait_for_slot
+  run_group_job "${prev_ymd}" "${prev_radar}" "${prev_out_file}" "${group_list_file}"
+elif [[ -n "${group_list_file}" ]]; then
+  rm -f "${group_list_file}"
+fi
+
+if (( processed_count == 0 )); then
+  echo "No .fitacf.bz2 files found under ${input_dir}. Is the path correct/mounted and readable?" >&2
+  exit 1
+fi
+
+# Wait for all jobs to finish
+while (( ${#job_pids[@]} > 0 )); do
+  wait "${job_pids[0]}"
+  job_pids=( "${job_pids[@]:1}" )
+done

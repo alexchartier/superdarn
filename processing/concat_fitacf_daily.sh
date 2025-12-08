@@ -106,8 +106,13 @@ trap cleanup EXIT
 wait_for_slot() {
   # Wait until the number of running jobs is below the limit
   while (( ${#job_pids[@]} >= parallel_jobs )); do
-    wait "${job_pids[0]}"
+    local pid="${job_pids[0]}"
+    local status=0
     job_pids=( "${job_pids[@]:1}" )
+    if ! wait "${pid}"; then
+      status=$?
+      echo "Background job ${pid} failed with exit ${status}" >&2
+    fi
   done
 }
 
@@ -223,6 +228,8 @@ while IFS=$'\t' read -r ymd radar hhmm ss file; do
     # Launch previous group if needed
     if [[ -n "${current_key}" && ${skip_current_key} -eq 0 && -n "${group_list_file}" ]]; then
       wait_for_slot
+      queued_count=$(wc -l < "${group_list_file}")
+      echo "Launching ${queued_count} files for ${prev_ymd} ${prev_radar} -> ${prev_out_file}"
       if (( parallel_jobs == 1 )); then
         run_group_job "${prev_ymd}" "${prev_radar}" "${prev_out_file}" "${group_list_file}"
       else
@@ -269,6 +276,8 @@ done < <(sort -t $'\t' -k1,1 -k2,2 -k3,3 -k4,4 "${entries_file}")
 # Final group
 if [[ -n "${current_key}" && ${skip_current_key} -eq 0 && -n "${group_list_file}" ]]; then
   wait_for_slot
+  queued_count=$(wc -l < "${group_list_file}")
+  echo "Launching ${queued_count} files for ${prev_ymd} ${prev_radar} -> ${prev_out_file}"
   if (( parallel_jobs == 1 )); then
     run_group_job "${prev_ymd}" "${prev_radar}" "${prev_out_file}" "${group_list_file}"
   else
@@ -290,6 +299,10 @@ fi
 
 # Wait for all jobs to finish
 while (( ${#job_pids[@]} > 0 )); do
-  wait "${job_pids[0]}"
+  pid="${job_pids[0]}"
   job_pids=( "${job_pids[@]:1}" )
+  if ! wait "${pid}"; then
+    status=$?
+    echo "Background job ${pid} failed with exit ${status}" >&2
+  fi
 done

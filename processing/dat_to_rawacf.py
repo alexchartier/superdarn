@@ -1,16 +1,22 @@
 #!/usr/bin/env python
 """Automate the conversion of a series of SuperDARN dat files to rawacf files"""
 
-import bz2
-import helper
-import glob
 import os
+import sys
+from pathlib import Path
+
+UTILS_DIR = Path(__file__).resolve().parent.parent / "utils"
+if str(UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(UTILS_DIR))
+
+import bz2
+import glob
+import helper
 from sd_utils import get_random_string
 import nc_utils
 import shutil
 import jdutil
 import pdb
-import sys
 import string
 import random
 import numpy as np

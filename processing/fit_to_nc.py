@@ -21,8 +21,40 @@ Terms:
 
 author: A.T. Chartier, 5 February 2020
 """
+
+HELP_TEXT = """
+Convert SuperDARN fitacf/cfit files to daily netCDF.
+
+Usage:
+  python3 fit_to_nc.py START END FIT_DIR NET_DIR FIT_VERSION
+
+Args:
+  START         Start date (YYYY,MM,DD)
+  END           End date (YYYY,MM,DD, inclusive)
+  FIT_DIR       Path template to fitACF files (strftime-friendly, e.g. /project/superdarn/data/fitacf/%Y/%m/)
+  NET_DIR       Output netCDF path template (strftime-friendly)
+  FIT_VERSION   FitACF version to process: 3.0 or 2.5
+
+Example:
+  python3 fit_to_nc.py 2014,04,23 2014,04,24 /project/superdarn/data/fitacf/%Y/%m/ /project/superdarn/data/netcdf/%Y/%m/ 2.5
+
+Notes:
+  - Requires RSTPATH to be set.
+  - Existing netCDF files are skipped by default.
+"""
+
 import os
 import sys
+from pathlib import Path
+
+if __name__ == '__main__' and any(flag in sys.argv[1:] for flag in ('-h', '--help')):
+    print(HELP_TEXT.strip())
+    sys.exit(0)
+
+UTILS_DIR = Path(__file__).resolve().parent.parent / "utils"
+if str(UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(UTILS_DIR))
+
 import glob
 # import bz2
 import shutil
@@ -33,7 +65,7 @@ from dateutil.relativedelta import relativedelta
 import calendar
 import numpy as np
 from sd_utils import get_radar_params, id_hdw_params_t, get_random_string, get_radar_list
-import pydarn
+import pydarnio
 import radFov
 import pickle
 import helper
@@ -52,22 +84,27 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
     assert rstpath, 'RSTPATH environment variable needs to be set'
     hdw_dat_dir = os.path.join(rstpath, 'tables/superdarn/hdw/')
 
-    # Running raw to NC
+    # Running fit to NC
     radar_info = get_radar_params(hdw_dat_dir)
 
-    combine_fitacfs(startTime, endTime, fitDir, fitVersion)
+    # this does the bzipping
+    #combine_fitacfs(startTime, endTime, fitDir, fitVersion)
 
     # Loop over fit files in the monthly directories
     time = startTime
     while time <= endTime:
+        fitDir_t = time.strftime(fitDir)
+        netDir_t = time.strftime(netDir)
+
+
         # Set up directories
-        print('Trying to make %s' % netDir)
-        os.makedirs(netDir, exist_ok=True)
+        print('Trying to make %s' % netDir_t)
+        os.makedirs(netDir_t, exist_ok=True)
 
         # Loop over the files
-        fitFnames = glob.glob(os.path.join(fitDir, FIT_EXT))
+        fitFnames = glob.glob(os.path.join(fitDir_t, FIT_EXT))
         print('Processing %i %s files in %s on %s' %
-              (len(fitFnames), FIT_EXT, fitDir, time.strftime('%Y/%m')))
+              (len(fitFnames), FIT_EXT, fitDir_t, time.strftime('%Y/%m')))
         for fit_fn in fitFnames:
 
             # Check the file is big enough to be worth bothering with
@@ -79,7 +116,7 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
             print('\n\nStarting from %s' % fit_fn)
 
             fn_head = '.'.join(os.path.basename(fit_fn).split('.')[:-1])
-            out_fn = os.path.join(netDir, '{0}.nc'.format(fn_head))
+            out_fn = os.path.join(netDir_t, '{0}.nc'.format(fn_head))
             if os.path.isfile(out_fn):
                 if SKIP_EXISTING:
                     print('%s exists - skipping' % out_fn)
@@ -185,8 +222,11 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         # create the fitACF
         # fitacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.fitacfList.txt'
 
-        SDarn_read = pydarn.SuperDARNRead(in_fname)
-        data = SDarn_read.read_fitacf()
+        data = pydarnio.read_fitacf(in_fname)
+        assert len(data) == 2, 'not as expected'
+        assert isempty(data[1])
+        data = data[0]
+    
         bmdata = {
             'rsep': [],
             'frang': [],
@@ -408,22 +448,23 @@ def combine_fitacfs(startTime, endTime, fitDir, fitVersion):
     # Loop through the fitACF files one day at a time
     time = startTime
     while time <= endTime:
-        if not os.path.isdir(fitDir):
+        fitDir_t = time.strftime(fitDir)
+        if not os.path.isdir(fitDir_t):
             time += relativedelta(months=1)
-            print('%s not found - skipping' % fitDir)
+            print('%s not found - skipping' % fitDir_t)
             continue
 
-        radar_list = get_radar_list(fitDir)
+        radar_list = get_radar_list(fitDir_t)
         for radar in radar_list:
             inFilenameFormat = time.strftime(os.path.join(
-                fitDir, '%Y%m%d*{0}*fitacf.bz2'.format(radar)))
+                fitDir_t, '%Y%m%d*{0}*fitacf.bz2'.format(radar)))
 
             if fitVersion == 3.0:
                 outputFilename = time.strftime(os.path.join(
-                    fitDir, '%Y%m%d.{0}.v{1}.despeckled.fit'.format(radar, fitVersion)))
+                    fitDir_t, '%Y%m%d.{0}.v{1}.despeckled.fit'.format(radar, fitVersion)))
             elif fitVersion == 2.5:
                 outputFilename = time.strftime(os.path.join(
-                    fitDir, '%Y%m%d.{0}.v{1}.fit'.format(radar, fitVersion)))
+                    fitDir_t, '%Y%m%d.{0}.v{1}.fit'.format(radar, fitVersion)))
             else:
                 raise ValueError(
                     'Fit version must be 2.5 of 3.0 - {0} fit version specified'.format(fitVersion))
@@ -448,7 +489,7 @@ def combine_files(inFilenameFormat, outputFilename, fitVersion):
     # Make fitacfs for the day
     zippedInputFiles = glob.glob(inFilenameFormat)
     if len(zippedInputFiles) == 0:
-        print('No files in %s' % inFilenameFormat)
+        print('No zipped files in %s' % inFilenameFormat)
         return 1
 
     unzippedInputFileFormat = '.'.join(inFilenameFormat.split('.')[:-1])
@@ -491,14 +532,15 @@ if __name__ == '__main__':
     assert len(args) >= 6, 'Should have 5x args, e.g.:\n' + \
         'python3 fit_to_nc.py 2014,4,23 2014,4,24 ' + \
         '/project/superdarn/data/fitacf/%Y/%m/  ' + \
-        '/project/superdarn/data/netcdf/%Y/%m/ 2.5'
+        '/project/superdarn/data/netcdf/%Y/%m/ 2.5\n' + \
+        'Run with --help for more details.'
 
     stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
     etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
     if len(args) == 6:
         fit_dir = args[3]
         outDir = args[4]
-        fitVersion = args[5]
+        fitVersion = float(args[5])
     runDir = './run/run_%s' % get_random_string(4)
 
     main(stime, etime, fit_dir, outDir, fitVersion)

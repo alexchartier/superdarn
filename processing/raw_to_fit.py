@@ -24,6 +24,12 @@ author: A.T. Chartier, 5 February 2020
 """
 import os
 import sys
+from pathlib import Path
+
+UTILS_DIR = Path(__file__).resolve().parent.parent / "utils"
+if str(UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(UTILS_DIR))
+
 import glob
 # import bz2
 import shutil

@@ -1,16 +1,23 @@
-import pydarn
+import os
+import sys
+from pathlib import Path
+
+UTILS_DIR = Path(__file__).resolve().parent.parent / "utils"
+if str(UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(UTILS_DIR))
+
 import glob
-import matplotlib.pyplot as plt
-from matplotlib import ticker, cm, colors
-import numpy as np
-import jdutil
 import datetime as dt
 import aacgmv2
-import os
-from sd_utils import get_radar_params, id_hdw_params_t, get_random_string, get_radar_list
+import jdutil
+import matplotlib.pyplot as plt
 import netCDF4
 import nc_utils
+import numpy as np
 import nvector as nv
+import pydarn
+from matplotlib import ticker, cm, colors
+from sd_utils import get_radar_params, id_hdw_params_t, get_random_string, get_radar_list
 wgs84 = nv.FrameE(name='WGS84')
 
 MIN_FITACF_FILE_SIZE = 1E5  # bytes

@@ -9,15 +9,21 @@ Terms:
            for sharing with users outside the community)
             Daily, one per hemisphere
 """
-import sys
 import os
+import sys
+from pathlib import Path
 import requests
 import datetime as dt
 from dateutil.relativedelta import relativedelta
-import helper
 import json
 import glob
 import time
+
+UTILS_DIR = Path(__file__).resolve().parent.parent / "utils"
+if str(UTILS_DIR) not in sys.path:
+    sys.path.insert(0, str(UTILS_DIR))
+
+import helper
 
 __author__ = "Jordan Wiker"
 __copyright__ = "Copyright 2023, JHUAPL"

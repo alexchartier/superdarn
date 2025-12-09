@@ -71,6 +71,19 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Overwrite existing daily outputs instead of skipping them",
     )
+    parser.add_argument(
+        "--per-dir",
+        dest="per_dir",
+        action="store_true",
+        help="Process each immediate subdirectory of input_dir separately to shorten the upfront scan (useful when input is organized by month). Default behavior.",
+    )
+    parser.add_argument(
+        "--no-per-dir",
+        dest="per_dir",
+        action="store_false",
+        help="Disable per-directory processing and scan the full tree in one pass.",
+    )
+    parser.set_defaults(per_dir=True)
     return parser.parse_args()
 
 
@@ -195,84 +208,50 @@ def main() -> int:
     else:
         print("  No files seen in the quick sample; continuing to full scan...", file=sys.stderr)
 
+    # When per-dir is enabled, process each immediate subdirectory independently.
+    if args.per_dir:
+        subdirs = sorted([p for p in input_dir.iterdir() if p.is_dir()])
+        if not subdirs:
+            subdirs = [input_dir]
+        total_processed = 0
+        total_skipped = 0
+        total_ok = 0
+        total_fail = 0
+
+        for subdir in subdirs:
+            print(f"\nProcessing subdirectory: {subdir}")
+            entries = scan_entries(subdir, radar_allow)
+            processed, skipped, ok, fail = process_chunk(
+                entries,
+                output_dir,
+                force=args.force,
+                parallel_jobs=args.parallel_jobs,
+                chunk_label=str(subdir),
+            )
+            total_processed += processed
+            total_skipped += skipped
+            total_ok += ok
+            total_fail += fail
+
+        print(
+            f"Summary: queued {total_processed} files into {total_ok} completed groups; "
+            f"{total_fail} groups failed; skipped existing outputs: {total_skipped}"
+        )
+        return 1 if total_fail > 0 else 0
+
+    # Default: single full-tree pass
     entries = scan_entries(input_dir, radar_allow)
-    entry_count = len(entries)
-    group_counter = Counter((e.ymd, e.radar) for e in entries)
-
-    print(f"Indexed {entry_count} files before sorting.")
-    print(f"Unique day/radar groups: {len(group_counter)}")
-    print("Top groups (count day.radar):")
-    for (ymd, radar), count in sorted(group_counter.items(), key=lambda kv: kv[1], reverse=True)[:10]:
-        print(f"{count:7d} {ymd}\t{radar}")
-
-    if entry_count == 0:
-        print(f"No .fitacf.bz2 files found under {input_dir}. Is the path correct/mounted and readable?", file=sys.stderr)
-        return 1
-
-    processed_files = 0
-    skipped_existing = 0
-    jobs: List[Tuple[str, str, Path, List[Path]]] = []
-
-    for (ymd, radar), group in group_entries(entries):
-        out_dir = output_dir / ymd[:4] / ymd[4:6]
-        out_file = out_dir / f"{ymd}.{radar}.fit"
-
-        if out_file.exists() and not args.force:
-            print(f"Skipping existing output: {out_file}")
-            skipped_existing += 1
-            continue
-
-        ensure_output_path(out_file)
-        files = [e.path for e in group]
-        processed_files += len(files)
-        jobs.append((ymd, radar, out_file, files))
-
-    if processed_files == 0:
-        if skipped_existing > 0:
-            print(f"All {skipped_existing} outputs already exist. Use -f to overwrite.", file=sys.stderr)
-            return 0
-        print(f"No .fitacf.bz2 files queued for processing under {input_dir}.", file=sys.stderr)
-        return 1
-
-    ok_groups = 0
-    fail_groups = 0
-
-    if args.parallel_jobs == 1 or len(jobs) == 1:
-        for ymd, radar, out_file, files in jobs:
-            print(f"Launching {len(files)} files for {ymd} {radar} -> {out_file}")
-            _, _, _, success = decompress_files(out_file, files, ymd, radar)
-            if success:
-                ok_groups += 1
-            else:
-                fail_groups += 1
-    else:
-        with ProcessPoolExecutor(max_workers=args.parallel_jobs) as executor:
-            future_map = {}
-            for ymd, radar, out_file, files in jobs:
-                print(f"Launching {len(files)} files for {ymd} {radar} -> {out_file}")
-                future = executor.submit(decompress_files, out_file, files, ymd, radar)
-                future_map[future] = (ymd, radar)
-
-            for future in as_completed(future_map):
-                ymd, radar = future_map[future]
-                try:
-                    _, _, _, success = future.result()
-                    if success:
-                        ok_groups += 1
-                    else:
-                        fail_groups += 1
-                except Exception as exc:  # noqa: BLE001
-                    print(f"[{ymd} {radar}] failed with exception: {exc}", file=sys.stderr)
-                    fail_groups += 1
-
-    print(
-        f"Summary: queued {processed_files} files into {ok_groups} completed groups; "
-        f"{fail_groups} groups failed; skipped existing outputs: {skipped_existing}"
+    processed, skipped, ok, fail = process_chunk(
+        entries,
+        output_dir,
+        force=args.force,
+        parallel_jobs=args.parallel_jobs,
     )
-
-    if fail_groups > 0:
-        return 1
-    return 0
+    print(
+        f"Summary: queued {processed} files into {ok} completed groups; "
+        f"{fail} groups failed; skipped existing outputs: {skipped}"
+    )
+    return 1 if fail > 0 else 0
 
 
 if __name__ == "__main__":

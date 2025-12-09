@@ -177,6 +177,88 @@ def decompress_files(out_file: Path, files: Sequence[Path], ymd: str, radar: str
     return ymd, radar, written, True
 
 
+def process_chunk(
+    entries: List[Entry],
+    output_dir: Path,
+    force: bool,
+    parallel_jobs: int,
+    chunk_label: str = "",
+) -> Tuple[int, int, int, int]:
+    """Process a batch of entries and return counters: processed, skipped, ok, fail."""
+    label = f"[{chunk_label}] " if chunk_label else ""
+
+    entry_count = len(entries)
+    group_counter = Counter((e.ymd, e.radar) for e in entries)
+
+    print(f"{label}Indexed {entry_count} files before sorting.")
+    print(f"{label}Unique day/radar groups: {len(group_counter)}")
+    print(f"{label}Top groups (count day.radar):")
+    for (ymd, radar), count in sorted(group_counter.items(), key=lambda kv: kv[1], reverse=True)[:10]:
+        print(f"{label}{count:7d} {ymd}\t{radar}")
+
+    if entry_count == 0:
+        print(f"{label}No .fitacf.bz2 files found in this chunk.", file=sys.stderr)
+        return 0, 0, 0, 0
+
+    processed_files = 0
+    skipped_existing = 0
+    jobs: List[Tuple[str, str, Path, List[Path]]] = []
+
+    for (ymd, radar), group in group_entries(entries):
+        out_dir = output_dir / ymd[:4] / ymd[4:6]
+        out_file = out_dir / f"{ymd}.{radar}.fit"
+
+        if out_file.exists() and not force:
+            print(f"{label}Skipping existing output: {out_file}")
+            skipped_existing += 1
+            continue
+
+        ensure_output_path(out_file)
+        files = [e.path for e in group]
+        processed_files += len(files)
+        jobs.append((ymd, radar, out_file, files))
+
+    if processed_files == 0:
+        if skipped_existing > 0:
+            print(f"{label}All {skipped_existing} outputs already exist. Use -f to overwrite.", file=sys.stderr)
+            return 0, skipped_existing, 0, 0
+        print(f"{label}No .fitacf.bz2 files queued for processing in this chunk.", file=sys.stderr)
+        return 0, 0, 0, 0
+
+    ok_groups = 0
+    fail_groups = 0
+
+    if parallel_jobs == 1 or len(jobs) == 1:
+        for ymd, radar, out_file, files in jobs:
+            print(f"{label}Launching {len(files)} files for {ymd} {radar} -> {out_file}")
+            _, _, _, success = decompress_files(out_file, files, ymd, radar)
+            if success:
+                ok_groups += 1
+            else:
+                fail_groups += 1
+    else:
+        with ProcessPoolExecutor(max_workers=parallel_jobs) as executor:
+            future_map = {}
+            for ymd, radar, out_file, files in jobs:
+                print(f"{label}Launching {len(files)} files for {ymd} {radar} -> {out_file}")
+                future = executor.submit(decompress_files, out_file, files, ymd, radar)
+                future_map[future] = (ymd, radar)
+
+            for future in as_completed(future_map):
+                ymd, radar = future_map[future]
+                try:
+                    _, _, _, success = future.result()
+                    if success:
+                        ok_groups += 1
+                    else:
+                        fail_groups += 1
+                except Exception as exc:  # noqa: BLE001
+                    print(f"{label}[{ymd} {radar}] failed with exception: {exc}", file=sys.stderr)
+                    fail_groups += 1
+
+    return processed_files, skipped_existing, ok_groups, fail_groups
+
+
 def main() -> int:
     args = parse_args()
 

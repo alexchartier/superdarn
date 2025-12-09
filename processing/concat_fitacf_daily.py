@@ -202,7 +202,7 @@ def main() -> int:
     print(f"Indexed {entry_count} files before sorting.")
     print(f"Unique day/radar groups: {len(group_counter)}")
     print("Top groups (count day.radar):")
-    for count, (ymd, radar) in sorted(group_counter.items(), key=lambda kv: kv[1], reverse=True)[:10]:
+    for (ymd, radar), count in sorted(group_counter.items(), key=lambda kv: kv[1], reverse=True)[:10]:
         print(f"{count:7d} {ymd}\t{radar}")
 
     if entry_count == 0:

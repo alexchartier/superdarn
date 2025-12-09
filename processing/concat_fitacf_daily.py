@@ -145,6 +145,30 @@ def ensure_output_path(out_file: Path) -> None:
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
 
+def remove_empty_outputs(output_dir: Path, extensions: Sequence[str] = (".fit", ".fitacf")) -> int:
+    """Delete zero-byte output files so they can be regenerated."""
+    if not output_dir.exists():
+        return 0
+
+    removed = 0
+    lowered_exts = tuple(ext.lower() for ext in extensions)
+
+    for root, _, files in os.walk(output_dir):
+        for name in files:
+            if not name.lower().endswith(lowered_exts):
+                continue
+            path = Path(root) / name
+            try:
+                if path.stat().st_size == 0:
+                    path.unlink()
+                    removed += 1
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                print(f"  Failed to remove empty output {path}: {exc}", file=sys.stderr)
+    return removed
+
+
 def decompress_files(out_file: Path, files: Sequence[Path], ymd: str, radar: str) -> Tuple[str, str, int, bool]:
     total = len(files)
     if total == 0:
@@ -289,6 +313,10 @@ def main() -> int:
         print(f"  Found: {sample}")
     else:
         print("  No files seen in the quick sample; continuing to full scan...", file=sys.stderr)
+
+    removed_empty = remove_empty_outputs(output_dir)
+    if removed_empty:
+        print(f"Removed {removed_empty} empty .fit/.fitacf output files before processing.")
 
     # When per-dir is enabled, process each immediate subdirectory independently.
     if args.per_dir:

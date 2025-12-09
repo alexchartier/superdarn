@@ -215,7 +215,7 @@ def main() -> int:
 
     for (ymd, radar), group in group_entries(entries):
         out_dir = output_dir / ymd[:4] / ymd[4:6]
-        out_file = out_dir / f"{ymd}.{radar}.fitacf"
+        out_file = out_dir / f"{ymd}.{radar}.fit"
 
         if out_file.exists() and not args.force:
             print(f"Skipping existing output: {out_file}")

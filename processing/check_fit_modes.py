@@ -10,10 +10,11 @@ delete the problematic .fit files so they can be regenerated.
 from __future__ import annotations
 
 import argparse
-import os
 import sys
-from collections import defaultdict
+import os
 from pathlib import Path
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from typing import DefaultDict, Dict, Iterable, List, Optional, Set, Tuple
 
 
@@ -55,33 +56,64 @@ def parse_fit_entry(path: Path) -> Optional[Tuple[str, str, Optional[str]]]:
 
 
 def build_bzip_reference(
-    bzip_root: Path,
+    bzip_root: Path, workers: int
 ) -> Tuple[DefaultDict[Tuple[str, str], Set[Optional[str]]], Dict[Tuple[str, str, Optional[str]], List[Path]]]:
     modes_by_day_radar: DefaultDict[Tuple[str, str], Set[Optional[str]]] = defaultdict(set)
     paths_by_key: Dict[Tuple[str, str, Optional[str]], List[Path]] = defaultdict(list)
 
-    for root, _, files in os.walk(bzip_root):
-        for name in files:
-            path = Path(root) / name
-            parsed = parse_bzip_entry(path)
+    all_paths: List[Path] = [
+        Path(root) / name
+        for root, _, files in os.walk(bzip_root)
+        for name in files
+        if name.endswith(BZIP_EXT)
+    ]
+
+    if workers <= 1:
+        iterator = map(parse_bzip_entry, all_paths)
+    else:
+        executor = ThreadPoolExecutor(max_workers=workers)
+        iterator = executor.map(parse_bzip_entry, all_paths)
+
+    try:
+        for path, parsed in zip(all_paths, iterator):
             if parsed is None:
                 continue
             ymd, radar, mode = parsed
             modes_by_day_radar[(ymd, radar)].add(mode)
             paths_by_key[(ymd, radar, mode)].append(path)
+    finally:
+        if workers > 1:
+            executor.shutdown(wait=True)
+
     return modes_by_day_radar, paths_by_key
 
 
-def scan_fit_outputs(fit_root: Path) -> List[Tuple[str, str, Optional[str], Path]]:
+def scan_fit_outputs(fit_root: Path, workers: int) -> List[Tuple[str, str, Optional[str], Path]]:
     entries: List[Tuple[str, str, Optional[str], Path]] = []
-    for root, _, files in os.walk(fit_root):
-        for name in files:
-            path = Path(root) / name
-            parsed = parse_fit_entry(path)
+
+    all_paths: List[Path] = [
+        Path(root) / name
+        for root, _, files in os.walk(fit_root)
+        for name in files
+        if name.split(".")[-1].lower() in FIT_EXTS
+    ]
+
+    if workers <= 1:
+        iterator = map(parse_fit_entry, all_paths)
+    else:
+        executor = ThreadPoolExecutor(max_workers=workers)
+        iterator = executor.map(parse_fit_entry, all_paths)
+
+    try:
+        for path, parsed in zip(all_paths, iterator):
             if parsed is None:
                 continue
             ymd, radar, mode = parsed
             entries.append((ymd, radar, mode, path))
+    finally:
+        if workers > 1:
+            executor.shutdown(wait=True)
+
     return entries
 
 
@@ -146,6 +178,14 @@ def main() -> int:
         help="Directory containing the generated .fit outputs",
     )
     parser.add_argument(
+        "-j",
+        "--workers",
+        dest="workers",
+        type=int,
+        default=4,
+        help="Number of worker threads for scanning (set to 1 to disable parallelism)",
+    )
+    parser.add_argument(
         "--delete",
         action="store_true",
         help="Delete the mismatched .fit files after listing them",
@@ -163,11 +203,15 @@ def main() -> int:
         return 1
 
     print(f"Scanning .fitacf.bz2 sources under {bzip_root} ...")
-    modes_by_day_radar, paths_by_key = build_bzip_reference(bzip_root)
+    if args.workers < 1:
+        print(f"Worker count must be >=1 (got {args.workers})", file=sys.stderr)
+        return 1
+
+    modes_by_day_radar, paths_by_key = build_bzip_reference(bzip_root, args.workers)
     print(f"  Found {len(paths_by_key)} mode-specific source groups.")
 
     print(f"Scanning .fit outputs under {fit_root} ...")
-    fit_entries = scan_fit_outputs(fit_root)
+    fit_entries = scan_fit_outputs(fit_root, args.workers)
     print(f"  Found {len(fit_entries)} .fit files.")
 
     mismatches = find_mismatches(fit_entries, modes_by_day_radar, paths_by_key)

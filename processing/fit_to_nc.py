@@ -26,30 +26,89 @@ HELP_TEXT = """
 Convert SuperDARN fitacf/cfit files to daily netCDF.
 
 Usage:
-  python3 fit_to_nc.py START END FIT_DIR NET_DIR FIT_VERSION
+  python3 fit_to_nc.py --start YYYY-MM-DD --end YYYY-MM-DD [options]
 
-Args:
-  START         Start date (YYYY,MM,DD)
-  END           End date (YYYY,MM,DD, inclusive)
-  FIT_DIR       Path template to fitACF files (strftime-friendly, e.g. /project/superdarn/data/fitacf/%Y/%m/)
-  NET_DIR       Output netCDF path template (strftime-friendly)
-  FIT_VERSION   FitACF version to process: 3.0 or 2.5
-
-Example:
-  python3 fit_to_nc.py 2014,04,23 2014,04,24 /project/superdarn/data/fitacf/%Y/%m/ /project/superdarn/data/netcdf/%Y/%m/ 2.5
+Key options:
+  -i / --input-dir   Path template to fitACF files (strftime-friendly, e.g. /project/superdarn/data/fitacf/%Y/%m/)
+  -o / --output-dir  Output netCDF path template (strftime-friendly)
+  -v / --fit-version FitACF version to process: 3.0 or 2.5
+  -r / --radars      Comma-separated radar codes to include (default: all)
+  -p / --parallel-jobs  Number of files to convert in parallel
+  -f / --force       Overwrite existing outputs
 
 Notes:
   - Requires RSTPATH to be set.
   - Existing netCDF files are skipped by default.
 """
 
+import argparse
 import os
 import sys
+import datetime as dt
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-if __name__ == '__main__' and any(flag in sys.argv[1:] for flag in ('-h', '--help')):
-    print(HELP_TEXT.strip())
-    sys.exit(0)
+
+def parse_date(val: str) -> dt.datetime:
+    for fmt in ('%Y,%m,%d', '%Y-%m-%d'):
+        try:
+            return dt.datetime.strptime(val, fmt)
+        except ValueError:
+            continue
+    raise argparse.ArgumentTypeError(f'invalid date format: {val} (expected YYYY,MM,DD or YYYY-MM-DD)')
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Convert SuperDARN fitacf/cfit files to daily netCDF.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument('--start', required=True, type=parse_date, help='Start date (YYYY,MM,DD or YYYY-MM-DD)')
+    parser.add_argument('--end', required=True, type=parse_date, help='End date inclusive (YYYY,MM,DD or YYYY-MM-DD)')
+    parser.add_argument(
+        '-i',
+        '--input-dir',
+        dest='input_dir',
+        default='/project/superdarn/data/fitacf/%Y/%m/',
+        help='Path template to fitacf files (strftime-friendly)',
+    )
+    parser.add_argument(
+        '-o',
+        '--output-dir',
+        dest='output_dir',
+        default='/project/superdarn/data/netcdf/%Y/%m/',
+        help='Output netCDF path template (strftime-friendly)',
+    )
+    parser.add_argument(
+        '-v',
+        '--fit-version',
+        dest='fit_version',
+        type=float,
+        choices=[3.0, 2.5],
+        default=3.0,
+        help='FitACF version to process',
+    )
+    parser.add_argument(
+        '-r',
+        '--radars',
+        default='',
+        help='Comma-separated radar codes to include; if omitted, process all radars',
+    )
+    parser.add_argument(
+        '-p',
+        '--parallel-jobs',
+        dest='parallel_jobs',
+        type=int,
+        default=1,
+        help='Number of files to convert in parallel',
+    )
+    parser.add_argument(
+        '-f',
+        '--force',
+        action='store_true',
+        help='Overwrite existing netCDF outputs instead of skipping them',
+    )
+    return parser.parse_args()
 
 UTILS_DIR = Path(__file__).resolve().parent.parent / "utils"
 if str(UTILS_DIR) not in sys.path:
@@ -60,11 +119,10 @@ import glob
 import shutil
 import netCDF4
 import jdutil
-import datetime as dt
 from dateutil.relativedelta import relativedelta
 import calendar
 import numpy as np
-from sd_utils import get_radar_params, id_hdw_params_t, get_random_string, get_radar_list
+from sd_utils import get_radar_params, id_hdw_params_t, get_radar_list
 import pydarnio
 import radFov
 import pickle
@@ -78,11 +136,42 @@ FIT_EXT = '*.fit'
 SKIP_EXISTING = True
 
 
-def main(startTime, endTime, fitDir, netDir, fitVersion):
+def parse_fit_date_from_filename(fit_fn: str) -> dt.datetime:
+    stem = Path(fit_fn).name.split('.')[0]
+    return dt.datetime.strptime(stem, '%Y%m%d')
+
+
+def process_single_file(fit_fn: str, out_fn: str, file_date: dt.datetime, radar_info_entry, fitVersion: float, skip_existing: bool):
+    if skip_existing and os.path.isfile(out_fn):
+        return 'skip', fit_fn
+
+    try:
+        os.makedirs(os.path.dirname(out_fn), exist_ok=True)
+        radar_info_t = id_hdw_params_t(file_date, radar_info_entry)
+        status = fit_to_nc(file_date, fit_fn, out_fn, radar_info_t, fitVersion)
+        if status == 0:
+            return 'ok', fit_fn
+        return 'fail', fit_fn
+    except Exception as exc:  # noqa: BLE001
+        print(f'Failed to convert {fit_fn}: {exc}', file=sys.stderr)
+        return 'fail', fit_fn
+
+
+def main(args: argparse.Namespace) -> int:
+    global SKIP_EXISTING
+    SKIP_EXISTING = not args.force
 
     rstpath = os.getenv('RSTPATH')
-    assert rstpath, 'RSTPATH environment variable needs to be set'
+    if not rstpath:
+        print('RSTPATH environment variable needs to be set', file=sys.stderr)
+        return 1
+    if args.parallel_jobs < 1:
+        print(f'Parallel jobs must be a positive integer: {args.parallel_jobs}', file=sys.stderr)
+        return 1
+
     hdw_dat_dir = os.path.join(rstpath, 'tables/superdarn/hdw/')
+
+    radar_allow = [r for r in args.radars.split(',') if r]
 
     # Running fit to NC
     radar_info = get_radar_params(hdw_dat_dir)
@@ -91,20 +180,29 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
     #combine_fitacfs(startTime, endTime, fitDir, fitVersion)
 
     # Loop over fit files in the monthly directories
-    time = startTime
-    while time <= endTime:
-        fitDir_t = time.strftime(fitDir)
-        netDir_t = time.strftime(netDir)
+    time = args.start
+    total_converted = 0
+    total_failed = 0
+    total_skipped = 0
+    total_small = 0
 
+    while time <= args.end:
+        fitDir_t = time.strftime(args.input_dir)
+        month_label = time.strftime('%Y/%m')
+        month_small = 0
 
-        # Set up directories
-        print('Trying to make %s' % netDir_t)
-        os.makedirs(netDir_t, exist_ok=True)
+        bzips = glob.glob(os.path.join(fitDir_t, '*.bz2'))
+        if bzips:
+            print(f'bzips found - run concat_fitacf_daily.py first ({fitDir_t})', file=sys.stderr)
+            return 1
 
         # Loop over the files
         fitFnames = glob.glob(os.path.join(fitDir_t, FIT_EXT))
         print('Processing %i %s files in %s on %s' %
               (len(fitFnames), FIT_EXT, fitDir_t, time.strftime('%Y/%m')))
+
+        jobs = []
+
         for fit_fn in fitFnames:
 
             # Check the file is big enough to be worth bothering with
@@ -112,39 +210,83 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
             if fn_info.st_size < MIN_FITACF_FILE_SIZE:
                 print('\n\n%s %1.1f MB\nFile too small - skipping' %
                       (fit_fn, fn_info.st_size / 1E6))
+                month_small += 1
                 continue
-            print('\n\nStarting from %s' % fit_fn)
+
+            try:
+                file_date = parse_fit_date_from_filename(fit_fn)
+            except Exception:
+                print(f'Could not parse date from {fit_fn} - skipping', file=sys.stderr)
+                continue
+
+            radar_parts = os.path.basename(fit_fn).split('.')
+            if len(radar_parts) < 2:
+                print(f'Could not parse radar code from {fit_fn} - skipping', file=sys.stderr)
+                continue
+            radar_code = radar_parts[1]
+            if radar_allow and radar_code not in radar_allow:
+                continue
+            if radar_code not in radar_info:
+                print(f'Radar code {radar_code} not found in hardware params - skipping {fit_fn}', file=sys.stderr)
+                continue
 
             fn_head = '.'.join(os.path.basename(fit_fn).split('.')[:-1])
+            netDir_t = file_date.strftime(args.output_dir)
             out_fn = os.path.join(netDir_t, '{0}.nc'.format(fn_head))
             if os.path.isfile(out_fn):
                 if SKIP_EXISTING:
                     print('%s exists - skipping' % out_fn)
+                    total_skipped += 1
                     continue
                 else:
                     print('%s exists - deleting' % out_fn)
                     os.remove(out_fn)
 
-            # Convert the fitACF to a netCDF
-            radar_code = os.path.basename(fit_fn).split('.')[1]
-            radar_info_t = id_hdw_params_t(time, radar_info[radar_code])
+            jobs.append((fit_fn, out_fn, file_date, radar_info[radar_code]))
 
-            status = fit_to_nc(time, fit_fn, out_fn, radar_info_t, fitVersion)
+        if not jobs:
+            time += relativedelta(months=1)
+            continue
 
-            if status == MULTIPLE_BEAM_DEFS_ERROR_CODE:
-                print('Failed to convert {fitacfFile} because it had multiple beam definitions'.format(
-                    fitacfFile=fit_fn))
-                continue
-            elif status == SHAPE_MISMATCH_ERROR_CODE:
-                print('Failed to convert {fitacfFile} because it had mismatched dimensions. Moved fitACF file to {dir}'.format(
-                    fitacfFile=fit_fn, dir=time.strftime(helper.PROCESSING_ISSUE_DIR)))
-                continue
-            elif status > 0:
-                print('Failed to convert {fitacfFile}'.format(
-                    fitacfFile=fit_fn))
-                continue
+        print(f'Queued {len(jobs)} files for conversion from {fitDir_t}')
 
-            print('Wrote output to %s' % out_fn)
+        converted = 0
+        failed = 0
+        skipped_existing = 0
+
+        if args.parallel_jobs == 1 or len(jobs) == 1:
+            for job in jobs:
+                status, fname = process_single_file(*job, args.fit_version, SKIP_EXISTING)
+                if status == 'ok':
+                    converted += 1
+                elif status == 'skip':
+                    skipped_existing += 1
+                else:
+                    failed += 1
+        else:
+            with ProcessPoolExecutor(max_workers=args.parallel_jobs) as executor:
+                future_map = {
+                    executor.submit(process_single_file, *job, args.fit_version, SKIP_EXISTING): job[0]
+                    for job in jobs
+                }
+                for future in as_completed(future_map):
+                    try:
+                        status, fname = future.result()
+                    except Exception as exc:  # noqa: BLE001
+                        print(f'Failed to convert {future_map[future]}: {exc}', file=sys.stderr)
+                        failed += 1
+                        continue
+                    if status == 'ok':
+                        converted += 1
+                    elif status == 'skip':
+                        skipped_existing += 1
+                    else:
+                        failed += 1
+
+        total_converted += converted
+        total_failed += failed
+        total_skipped += skipped_existing
+        total_small += month_small
 
         month = time.strftime('%m')
         multiBeamLogDir = time.strftime(helper.FIT_NET_LOG_DIR) + month
@@ -152,12 +294,16 @@ def main(startTime, endTime, fitDir, netDir, fitVersion):
             dir=multiBeamLogDir, m=month)
         if os.path.exists(multiBeamFile):
             subject = '"Multiple Beam Definitions Found - {date}"'.format(
-                date=time.strftime('%Y/%m'))
+                date=month_label)
             body = 'Files with multiple beam definitions have been found. See details in {file}'.format(
                 file=multiBeamFile)
             helper.send_email(subject, body)
 
         time += relativedelta(months=1)
+        print(f'Month summary ({month_label}): converted {converted}, failed {failed}, skipped existing {skipped_existing}, small files {month_small}')
+
+    print(f'Total summary: converted {total_converted}, failed {total_failed}, skipped existing {total_skipped}, small files {total_small}')
+    return 1 if total_failed > 0 else 0
 
 
 def fit_to_nc(date, in_fname, out_fname, radar_info, fitVersion):
@@ -492,55 +638,10 @@ def combine_files(inFilenameFormat, outputFilename, fitVersion):
         print('No zipped files in %s' % inFilenameFormat)
         return 1
 
-    unzippedInputFileFormat = '.'.join(inFilenameFormat.split('.')[:-1])
-    print('Unzipped File Format: {0}'.format(unzippedInputFileFormat))
-
-    # Unzip the files that match the specified format
-    for inputFitacf in zippedInputFiles:
-        os.system('bzip2 -d {0}'.format(inputFitacf))
-
-    # Combine the unzipped fitACFs for the given day
-    combinedFile = os.path.join(outDir, 'combined.fit')
-    os.system('cat {0} > {1}'.format(unzippedInputFileFormat, combinedFile))
-
-    if fitVersion == 2.5:
-        shutil.move(combinedFile, outputFilename)
-    if fitVersion == 3.0:
-        os.system('fit_speck_removal {0} > {1}'.format(
-            combinedFile, outputFilename))
-        os.remove(combinedFile)
-
-    # Make sure the combined fitACF is large enough
-    fn_inf = os.stat(outputFilename)
-    if fn_inf.st_size < MIN_FITACF_FILE_SIZE:
-        print('File %s too small, size %1.1f MB' %
-              (outputFilename, fn_inf.st_size / 1E6))
-        os.system('rm {0}'.format(outputFilename))
-    else:
-        print('File created at %s, size %1.1f MB' %
-              (outputFilename, fn_inf.st_size / 1E6))
-
-    # os.system('rm {0}'.format(unzippedInputFileFormat))
-
-    return 0
+    print('bzips found - run concat_fitacf_daily.py first')
+    return 1
 
 
 if __name__ == '__main__':
-
-    args = sys.argv
-
-    assert len(args) >= 6, 'Should have 5x args, e.g.:\n' + \
-        'python3 fit_to_nc.py 2014,4,23 2014,4,24 ' + \
-        '/project/superdarn/data/fitacf/%Y/%m/  ' + \
-        '/project/superdarn/data/netcdf/%Y/%m/ 2.5\n' + \
-        'Run with --help for more details.'
-
-    stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
-    etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    if len(args) == 6:
-        fit_dir = args[3]
-        outDir = args[4]
-        fitVersion = float(args[5])
-    runDir = './run/run_%s' % get_random_string(4)
-
-    main(stime, etime, fit_dir, outDir, fitVersion)
+    cli_args = parse_args()
+    sys.exit(main(cli_args))

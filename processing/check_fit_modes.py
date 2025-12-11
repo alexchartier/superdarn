@@ -9,9 +9,9 @@ delete the problematic .fit files so they can be regenerated.
 
 from __future__ import annotations
 
+import os
 import argparse
 import sys
-import os
 from pathlib import Path
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -119,6 +119,17 @@ def scan_fit_outputs(fit_root: Path, workers: int) -> List[Tuple[str, str, Optio
     return entries
 
 
+def iter_month_dirs(root: Path) -> List[Path]:
+    """Return all year/month directories under root; if none, return [root]."""
+    months: List[Path] = []
+    for year_dir in sorted([p for p in root.iterdir() if p.is_dir()]):
+        for month_dir in sorted([p for p in year_dir.iterdir() if p.is_dir()]):
+            months.append(month_dir)
+    if not months:
+        months = [root]
+    return months
+
+
 def find_mismatches(
     fit_entries: Iterable[Tuple[str, str, Optional[str], Path]],
     modes_by_day_radar: Dict[Tuple[str, str], Set[Optional[str]]],
@@ -204,35 +215,55 @@ def main() -> int:
         print(f".fit output directory not found: {fit_root}", file=sys.stderr)
         return 1
 
-    print(f"Scanning .fitacf.bz2 sources under {bzip_root} ...")
     if args.workers < 1:
         print(f"Worker count must be >=1 (got {args.workers})", file=sys.stderr)
         return 1
 
-    modes_by_day_radar, paths_by_key = build_bzip_reference(bzip_root, args.workers)
-    print(f"  Found {len(paths_by_key)} mode-specific source groups.")
+    bzip_months = iter_month_dirs(bzip_root)
+    total_mismatches: List[Dict[str, object]] = []
+    total_fit_files = 0
 
-    print(f"Scanning .fit outputs under {fit_root} ...")
-    fit_entries = scan_fit_outputs(fit_root, args.workers)
-    print(f"  Found {len(fit_entries)} .fit files.")
+    for month_dir in bzip_months:
+        rel = month_dir.relative_to(bzip_root) if month_dir != bzip_root else Path(".")
+        label = str(rel)
+        print(f"\nProcessing month directory: {month_dir}")
 
-    mismatches = find_mismatches(fit_entries, modes_by_day_radar, paths_by_key)
+        print(f"Scanning .fitacf.bz2 sources under {month_dir} ...")
+        modes_by_day_radar, paths_by_key = build_bzip_reference(month_dir, args.workers)
+        print(f"  Found {len(paths_by_key)} mode-specific source groups.")
 
-    if not mismatches:
-        print("No mismatched .fit files detected.")
+        fit_month_dir = fit_root / rel
+        if not fit_month_dir.exists():
+            print(f"  Skipping: matching .fit directory not found ({fit_month_dir})")
+            continue
+
+        print(f"Scanning .fit outputs under {fit_month_dir} ...")
+        fit_entries = scan_fit_outputs(fit_month_dir, args.workers)
+        print(f"  Found {len(fit_entries)} .fit files in {label}.")
+        total_fit_files += len(fit_entries)
+
+        mismatches = find_mismatches(fit_entries, modes_by_day_radar, paths_by_key)
+        if mismatches:
+            total_mismatches.extend(mismatches)
+            print(f"  Detected {len(mismatches)} mismatched .fit files in {label}.")
+            for item in mismatches:
+                mode_label = item["fit_mode"] or "(no mode)"
+                expected = ",".join(m or "(no mode)" for m in item["expected_modes"])  # type: ignore[index]
+                print(f"* {item['fit_path']}  [mode in filename: {mode_label}]  expected modes: {expected}")
+                for bz2_path in item["bz2_paths"]:  # type: ignore[index]
+                    print(f"    bz2: {bz2_path}")
+        else:
+            print(f"  No mismatched .fit files found in {label}.")
+
+    if not total_mismatches:
+        print(
+            f"\nNo mismatched .fit files detected across {len(bzip_months)} month directories ({total_fit_files} .fit files scanned)."
+        )
         return 0
-
-    print(f"\nDetected {len(mismatches)} mismatched .fit files:\n")
-    for item in mismatches:
-        mode_label = item["fit_mode"] or "(no mode)"
-        expected = ",".join(m or "(no mode)" for m in item["expected_modes"])  # type: ignore[index]
-        print(f"* {item['fit_path']}  [mode in filename: {mode_label}]  expected modes: {expected}")
-        for bz2_path in item["bz2_paths"]:  # type: ignore[index]
-            print(f"    bz2: {bz2_path}")
 
     if args.delete:
         deleted = 0
-        for item in mismatches:
+        for item in total_mismatches:
             fit_path: Path = item["fit_path"]  # type: ignore[assignment]
             try:
                 fit_path.unlink()
@@ -241,6 +272,8 @@ def main() -> int:
             except OSError as exc:
                 print(f"Failed to delete {fit_path}: {exc}", file=sys.stderr)
         print(f"\nRemoved {deleted} mismatched .fit files.")
+    else:
+        print(f"\nDetected {len(total_mismatches)} mismatched .fit files across {len(bzip_months)} month directories.")
 
     return 0
 

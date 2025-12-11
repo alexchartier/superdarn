@@ -326,17 +326,32 @@ def fit_to_nc(date, in_fname, out_fname, radar_info, fitVersion):
             nc.createDimension(k, size=v)
         for k, v in out_vars.items():
             defs = var_defs[k]
-            var = nc.createVariable(k, defs['type'], defs['dims'])
+            var = nc.createVariable(
+                k,
+                defs['type'],
+                defs['dims'],
+                zlib=True,
+                complevel=6,
+                shuffle=True,
+            )
             try:
                 var[:] = v
             except Exception as e:
                 print(e)
-                os.remove(out_fname)
+                try:
+                    os.remove(out_fname)
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    print(f'Could not remove partial output {out_fname}: {exc}', file=sys.stderr)
                 moved_out_fn = os.path.join(date.strftime(
                     helper.PROCESSING_ISSUE_DIR), os.path.basename(in_fname))
-                os.makedirs(date.strftime(
-                    helper.PROCESSING_ISSUE_DIR), exist_ok=True)
-                shutil.move(in_fname, moved_out_fn)
+                try:
+                    os.makedirs(date.strftime(
+                        helper.PROCESSING_ISSUE_DIR), exist_ok=True)
+                    shutil.move(in_fname, moved_out_fn)
+                except Exception as exc:  # noqa: BLE001
+                    print(f'Could not move {in_fname} to processing issue dir: {exc}', file=sys.stderr)
                 return SHAPE_MISMATCH_ERROR_CODE
 
             var.units = defs['units']
@@ -370,7 +385,6 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
 
         data = pydarnio.read_fitacf(in_fname)
         assert len(data) == 2, 'not as expected'
-        assert isempty(data[1])
         data = data[0]
     
         bmdata = {
@@ -513,8 +527,11 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         print(e)
         moved_out_fn = os.path.join(date.strftime(
             helper.PROCESSING_ISSUE_DIR), os.path.basename(in_fname))
-        os.makedirs(date.strftime(helper.PROCESSING_ISSUE_DIR), exist_ok=True)
-        shutil.move(in_fname, moved_out_fn)
+        try:
+            os.makedirs(date.strftime(helper.PROCESSING_ISSUE_DIR), exist_ok=True)
+            shutil.move(in_fname, moved_out_fn)
+        except Exception as exc:  # noqa: BLE001
+            print(f'Could not move {in_fname} to processing issue dir: {exc}', file=sys.stderr)
         return SHAPE_MISMATCH_ERROR_CODE, SHAPE_MISMATCH_ERROR_CODE
 
     return out, hdr

@@ -61,12 +61,13 @@ def build_bzip_reference(
     modes_by_day_radar: DefaultDict[Tuple[str, str], Set[Optional[str]]] = defaultdict(set)
     paths_by_key: Dict[Tuple[str, str, Optional[str]], List[Path]] = defaultdict(list)
 
-    all_paths: List[Path] = [
-        Path(root) / name
-        for root, _, files in os.walk(bzip_root)
-        for name in files
-        if name.endswith(BZIP_EXT)
-    ]
+    all_paths: List[Path] = []
+    for root, _, files in os.walk(bzip_root):
+        print(f"  scanning {root}")
+        for name in files:
+            if not name.endswith(BZIP_EXT):
+                continue
+            all_paths.append(Path(root) / name)
 
     if workers <= 1:
         iterator = map(parse_bzip_entry, all_paths)
@@ -91,12 +92,13 @@ def build_bzip_reference(
 def scan_fit_outputs(fit_root: Path, workers: int) -> List[Tuple[str, str, Optional[str], Path]]:
     entries: List[Tuple[str, str, Optional[str], Path]] = []
 
-    all_paths: List[Path] = [
-        Path(root) / name
-        for root, _, files in os.walk(fit_root)
-        for name in files
-        if name.split(".")[-1].lower() in FIT_EXTS
-    ]
+    all_paths: List[Path] = []
+    for root, _, files in os.walk(fit_root):
+        print(f"  scanning {root}")
+        for name in files:
+            if name.split(".")[-1].lower() not in FIT_EXTS:
+                continue
+            all_paths.append(Path(root) / name)
 
     if workers <= 1:
         iterator = map(parse_fit_entry, all_paths)

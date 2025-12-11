@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Concatenate hourly fitacf .bz2 files into daily per-radar files.
+Concatenate hourly fitacf .bz2 files into daily per-radar/mode files.
 
 This is a Python replacement for concat_fitacf_daily.sh. It scans an input
-directory for *.fitacf.bz2 files, groups them by day and radar, and writes
+directory for *.fitacf.bz2 files, groups them by day, radar, and mode, and writes
 concatenated daily files to the output directory. Existing outputs are skipped
 unless -f is provided.
 """
@@ -30,6 +30,7 @@ CHUNK_SIZE = 1024 * 1024
 class Entry:
     ymd: str
     radar: str
+    mode: Optional[str]
     hhmm: str
     ss: str
     path: Path
@@ -37,7 +38,7 @@ class Entry:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Concatenate hourly fitacf .bz2 files into daily per-radar files.",
+        description="Concatenate hourly fitacf .bz2 files into daily per-radar/mode files.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -107,10 +108,20 @@ def parse_entry(path: Path) -> Optional[Entry]:
     parts = base.split(".")
     if len(parts) < 4:
         return None
+    try:
+        fit_idx = parts.index("fitacf")
+    except ValueError:
+        return None
+    if fit_idx < 4:
+        return None
     ymd, hhmm, ss, radar = parts[:4]
+    mode: Optional[str] = None
+    if fit_idx > 4:
+        extra = ".".join(parts[4:fit_idx]).strip()
+        mode = extra or None
     if not ymd or not radar or not hhmm or not ss:
         return None
-    return Entry(ymd=ymd, radar=radar, hhmm=hhmm, ss=ss, path=path)
+    return Entry(ymd=ymd, radar=radar, mode=mode, hhmm=hhmm, ss=ss, path=path)
 
 
 def is_allowed_radar(radar: str, allowlist: Sequence[str]) -> bool:
@@ -135,9 +146,9 @@ def scan_entries(input_dir: Path, allowed_radars: Sequence[str]) -> List[Entry]:
     return entries
 
 
-def group_entries(entries: Iterable[Entry]) -> Iterable[Tuple[Tuple[str, str], List[Entry]]]:
-    sorted_entries = sorted(entries, key=lambda e: (e.ymd, e.radar, e.hhmm, e.ss))
-    for key, group in groupby(sorted_entries, key=lambda e: (e.ymd, e.radar)):
+def group_entries(entries: Iterable[Entry]) -> Iterable[Tuple[Tuple[str, str, Optional[str]], List[Entry]]]:
+    sorted_entries = sorted(entries, key=lambda e: (e.ymd, e.radar, e.mode or "", e.hhmm, e.ss))
+    for key, group in groupby(sorted_entries, key=lambda e: (e.ymd, e.radar, e.mode)):
         yield key, list(group)
 
 
@@ -169,13 +180,16 @@ def remove_empty_outputs(output_dir: Path, extensions: Sequence[str] = (".fit", 
     return removed
 
 
-def decompress_files(out_file: Path, files: Sequence[Path], ymd: str, radar: str) -> Tuple[str, str, int, bool]:
+def decompress_files(
+    out_file: Path, files: Sequence[Path], ymd: str, radar: str, mode: Optional[str]
+) -> Tuple[str, str, Optional[str], int, bool]:
     total = len(files)
+    mode_suffix = f".{mode}" if mode else ""
     if total == 0:
-        print(f"  [{ymd} {radar}] no files found in list, skipping", file=sys.stderr)
-        return ymd, radar, 0, False
+        print(f"  [{ymd} {radar}{mode_suffix}] no files found in list, skipping", file=sys.stderr)
+        return ymd, radar, mode, 0, False
 
-    print(f"  [{ymd} {radar}] concatenating {total} files -> {out_file}")
+    print(f"  [{ymd} {radar}{mode_suffix}] concatenating {total} files -> {out_file}")
     written = 0
     try:
         with open(out_file, "wb") as dest:
@@ -188,17 +202,17 @@ def decompress_files(out_file: Path, files: Sequence[Path], ymd: str, radar: str
                                 break
                             dest.write(chunk)
                 except Exception as exc:  # noqa: BLE001
-                    print(f"  [{ymd} {radar}] FAILED to decompress {fpath}: {exc}", file=sys.stderr)
-                    return ymd, radar, written, False
+                    print(f"  [{ymd} {radar}{mode_suffix}] FAILED to decompress {fpath}: {exc}", file=sys.stderr)
+                    return ymd, radar, mode, written, False
                 written += 1
                 if idx % 100 == 0:
-                    print(f"  [{ymd} {radar}] {idx}/{total} files done", file=sys.stderr)
+                    print(f"  [{ymd} {radar}{mode_suffix}] {idx}/{total} files done", file=sys.stderr)
     except Exception as exc:  # noqa: BLE001
-        print(f"  [{ymd} {radar}] FAILED writing to {out_file}: {exc}", file=sys.stderr)
-        return ymd, radar, written, False
+        print(f"  [{ymd} {radar}{mode_suffix}] FAILED writing to {out_file}: {exc}", file=sys.stderr)
+        return ymd, radar, mode, written, False
 
-    print(f"  [{ymd} {radar}] completed {written} files -> {out_file}")
-    return ymd, radar, written, True
+    print(f"  [{ymd} {radar}{mode_suffix}] completed {written} files -> {out_file}")
+    return ymd, radar, mode, written, True
 
 
 def process_chunk(
@@ -212,13 +226,14 @@ def process_chunk(
     label = f"[{chunk_label}] " if chunk_label else ""
 
     entry_count = len(entries)
-    group_counter = Counter((e.ymd, e.radar) for e in entries)
+    group_counter = Counter((e.ymd, e.radar, e.mode) for e in entries)
 
     print(f"{label}Indexed {entry_count} files before sorting.")
-    print(f"{label}Unique day/radar groups: {len(group_counter)}")
-    print(f"{label}Top groups (count day.radar):")
-    for (ymd, radar), count in sorted(group_counter.items(), key=lambda kv: kv[1], reverse=True)[:10]:
-        print(f"{label}{count:7d} {ymd}\t{radar}")
+    print(f"{label}Unique day/radar/mode groups: {len(group_counter)}")
+    print(f"{label}Top groups (count day.radar[.mode]):")
+    for (ymd, radar, mode), count in sorted(group_counter.items(), key=lambda kv: kv[1], reverse=True)[:10]:
+        mode_suffix = f".{mode}" if mode else ""
+        print(f"{label}{count:7d} {ymd}\t{radar}{mode_suffix}")
 
     if entry_count == 0:
         print(f"{label}No .fitacf.bz2 files found in this chunk.", file=sys.stderr)
@@ -226,11 +241,12 @@ def process_chunk(
 
     processed_files = 0
     skipped_existing = 0
-    jobs: List[Tuple[str, str, Path, List[Path]]] = []
+    jobs: List[Tuple[str, str, Optional[str], Path, List[Path]]] = []
 
-    for (ymd, radar), group in group_entries(entries):
+    for (ymd, radar, mode), group in group_entries(entries):
         out_dir = output_dir / ymd[:4] / ymd[4:6]
-        out_file = out_dir / f"{ymd}.{radar}.fit"
+        mode_suffix = f".{mode}" if mode else ""
+        out_file = out_dir / f"{ymd}.{radar}{mode_suffix}.fit"
 
         if out_file.exists() and not force:
             print(f"{label}Skipping existing output: {out_file}")
@@ -240,7 +256,7 @@ def process_chunk(
         ensure_output_path(out_file)
         files = [e.path for e in group]
         processed_files += len(files)
-        jobs.append((ymd, radar, out_file, files))
+        jobs.append((ymd, radar, mode, out_file, files))
 
     if processed_files == 0:
         if skipped_existing > 0:
@@ -253,9 +269,10 @@ def process_chunk(
     fail_groups = 0
 
     if parallel_jobs == 1 or len(jobs) == 1:
-        for ymd, radar, out_file, files in jobs:
-            print(f"{label}Launching {len(files)} files for {ymd} {radar} -> {out_file}")
-            _, _, _, success = decompress_files(out_file, files, ymd, radar)
+        for ymd, radar, mode, out_file, files in jobs:
+            mode_suffix = f".{mode}" if mode else ""
+            print(f"{label}Launching {len(files)} files for {ymd} {radar}{mode_suffix} -> {out_file}")
+            _, _, _, _, success = decompress_files(out_file, files, ymd, radar, mode)
             if success:
                 ok_groups += 1
             else:
@@ -263,21 +280,23 @@ def process_chunk(
     else:
         with ProcessPoolExecutor(max_workers=parallel_jobs) as executor:
             future_map = {}
-            for ymd, radar, out_file, files in jobs:
-                print(f"{label}Launching {len(files)} files for {ymd} {radar} -> {out_file}")
-                future = executor.submit(decompress_files, out_file, files, ymd, radar)
-                future_map[future] = (ymd, radar)
+            for ymd, radar, mode, out_file, files in jobs:
+                mode_suffix = f".{mode}" if mode else ""
+                print(f"{label}Launching {len(files)} files for {ymd} {radar}{mode_suffix} -> {out_file}")
+                future = executor.submit(decompress_files, out_file, files, ymd, radar, mode)
+                future_map[future] = (ymd, radar, mode)
 
             for future in as_completed(future_map):
-                ymd, radar = future_map[future]
+                ymd, radar, mode = future_map[future]
+                mode_suffix = f".{mode}" if mode else ""
                 try:
-                    _, _, _, success = future.result()
+                    _, _, _, _, success = future.result()
                     if success:
                         ok_groups += 1
                     else:
                         fail_groups += 1
                 except Exception as exc:  # noqa: BLE001
-                    print(f"{label}[{ymd} {radar}] failed with exception: {exc}", file=sys.stderr)
+                    print(f"{label}[{ymd} {radar}{mode_suffix}] failed with exception: {exc}", file=sys.stderr)
                     fail_groups += 1
 
     return processed_files, skipped_existing, ok_groups, fail_groups

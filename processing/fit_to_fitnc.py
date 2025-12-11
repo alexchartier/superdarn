@@ -1,6 +1,6 @@
 """
 
-fit_to_nc.py
+fit_to_fitnc.py
 
 Turn fitacf/cfit into netCDF files
 

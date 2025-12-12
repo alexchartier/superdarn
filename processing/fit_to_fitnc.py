@@ -45,6 +45,7 @@ import argparse
 import os
 import sys
 import datetime as dt
+import inspect
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -136,30 +137,57 @@ FIT_EXT = '*.fit'
 SKIP_EXISTING = True
 
 
+def _normalize_fitacf_records(obj):
+    """Normalize fitacf reader outputs to a list of dicts."""
+    if isinstance(obj, tuple) and len(obj) == 2 and isinstance(obj[0], list):
+        obj = obj[0]
+    if isinstance(obj, dict):
+        return [obj]
+    if not isinstance(obj, list):
+        raise ValueError(f"Unexpected fitacf data type {type(obj)}")
+    return obj
+
+
 def load_fitacf_records(path: str):
     """
     Compatibility loader for fitacf files that works with both new (read_fitacf)
-    and older pydarnio releases.
-
+    and older pydarnio releases (and direct dmap bindings).
     Returns a list of record dicts.
     """
-    # New API: read_fitacf exists and returns (records, idx) or just records.
+    errors: list[str] = []
+
     reader = getattr(pydarnio, "read_fitacf", None)
     if reader:
-        recs = reader(path)
-        if isinstance(recs, tuple) and len(recs) == 2 and isinstance(recs[0], list):
-            recs = recs[0]
-        return recs
+        try:
+            sig = inspect.signature(reader)
+            kwargs = {}
+            if "mode" in sig.parameters:
+                kwargs["mode"] = "lax"
+            recs = reader(path, **kwargs)
+            return _normalize_fitacf_records(recs)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"pydarnio.read_fitacf: {exc}")
 
-    # Fallback: use dmap_wrapper directly if present.
     try:
         from pydarnio.dmap_wrapper import read_dispatcher  # type: ignore
+
         recs = read_dispatcher(path, "fitacf", "lax")
-        if isinstance(recs, tuple) and len(recs) >= 1:
-            recs = recs[0]
-        return recs
+        return _normalize_fitacf_records(recs)
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"Unable to read fitacf file {path} with pydarnio") from exc
+        errors.append(f"dmap_wrapper.read_dispatcher: {exc}")
+
+    try:
+        import dmap  # type: ignore
+
+        if hasattr(dmap, "read_fitacf_lax"):
+            recs = dmap.read_fitacf_lax(path)
+        else:
+            recs = dmap.read_fitacf(path)
+        return _normalize_fitacf_records(recs)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"dmap: {exc}")
+
+    raise RuntimeError(f"Unable to read fitacf file {path}; tried: {'; '.join(errors)}")
 
 
 def parse_fit_date_from_filename(fit_fn: str) -> dt.datetime:
@@ -410,10 +438,6 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         # fitacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.fitacfList.txt'
 
         data = load_fitacf_records(in_fname)
-        if isinstance(data, tuple) and len(data) == 2 and isinstance(data[0], list):
-            data = data[0]
-        if not isinstance(data, list):
-            raise ValueError(f"Unexpected fitacf data type {type(data)} from pydarnio")
     
         bmdata = {
             'rsep': [],

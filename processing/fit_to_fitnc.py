@@ -123,10 +123,10 @@ from dateutil.relativedelta import relativedelta
 import calendar
 import numpy as np
 from sd_utils import get_radar_params, id_hdw_params_t, get_radar_list
-import pydarnio
 import radFov
 import pickle
 import helper
+import pydarnio
 
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 SHAPE_MISMATCH_ERROR_CODE = 2
@@ -134,6 +134,32 @@ MIN_FITACF_FILE_SIZE = 1E5  # bytes
 MAKE_FIT_VERSIONS = [3.0, 2.5]
 FIT_EXT = '*.fit'
 SKIP_EXISTING = True
+
+
+def load_fitacf_records(path: str):
+    """
+    Compatibility loader for fitacf files that works with both new (read_fitacf)
+    and older pydarnio releases.
+
+    Returns a list of record dicts.
+    """
+    # New API: read_fitacf exists and returns (records, idx) or just records.
+    reader = getattr(pydarnio, "read_fitacf", None)
+    if reader:
+        recs = reader(path)
+        if isinstance(recs, tuple) and len(recs) == 2 and isinstance(recs[0], list):
+            recs = recs[0]
+        return recs
+
+    # Fallback: use dmap_wrapper directly if present.
+    try:
+        from pydarnio.dmap_wrapper import read_dispatcher  # type: ignore
+        recs = read_dispatcher(path, "fitacf", "lax")
+        if isinstance(recs, tuple) and len(recs) >= 1:
+            recs = recs[0]
+        return recs
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"Unable to read fitacf file {path} with pydarnio") from exc
 
 
 def parse_fit_date_from_filename(fit_fn: str) -> dt.datetime:
@@ -383,9 +409,11 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         # create the fitACF
         # fitacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.fitacfList.txt'
 
-        data = pydarnio.read_fitacf(in_fname)
-        assert len(data) == 2, 'not as expected'
-        data = data[0]
+        data = load_fitacf_records(in_fname)
+        if isinstance(data, tuple) and len(data) == 2 and isinstance(data[0], list):
+            data = data[0]
+        if not isinstance(data, list):
+            raise ValueError(f"Unexpected fitacf data type {type(data)} from pydarnio")
     
         bmdata = {
             'rsep': [],

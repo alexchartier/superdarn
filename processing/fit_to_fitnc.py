@@ -485,12 +485,29 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
             'rsep': [],
             'frang': [],
         }
+        beam_outside_range = False
+        beams_outside: set[int] = set()
         for rec in data:
             for k, v in bmdata.items():
                 bmdata[k].append(rec[k])
             if 'slist' in rec.keys():
                 if radar_info['maxrg'] < rec['slist'].max():
                     radar_info['maxrg'] = rec['slist'].max() + 5
+            try:
+                bm_val = int(rec['bmnum'])
+            except Exception:
+                bm_val = None
+            if bm_val is not None:
+                if bm_val >= radar_info['maxbeams']:
+                    beam_outside_range = True
+                    beams_outside.add(bm_val)
+
+        if beam_outside_range:
+            os.makedirs(conversionLogDir, exist_ok=True)
+            logText = f'Beam numbers {sorted(beams_outside)} exceed configured maxbeams ({radar_info["maxbeams"]}) - skipping file conversion.\n'
+            with open(conversionLogfile, "a+") as fp:
+                fp.write(logText)
+            return SHAPE_MISMATCH_ERROR_CODE, SHAPE_MISMATCH_ERROR_CODE
 
         for k, v in bmdata.items():
             val = np.unique(v)
@@ -521,6 +538,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
             elevation=None, altitude=300., hop=None, model='C',
             coords='geo', date_time=date, coord_alt=0., fov_dir='front',
         )
+        fov_beams = set(np.atleast_1d(fov.beams).tolist())
 
         # Define fields
         short_flds = 'tfreq', 'noise.sky', 'cp',
@@ -570,12 +588,26 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
 
                 continue
 
-            time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'],
-                               rec['time.hr'], rec['time.mt'], rec['time.sc'])
+            try:
+                beam_num = int(rec['bmnum'])
+            except Exception:
+                beam_num = None
+            time_str = time.strftime('%Y-%m-%d %H:%M:%S')
+            if beam_num is None or beam_num not in fov_beams:
+                os.makedirs(conversionLogDir, exist_ok=True)
+                logText = (
+                    f'Record {time_str} has beam {rec.get(\"bmnum\")} outside available beams '
+                    f'{sorted(fov_beams)} - skipping file conversion.\n'
+                )
+                with open(conversionLogfile, "a+") as fp:
+                    fp.write(logText)
+
+                return SHAPE_MISMATCH_ERROR_CODE, SHAPE_MISMATCH_ERROR_CODE
+
             one_obj = np.ones(len(rec['slist']))
             mjd = jdutil.jd_to_mjd(jdutil.datetime_to_jd(time))
-            bmnum = one_obj * rec['bmnum']
-            fovi = fov.beams == rec['bmnum']
+            bmnum = one_obj * beam_num
+            fovi = fov.beams == beam_num
             out['mjd'] += (one_obj * mjd).tolist()
             out['beam'] += bmnum.tolist()
             out['range'] += fov.slantRCenter[fovi, rec['slist']].tolist()

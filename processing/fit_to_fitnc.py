@@ -183,6 +183,18 @@ def load_fitacf_records(path: str):
             errors.append(f"pydarnio.read_dmap: {exc}")
 
     try:
+        import pydarn  # type: ignore
+
+        try:
+            reader = pydarn.SuperDARNRead(path)  # type: ignore[attr-defined]
+            recs = reader.read_fitacf()
+            return _normalize_fitacf_records(recs)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"pydarn.SuperDARNRead.read_fitacf: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"pydarn import: {exc}")
+
+    try:
         from pydarnio.dmap_wrapper import read_dispatcher  # type: ignore
 
         recs = read_dispatcher(path, "fitacf", "lax")

@@ -109,6 +109,11 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         help='Overwrite existing netCDF outputs instead of skipping them',
     )
+    parser.add_argument(
+        '--delete-input',
+        action='store_true',
+        help='Delete input .fit/.fitacf file after a successful conversion',
+    )
     return parser.parse_args()
 
 UTILS_DIR = Path(__file__).resolve().parent.parent / "utils"
@@ -221,7 +226,15 @@ def parse_fit_date_from_filename(fit_fn: str) -> dt.datetime:
     return dt.datetime.strptime(stem, '%Y%m%d')
 
 
-def process_single_file(fit_fn: str, out_fn: str, file_date: dt.datetime, radar_info_entry, fitVersion: float, skip_existing: bool):
+def process_single_file(
+    fit_fn: str,
+    out_fn: str,
+    file_date: dt.datetime,
+    radar_info_entry,
+    fitVersion: float,
+    skip_existing: bool,
+    delete_input: bool,
+):
     if skip_existing and os.path.isfile(out_fn):
         return 'skip', fit_fn
 
@@ -230,6 +243,11 @@ def process_single_file(fit_fn: str, out_fn: str, file_date: dt.datetime, radar_
         radar_info_t = id_hdw_params_t(file_date, radar_info_entry)
         status = fit_to_nc(file_date, fit_fn, out_fn, radar_info_t, fitVersion)
         if status == 0:
+            if delete_input:
+                try:
+                    os.remove(fit_fn)
+                except OSError as exc:  # noqa: BLE001
+                    print(f'Converted but could not delete input {fit_fn}: {exc}', file=sys.stderr)
             return 'ok', fit_fn
         return 'fail', fit_fn
     except Exception as exc:  # noqa: BLE001
@@ -338,7 +356,7 @@ def main(args: argparse.Namespace) -> int:
 
         if args.parallel_jobs == 1 or len(jobs) == 1:
             for job in jobs:
-                status, fname = process_single_file(*job, args.fit_version, SKIP_EXISTING)
+                status, fname = process_single_file(*job, args.fit_version, SKIP_EXISTING, args.delete_input)
                 if status == 'ok':
                     converted += 1
                 elif status == 'skip':
@@ -348,7 +366,7 @@ def main(args: argparse.Namespace) -> int:
         else:
             with ProcessPoolExecutor(max_workers=args.parallel_jobs) as executor:
                 future_map = {
-                    executor.submit(process_single_file, *job, args.fit_version, SKIP_EXISTING): job[0]
+                    executor.submit(process_single_file, *job, args.fit_version, SKIP_EXISTING, args.delete_input): job[0]
                     for job in jobs
                 }
                 for future in as_completed(future_map):

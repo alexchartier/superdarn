@@ -596,8 +596,8 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
             if beam_num is None or beam_num not in fov_beams:
                 os.makedirs(conversionLogDir, exist_ok=True)
                 logText = (
-                    f'Record {time_str} has beam {rec.get(\"bmnum\")} outside available beams '
-                    f'{sorted(fov_beams)} - skipping file conversion.\n'
+                    f"Record {time_str} has beam {rec.get('bmnum')} outside available beams "
+                    f"{sorted(fov_beams)} - skipping file conversion.\n"
                 )
                 with open(conversionLogfile, "a+") as fp:
                     fp.write(logText)

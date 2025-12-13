@@ -133,7 +133,8 @@ MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 SHAPE_MISMATCH_ERROR_CODE = 2
 MIN_FITACF_FILE_SIZE = 1E5  # bytes
 MAKE_FIT_VERSIONS = [3.0, 2.5]
-FIT_EXT = '*.fit'
+# Accept both legacy .fit and newer .fitacf extensions.
+FIT_EXTS = ('*.fit', '*.fitacf')
 SKIP_EXISTING = True
 
 
@@ -167,6 +168,20 @@ def load_fitacf_records(path: str):
             return _normalize_fitacf_records(recs)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"pydarnio.read_fitacf: {exc}")
+
+    dmap_reader = getattr(pydarnio, "read_dmap", None)
+    if dmap_reader:
+        try:
+            sig = inspect.signature(dmap_reader)
+            kwargs = {}
+            if "fmt" in sig.parameters:
+                kwargs["fmt"] = "fitacf"
+            if "mode" in sig.parameters:
+                kwargs["mode"] = "lax"
+            recs = dmap_reader(path, **kwargs)
+            return _normalize_fitacf_records(recs)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"pydarnio.read_dmap: {exc}")
 
     try:
         from pydarnio.dmap_wrapper import read_dispatcher  # type: ignore
@@ -251,9 +266,11 @@ def main(args: argparse.Namespace) -> int:
             return 1
 
         # Loop over the files
-        fitFnames = glob.glob(os.path.join(fitDir_t, FIT_EXT))
-        print('Processing %i %s files in %s on %s' %
-              (len(fitFnames), FIT_EXT, fitDir_t, time.strftime('%Y/%m')))
+        fitFnames: list[str] = []
+        for pat in FIT_EXTS:
+            fitFnames.extend(glob.glob(os.path.join(fitDir_t, pat)))
+        print('Processing %i fit files in %s on %s (patterns: %s)' %
+              (len(fitFnames), fitDir_t, time.strftime('%Y/%m'), ','.join(FIT_EXTS)))
 
         jobs = []
 

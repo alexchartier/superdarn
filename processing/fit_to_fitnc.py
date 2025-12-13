@@ -117,7 +117,6 @@ if str(UTILS_DIR) not in sys.path:
 
 import glob
 # import bz2
-import shutil
 import netCDF4
 import jdutil
 from dateutil.relativedelta import relativedelta
@@ -415,14 +414,10 @@ def fit_to_nc(date, in_fname, out_fname, radar_info, fitVersion):
                     pass
                 except OSError as exc:
                     print(f'Could not remove partial output {out_fname}: {exc}', file=sys.stderr)
-                moved_out_fn = os.path.join(date.strftime(
-                    helper.PROCESSING_ISSUE_DIR), os.path.basename(in_fname))
-                try:
-                    os.makedirs(date.strftime(
-                        helper.PROCESSING_ISSUE_DIR), exist_ok=True)
-                    shutil.move(in_fname, moved_out_fn)
-                except Exception as exc:  # noqa: BLE001
-                    print(f'Could not move {in_fname} to processing issue dir: {exc}', file=sys.stderr)
+                print(
+                    f'Keeping source file {in_fname} in place after shape mismatch; logged partial output cleanup.',
+                    file=sys.stderr,
+                )
                 return SHAPE_MISMATCH_ERROR_CODE
 
             var.units = defs['units']
@@ -594,13 +589,10 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         }
     except Exception as e:
         print(e)
-        moved_out_fn = os.path.join(date.strftime(
-            helper.PROCESSING_ISSUE_DIR), os.path.basename(in_fname))
-        try:
-            os.makedirs(date.strftime(helper.PROCESSING_ISSUE_DIR), exist_ok=True)
-            shutil.move(in_fname, moved_out_fn)
-        except Exception as exc:  # noqa: BLE001
-            print(f'Could not move {in_fname} to processing issue dir: {exc}', file=sys.stderr)
+        print(
+            f'Fit conversion failed for {in_fname}; source file left untouched (no move to processing issues dir).',
+            file=sys.stderr,
+        )
         return SHAPE_MISMATCH_ERROR_CODE, SHAPE_MISMATCH_ERROR_CODE
 
     return out, hdr

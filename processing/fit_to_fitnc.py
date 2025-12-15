@@ -517,14 +517,14 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
             return SHAPE_MISMATCH_ERROR_CODE, SHAPE_MISMATCH_ERROR_CODE
 
         for k, v in bmdata.items():
-            val = np.unique(v)
-            if len(val) > 1:
+            val_arr = np.unique(v)
+            if len(val_arr) > 1:
                 os.makedirs(conversionLogDir, exist_ok=True)
                 os.makedirs(multiBeamLogDir, exist_ok=True)
 
                 # Log the multiple beams error in the monthly mutli beam def log
                 logText = '{fitacfFullFile} has {numBeamDefs} beam definitions - skipping file conversion.\n'.format(
-                    fitacfFullFile=in_fname, numBeamDefs=len(val))
+                    fitacfFullFile=in_fname, numBeamDefs=len(val_arr))
 
                 with open(multiBeamLogfile, "a+") as fp:
                     fp.write(logText)
@@ -535,7 +535,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
 
                 return MULTIPLE_BEAM_DEFS_ERROR_CODE, MULTIPLE_BEAM_DEFS_ERROR_CODE
 
-            bmdata[k] = int(val)
+            bmdata[k] = int(val_arr.item())
 
         # Define FOV
         fov = radFov.fov(

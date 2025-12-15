@@ -140,6 +140,8 @@ MAKE_FIT_VERSIONS = [3.0, 2.5]
 # Accept both legacy .fit and newer .fitacf extensions.
 FIT_EXTS = ('*.fit', '*.fitacf')
 SKIP_EXISTING = True
+# Limit per-record logging to avoid massive log files when data are bad.
+LOG_SAMPLE_LIMIT = 20
 
 
 def _normalize_fitacf_records(obj):
@@ -582,10 +584,11 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
             # slist is the list of range gates with backscatter
             if 'slist' not in rec.keys():
                 os.makedirs(conversionLogDir, exist_ok=True)
-                logText = 'Could not find slist in record {recordTime} - skipping\n'.format(
-                    recordTime=time.strftime('%Y-%m-%d %H:%M:%S'))
-                with open(conversionLogfile, "a+") as fp:
-                    fp.write(logText)
+                if skipped_missing_slist < LOG_SAMPLE_LIMIT:
+                    logText = 'Could not find slist in record {recordTime} - skipping\n'.format(
+                        recordTime=time.strftime('%Y-%m-%d %H:%M:%S'))
+                    with open(conversionLogfile, "a+") as fp:
+                        fp.write(logText)
 
                 skipped_missing_slist += 1
                 continue
@@ -595,10 +598,11 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                 os.makedirs(conversionLogDir, exist_ok=True)
 
                 # Log returns outside of FOV
-                logText = 'Record {recordTime} found to have a max slist of {maxSList} - skipping record/n'.format(
-                    recordTime=time.strftime('%Y-%m-%d %H:%M:%S'), maxSList=rec['slist'].max())
-                with open(conversionLogfile, "a+") as fp:
-                    fp.write(logText)
+                if skipped_outside_fov < LOG_SAMPLE_LIMIT:
+                    logText = 'Record {recordTime} found to have a max slist of {maxSList} - skipping record/n'.format(
+                        recordTime=time.strftime('%Y-%m-%d %H:%M:%S'), maxSList=rec['slist'].max())
+                    with open(conversionLogfile, "a+") as fp:
+                        fp.write(logText)
 
                 skipped_outside_fov += 1
                 continue
@@ -610,12 +614,13 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
             time_str = time.strftime('%Y-%m-%d %H:%M:%S')
             if beam_num is None or beam_num not in fov_beams:
                 os.makedirs(conversionLogDir, exist_ok=True)
-                logText = (
-                    f"Record {time_str} has beam {rec.get('bmnum')} outside available beams "
-                    f"{sorted(fov_beams)} - skipping file conversion.\n"
-                )
-                with open(conversionLogfile, "a+") as fp:
-                    fp.write(logText)
+                if skipped_invalid_beam < LOG_SAMPLE_LIMIT:
+                    logText = (
+                        f"Record {time_str} has beam {rec.get('bmnum')} outside available beams "
+                        f"{sorted(fov_beams)} - skipping file conversion.\n"
+                    )
+                    with open(conversionLogfile, "a+") as fp:
+                        fp.write(logText)
 
                 skipped_invalid_beam += 1
                 return SHAPE_MISMATCH_ERROR_CODE, SHAPE_MISMATCH_ERROR_CODE

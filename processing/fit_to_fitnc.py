@@ -353,12 +353,14 @@ def main(args: argparse.Namespace) -> int:
             continue
 
         print(f'Queued {len(jobs)} files for conversion from {fitDir_t}')
+        actual_workers = max(1, min(args.parallel_jobs, len(jobs), os.cpu_count() or args.parallel_jobs))
+        print(f'Using up to {actual_workers} parallel workers this month')
 
         converted = 0
         failed = 0
         skipped_existing = 0
 
-        if args.parallel_jobs == 1 or len(jobs) == 1:
+        if actual_workers == 1:
             for job in jobs:
                 status, fname = process_single_file(*job, args.fit_version, SKIP_EXISTING, args.delete_input)
                 if status == 'ok':
@@ -368,7 +370,7 @@ def main(args: argparse.Namespace) -> int:
                 else:
                     failed += 1
         else:
-            with ProcessPoolExecutor(max_workers=args.parallel_jobs) as executor:
+            with ProcessPoolExecutor(max_workers=actual_workers) as executor:
                 future_map = {
                     executor.submit(process_single_file, *job, args.fit_version, SKIP_EXISTING, args.delete_input): job[0]
                     for job in jobs

@@ -291,6 +291,8 @@ def main(args: argparse.Namespace) -> int:
         month_label = time.strftime('%Y/%m')
         month_small = 0
 
+        print(f'--- Starting month {month_label} (input: {fitDir_t}) ---')
+
         bzips = glob.glob(os.path.join(fitDir_t, '*.bz2'))
         if bzips:
             print(f'bzips found - run concat_fitacf_daily.py first ({fitDir_t})', file=sys.stderr)

@@ -479,7 +479,14 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         # create the fitACF
         # fitacfListFilename = '.'.join(in_fname.split('.')[:-1]) + '.fitacfList.txt'
 
-        data = load_fitacf_records(in_fname)
+        try:
+            data = load_fitacf_records(in_fname)
+        except Exception as exc:
+            os.makedirs(conversionLogDir, exist_ok=True)
+            logText = f'Unable to read {in_fname}: {exc}\n'
+            with open(conversionLogfile, "a+") as fp:
+                fp.write(logText)
+            return SHAPE_MISMATCH_ERROR_CODE, SHAPE_MISMATCH_ERROR_CODE
     
         bmdata = {
             'rsep': [],

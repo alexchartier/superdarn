@@ -569,8 +569,14 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         for fld in (fov_flds + data_flds + short_flds + elv_flds):
             out[fld] = []
 
+        records_seen = 0
+        skipped_missing_slist = 0
+        skipped_outside_fov = 0
+        skipped_invalid_beam = 0
+
         # Run through each beam record and store
         for rec in data:
+            records_seen += 1
             time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'],
                                rec['time.hr'], rec['time.mt'], rec['time.sc'])
             # slist is the list of range gates with backscatter
@@ -581,6 +587,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                 with open(conversionLogfile, "a+") as fp:
                     fp.write(logText)
 
+                skipped_missing_slist += 1
                 continue
 
             # Can't deal with returns outside of FOV
@@ -593,6 +600,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                 with open(conversionLogfile, "a+") as fp:
                     fp.write(logText)
 
+                skipped_outside_fov += 1
                 continue
 
             try:
@@ -609,6 +617,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                 with open(conversionLogfile, "a+") as fp:
                     fp.write(logText)
 
+                skipped_invalid_beam += 1
                 return SHAPE_MISMATCH_ERROR_CODE, SHAPE_MISMATCH_ERROR_CODE
 
             one_obj = np.ones(len(rec['slist']))
@@ -630,6 +639,20 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                     out[fld] += rec[fld].tolist()
                 except:
                     out[fld] += (one_obj * 0).tolist()
+
+        total_points = len(out['mjd'])
+        if records_seen > 0:
+            os.makedirs(conversionLogDir, exist_ok=True)
+            summary = (
+                f'Records: seen={records_seen}, converted_points={total_points}, '
+                f'skipped_missing_slist={skipped_missing_slist}, '
+                f'skipped_outside_fov={skipped_outside_fov}, '
+                f'skipped_invalid_beam={skipped_invalid_beam}\n'
+            )
+            with open(conversionLogfile, "a+") as fp:
+                fp.write(summary)
+        if total_points == 0:
+            return SHAPE_MISMATCH_ERROR_CODE, SHAPE_MISMATCH_ERROR_CODE
 
         # Convert to numpy arrays
         for k, v in out.items():

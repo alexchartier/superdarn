@@ -151,6 +151,7 @@ def analyze_regular_spacing(psd_rows: List[np.ndarray], freqs: np.ndarray, row_s
     baseline = signal.medfilt(median_spec, kernel_size=k)
     line_enhanced = median_spec - baseline
     line_enhanced = np.nan_to_num(line_enhanced - np.nanmean(line_enhanced))
+    freq_zero_lag = float(np.sum(line_enhanced * line_enhanced))
 
     corr = np.correlate(line_enhanced, line_enhanced, mode="full")
     lags = np.arange(corr.size) - (line_enhanced.size - 1)
@@ -159,6 +160,7 @@ def analyze_regular_spacing(psd_rows: List[np.ndarray], freqs: np.ndarray, row_s
     lags = lags[pos_mask]
 
     freq_peaks = np.array([], dtype=int)
+    freq_peak_strength = None
     if corr.size and np.max(np.abs(corr)) > 0:
         prominence = float(np.max(corr) * 0.05)
         freq_peaks, _ = signal.find_peaks(corr, prominence=prominence)
@@ -166,6 +168,8 @@ def analyze_regular_spacing(psd_rows: List[np.ndarray], freqs: np.ndarray, row_s
     if freq_peaks.size:
         strongest_idx = int(np.argmax(corr[freq_peaks]))
         strongest_spacing_hz = freq_spacings_hz[strongest_idx]
+        if freq_zero_lag > 0:
+            freq_peak_strength = float(corr[freq_peaks[strongest_idx]] / freq_zero_lag)
     else:
         strongest_spacing_hz = None
 
@@ -178,9 +182,11 @@ def analyze_regular_spacing(psd_rows: List[np.ndarray], freqs: np.ndarray, row_s
 
     time_peaks = np.array([], dtype=int)
     time_spacings = np.array([])
+    time_peak_strength = None
     if step_seconds and step_seconds > 0 and data.shape[0] > 2:
         time_series = np.nanmean(data, axis=1)
         time_series = np.nan_to_num(time_series - np.nanmean(time_series))
+        time_zero_lag = float(np.sum(time_series * time_series))
         time_corr = np.correlate(time_series, time_series, mode="full")
         time_lags = (np.arange(time_corr.size) - (time_series.size - 1)) * step_seconds
         t_pos_mask = time_lags > 0
@@ -190,16 +196,20 @@ def analyze_regular_spacing(psd_rows: List[np.ndarray], freqs: np.ndarray, row_s
             prominence_t = float(np.max(time_corr) * 0.1)
             time_peaks, _ = signal.find_peaks(time_corr, prominence=prominence_t)
         time_spacings = time_lags[time_peaks] if time_peaks.size else np.array([])
+        if time_peaks.size and time_zero_lag > 0:
+            time_peak_strength = float(time_corr[time_peaks[np.argmax(time_corr[time_peaks])]] / time_zero_lag)
 
     print("Regular-spacing check:")
     print(f"  rows x bins: {data.shape[0]} x {data.shape[1]}, bin width ~{bin_hz:.1f} Hz")
     if freq_spacings_hz.size:
-        print(f"  strongest frequency spacing: {strongest_spacing_hz:.1f} Hz")
+        strength_txt = f", corr strength {freq_peak_strength:.3f} of zero-lag" if freq_peak_strength is not None else ""
+        print(f"  strongest frequency spacing: {strongest_spacing_hz:.1f} Hz{strength_txt}")
         print(f"  frequency spacing peaks (Hz, first 10): {freq_spacings_hz[:10]}")
     else:
         print("  frequency spacing peaks: none detected")
     if time_spacings.size:
-        print(f"  time spacing peaks (s, first 10): {time_spacings[:10]}")
+        strength_txt_t = f" (max corr {time_peak_strength:.3f} of zero-lag)" if time_peak_strength is not None else ""
+        print(f"  time spacing peaks (s, first 10): {time_spacings[:10]}{strength_txt_t}")
     else:
         print("  time spacing peaks: none detected")
 

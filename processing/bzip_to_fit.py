@@ -14,6 +14,7 @@ import argparse
 import bz2
 import os
 import sys
+from datetime import date, datetime
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -34,6 +35,30 @@ class Entry:
     hhmm: str
     ss: str
     path: Path
+
+
+def parse_date_arg(value: str) -> date:
+    """Parse CLI date arguments in a few common formats."""
+    for fmt in ("%Y,%m,%d", "%Y-%m-%d", "%Y/%m/%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    raise argparse.ArgumentTypeError(
+        f"Invalid date {value!r}. Use YYYY,MM,DD (e.g., 2013,07,01) or YYYY-MM-DD."
+    )
+
+
+def in_date_range(ymd: str, start: Optional[date], end: Optional[date]) -> bool:
+    try:
+        current = datetime.strptime(ymd, "%Y%m%d").date()
+    except ValueError:
+        return False
+    if start and current < start:
+        return False
+    if end and current > end:
+        return False
+    return True
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,6 +83,20 @@ def parse_args() -> argparse.Namespace:
         dest="radars",
         default="",
         help="Comma-separated radar codes to include; if omitted, process all radars",
+    )
+    parser.add_argument(
+        "--start",
+        dest="start_date",
+        type=parse_date_arg,
+        default=None,
+        help="Start date (inclusive) to process, formats: YYYY,MM,DD or YYYY-MM-DD",
+    )
+    parser.add_argument(
+        "--end",
+        dest="end_date",
+        type=parse_date_arg,
+        default=None,
+        help="End date (inclusive) to process, formats: YYYY,MM,DD or YYYY-MM-DD",
     )
     parser.add_argument(
         "-p",
@@ -128,7 +167,12 @@ def is_allowed_radar(radar: str, allowlist: Sequence[str]) -> bool:
     return not allowlist or radar in allowlist
 
 
-def scan_entries(input_dir: Path, allowed_radars: Sequence[str]) -> List[Entry]:
+def scan_entries(
+    input_dir: Path,
+    allowed_radars: Sequence[str],
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+) -> List[Entry]:
     entries: List[Entry] = []
     index_count = 0
 
@@ -137,7 +181,11 @@ def scan_entries(input_dir: Path, allowed_radars: Sequence[str]) -> List[Entry]:
             if not name.endswith(".fitacf.bz2"):
                 continue
             entry = parse_entry(Path(root) / name)
-            if entry is None or not is_allowed_radar(entry.radar, allowed_radars):
+            if (
+                entry is None
+                or not is_allowed_radar(entry.radar, allowed_radars)
+                or not in_date_range(entry.ymd, start_date, end_date)
+            ):
                 continue
             entries.append(entry)
             index_count += 1
@@ -309,10 +357,17 @@ def main() -> int:
     output_dir = Path(args.output_dir.rstrip("/"))
     radar_allow = [r for r in args.radars.split(",") if r] if args.radars else []
 
+    if args.start_date and args.end_date and args.start_date > args.end_date:
+        print("Start date must be on or before end date.", file=sys.stderr)
+        return 1
+
     print("Starting concat_fitacf_daily")
     print(f"  Input directory: {input_dir}")
     print(f"  Output directory: {output_dir}")
     print(f"  Radar filter: {args.radars if args.radars else 'all'}")
+    start_label = args.start_date.isoformat() if args.start_date else "unbounded"
+    end_label = args.end_date.isoformat() if args.end_date else "unbounded"
+    print(f"  Date range: {start_label} to {end_label}")
     print(f"  Force overwrite: {int(args.force)}")
     print(f"  Parallel jobs: {args.parallel_jobs}")
 
@@ -349,7 +404,7 @@ def main() -> int:
 
         for subdir in subdirs:
             print(f"\nProcessing subdirectory: {subdir}")
-            entries = scan_entries(subdir, radar_allow)
+            entries = scan_entries(subdir, radar_allow, args.start_date, args.end_date)
             processed, skipped, ok, fail = process_chunk(
                 entries,
                 output_dir,
@@ -369,7 +424,7 @@ def main() -> int:
         return 1 if total_fail > 0 else 0
 
     # Default: single full-tree pass
-    entries = scan_entries(input_dir, radar_allow)
+    entries = scan_entries(input_dir, radar_allow, args.start_date, args.end_date)
     processed, skipped, ok, fail = process_chunk(
         entries,
         output_dir,

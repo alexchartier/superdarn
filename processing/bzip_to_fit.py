@@ -127,8 +127,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def quick_visibility_sample(input_dir: Path) -> Optional[Path]:
-    """Return the first .fitacf.bz2 match within max depth 3 for visibility."""
+def quick_visibility_sample(
+    input_dir: Path,
+    allowed_radars: Sequence[str],
+    start_date: Optional[date],
+    end_date: Optional[date],
+) -> Optional[Path]:
+    """Return the first .fitacf.bz2 match within max depth 3 that passes filters."""
     max_depth = 3
     input_parts = len(input_dir.parts)
     for root, _, files in os.walk(input_dir, followlinks=True):
@@ -137,8 +142,16 @@ def quick_visibility_sample(input_dir: Path) -> Optional[Path]:
         if depth > max_depth:
             continue
         for name in files:
-            if name.endswith(".fitacf.bz2"):
-                return root_path / name
+            if not name.endswith(".fitacf.bz2"):
+                continue
+            entry = parse_entry(root_path / name)
+            if (
+                entry is None
+                or not is_allowed_radar(entry.radar, allowed_radars)
+                or not in_date_range(entry.ymd, start_date, end_date)
+            ):
+                continue
+            return entry.path
     return None
 
 
@@ -204,8 +217,13 @@ def ensure_output_path(out_file: Path) -> None:
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
 
-def remove_empty_outputs(output_dir: Path, extensions: Sequence[str] = (".fit", ".fitacf")) -> int:
-    """Delete zero-byte output files so they can be regenerated."""
+def remove_empty_outputs(
+    output_dir: Path,
+    extensions: Sequence[str] = (".fit", ".fitacf"),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+) -> int:
+    """Delete zero-byte output files (optionally filtered by date) so they can be regenerated."""
     if not output_dir.exists():
         return 0
 
@@ -216,6 +234,11 @@ def remove_empty_outputs(output_dir: Path, extensions: Sequence[str] = (".fit", 
         for name in files:
             if not name.lower().endswith(lowered_exts):
                 continue
+            if start_date or end_date:
+                # Skip outputs outside the requested range.
+                ymd = name.split(".")[0]
+                if not in_date_range(ymd, start_date, end_date):
+                    continue
             path = Path(root) / name
             try:
                 if path.stat().st_size == 0:
@@ -382,13 +405,15 @@ def main() -> int:
     print("  This step sorts the full list first, so a large tree can take a while before concatenation starts.")
 
     print("Quick visibility check (first match, maxdepth 3)...")
-    sample = quick_visibility_sample(input_dir)
+    sample = quick_visibility_sample(input_dir, radar_allow, args.start_date, args.end_date)
     if sample:
         print(f"  Found: {sample}")
     else:
         print("  No files seen in the quick sample; continuing to full scan...", file=sys.stderr)
 
-    removed_empty = remove_empty_outputs(output_dir)
+    removed_empty = remove_empty_outputs(
+        output_dir, start_date=args.start_date, end_date=args.end_date
+    )
     if removed_empty:
         print(f"Removed {removed_empty} empty .fit/.fitacf output files before processing.")
 

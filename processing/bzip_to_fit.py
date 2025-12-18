@@ -14,6 +14,7 @@ import argparse
 import bz2
 import os
 import sys
+import calendar
 from datetime import date, datetime
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -25,6 +26,50 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 
 # Size for chunked decompression writes
 CHUNK_SIZE = 1024 * 1024
+
+
+def enable_line_buffering() -> None:
+    """Force line-buffered stdout/stderr so redirected logs flush promptly."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(line_buffering=True)
+        except Exception:
+            continue
+
+
+def subdir_overlaps_date_range(subdir: Path, start: Optional[date], end: Optional[date]) -> bool:
+    """Heuristic filter: skip per-dir folders clearly outside the requested date range."""
+    if not start and not end:
+        return True
+
+    digits = "".join(ch for ch in subdir.name if ch.isdigit())
+    range_start: Optional[date] = None
+    range_end: Optional[date] = None
+
+    try:
+        if len(digits) >= 6:
+            year = int(digits[:4])
+            month = int(digits[4:6])
+            range_start = date(year, month, 1)
+            last_day = calendar.monthrange(year, month)[1]
+            range_end = date(year, month, last_day)
+        elif len(digits) >= 4:
+            year = int(digits[:4])
+            range_start = date(year, 1, 1)
+            range_end = date(year, 12, 31)
+    except ValueError:
+        range_start = None
+        range_end = None
+
+    if range_start is None or range_end is None:
+        # Unknown naming scheme; keep to avoid skipping valid data.
+        return True
+
+    if start and range_end < start:
+        return False
+    if end and range_start > end:
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -375,6 +420,7 @@ def process_chunk(
 
 def main() -> int:
     args = parse_args()
+    enable_line_buffering()
 
     input_dir = Path(args.input_dir.rstrip("/"))
     output_dir = Path(args.output_dir.rstrip("/"))
@@ -428,6 +474,9 @@ def main() -> int:
         total_fail = 0
 
         for subdir in subdirs:
+            if not subdir_overlaps_date_range(subdir, args.start_date, args.end_date):
+                print(f"\nSkipping subdirectory outside date range: {subdir}")
+                continue
             print(f"\nProcessing subdirectory: {subdir}")
             entries = scan_entries(subdir, radar_allow, args.start_date, args.end_date)
             processed, skipped, ok, fail = process_chunk(

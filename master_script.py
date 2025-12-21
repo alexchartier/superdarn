@@ -44,7 +44,7 @@ from datetime import datetime, timedelta
 import helper
 import get_rawacfs
 import convert_rawacf_to_fitacf
-import convert_fitacf_to_netcdf
+# import convert_fitacf_to_netcdf
 # import convert_fitacf_to_grid_netcdf       # optional
 # import convert_fitacf_to_meteorwind        # optional
 
@@ -126,20 +126,20 @@ def process_day(day: datetime, known_radars: set[str], *, clobber: bool = False)
     # ------------------------------------------------------------------
     # 1. Download rawACF for each *pending* radar
     # ------------------------------------------------------------------
-    #for radar in pending:
-     #   try:
-            #get_rawacfs.main(day_str, radar=radar, show_progress=False)
-      #  except Exception as exc:
-       #     log_message(f"{day_str}: rawACF download failed for {radar}: {exc}")
+    for radar in pending:
+        try:
+            get_rawacfs.main(day_str, radar=radar, show_progress=False)
+        except Exception as exc:
+            log_message(f"{day_str}: rawACF download failed for {radar}: {exc}")
             # continue with other radars
-        #    continue
+            continue
 
     # ------------------------------------------------------------------
     # 2. Convert chain (rawACF → fitACF → netCDF)
     # ------------------------------------------------------------------
     try:
-        #convert_rawacf_to_fitacf.main(day_str, clobber=clobber)
-        convert_fitacf_to_netcdf.main(day_str, clobber=clobber)
+        convert_rawacf_to_fitacf.main(day_str, clobber=clobber)
+        # convert_fitacf_to_netcdf.main(day_str, clobber=clobber)
         # convert_fitacf_to_grid_netcdf.main(day_str)
         # convert_fitacf_to_meteorwind.main(day_str)
     except Exception as exc:

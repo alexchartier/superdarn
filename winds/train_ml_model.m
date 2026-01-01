@@ -1,18 +1,20 @@
-%% mwr_ct_corr.m
-% Correlate the mwr counts against geophysical parameters
+%% train_ml_model.m
+% Train the ML model
 clear
 
-%%
+%% Inputs
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
 radar_dir = '~/data/meteor_winds/mat/';
 meteor_angle_fn = '~/data/meteor_winds/angles_2008.nc';
 mem_fn = '~/data/meteor_winds/mem_3_output_v1.nc';
 msis_fn_fmt = '~/data/meteor_winds/msis/msis_{yyyy}_%1.1fN_%1.1fE.mat';
 ml_model_fn = '~/data/meteor_winds/ml_model.mat';
+mwr_freq_fn = '~/data/meteor_winds/mwr_freqs.mat';
 hrs = 0:23;
 ref_alt = 90E3;
-
+ref_freq = 30;
 mem_fields = {'lo_dens_flux', 'hi_dens_flux', 'lo_dens_speed', 'hi_dens_speed'};
+
 
 
 %% Load
@@ -20,6 +22,7 @@ mem_fields = {'lo_dens_flux', 'hi_dens_flux', 'lo_dens_speed', 'hi_dens_speed'};
 sw = readtable(sw_fn_csv);
 mem = load_mem(mem_fn);
 angles = load_nc(meteor_angle_fn);
+freqs = loadstruct(mwr_freq_fn);
 
 %% Generate model input
 % MWR data
@@ -67,7 +70,9 @@ for i = 1:length(flist)
         Tbl.SinDOY = sin(DOY(:) / 365 * pi + pi);
     end
     Tbl.SinLT = sin(LT(:) / 24 * pi);
-    Tbl.Peak = Peak(:);
+    sitename = split(flist(1).name, '_');
+    Tbl.Peak = freq_vs_ht_model(freqs.(sitename{1}), Peak(:), ref_freq);
+
     Tbl.FWHM = FWHM(:);
     Tbl.lat = mwr.lat * ones(size(DOY(:)));
     Tbl.abs_lat = abs(mwr.lat) * ones(size(DOY(:)));

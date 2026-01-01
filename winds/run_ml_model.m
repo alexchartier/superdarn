@@ -1,12 +1,14 @@
 function [Peak, FWHM] = run_ml_model(Mdl, Times, lat, lon, mem_int, ...
-    sw, meteor_angles)
+    sw, meteor_angles, freq)
 %% run_ml_model(times, mwr, sw_fn_csv)
 % [Peak, FWHM] = run_ml_model(Mdl, Times, lat, lon, mem_int, sw, meteor_angles)
-
+% Training or 'reference' frequency is 30 MHz
 
 %% Set inputs
 % hrs = 0:23;
-ref_alt = 90E3;
+ref_alt = 90E3; % for the pressure calculation
+ref_freq = 30;
+
 
 %% Load 
 yr = year(min(Times(:)));
@@ -54,8 +56,9 @@ for fi = 1:length(fields)
     Tbl.(fields{fi}) = mem_int.(fields{fi})(:);
 end
 
-Peak = Mdl.Peak.predict(Tbl);
+Peak_30 = Mdl.Peak.predict(Tbl);
 FWHM = Mdl.FWHM.predict(Tbl);
+Peak = freq_vs_ht_model(freq, Peak_30, ref_freq);
 
 Peak = reshape(Peak, [length(hrs), length(days)]);
 FWHM = reshape(FWHM, [length(hrs), length(days)]);

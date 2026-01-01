@@ -494,7 +494,7 @@ def meteorproc_batch(
     *,
     output_dir: str,
     annual_dir: str | None = None,
-    make_annual: bool = False,
+    make_annual: bool = True,
     **meteor_kwargs,
 ) -> None:
     """
@@ -512,7 +512,8 @@ def meteorproc_batch(
     annual_dir : str, optional
         Directory root for annual per-radar NetCDFs (tokens allowed, defaults to output_dir).
     make_annual : bool
-        When true, aggregate processed days into annual per-radar files resembling legacy outputs.
+        Aggregate processed days into annual per-radar files resembling legacy outputs.
+        Enabled by default; annual files are emitted whenever a year boundary is reached.
     meteor_kwargs :
         Additional keyword arguments forwarded to meteorproc_from_netcdf.
     """
@@ -531,7 +532,7 @@ def meteorproc_batch(
     annual_root_template = annual_dir if annual_dir is not None else output_dir
     annual_map: Dict[tuple[str, int], Dict[str, Any]] = {}
 
-    for when in dates:
+    for idx, when in enumerate(dates):
         day_str = when.strftime("%Y%m%d")
         in_root = Path(expand_path(apply_pattern(input_dir, when)))
         out_root = Path(expand_path(apply_pattern(output_dir, when)))
@@ -574,8 +575,14 @@ def meteorproc_batch(
                 except Exception as exc:
                     print(f"[meteorproc_batch] Failed to aggregate {in_file}: {exc}")
 
+        if make_annual:
+            next_year = dates[idx + 1].year if idx + 1 < len(dates) else None
+            year_boundary = next_year is None or next_year != when.year
+            if year_boundary and annual_map:
+                flush_annual_outputs(annual_map, annual_root_template, years_to_flush={when.year})
+
     if make_annual and annual_map:
-        write_annual_outputs(annual_map, annual_root_template)
+        flush_annual_outputs(annual_map, annual_root_template)
 
 
 def daterange(start: dt.datetime, end: dt.datetime) -> Iterable[dt.datetime]:
@@ -663,6 +670,8 @@ def write_results_netcdf(
     """Persist the hourly results into a simple NetCDF file."""
     data = normalise_results(results)
     data = legacy_wind_mapping(data)
+    if "hour" in data:
+        data["hour"] = np.asarray(data["hour"], dtype=float) + 0.5
     if not data:
         print(f"[meteorproc_batch] No variables to write for {output_file}")
         return
@@ -737,35 +746,59 @@ def update_annual_map(
     hours = np.asarray(data_raw.get("hour", np.arange(sample_len)), dtype=int)
     valid_hours = (hours >= 0) & (hours < 24)
 
+    ndays = days_in_year(year)
     if key not in annual_map:
-        ndays = days_in_year(year)
         annual_map[key] = {
             "radar": radar.lower(),
             "year": year,
             "hour": np.arange(24, dtype=float) + 0.5,
             "day_values": np.arange(1, ndays + 1, dtype=int),
-            "data": {
-                "v": np.full((24, ndays), np.nan, dtype=float),
-                "u": np.full((24, ndays), np.nan, dtype=float),
-                "sdev_v": np.full((24, ndays), np.nan, dtype=float),
-                "sdev_u": np.full((24, ndays), np.nan, dtype=float),
-            },
+            "data": {},
+            "source_files": [],
+            "file_count": 0,
         }
 
     group = annual_map[key]
+    group["file_count"] += 1
+    group["source_files"].append(str(source_path))
     day_idx = day_of_year - 1
-    for var_name, src_name in [
-        ("v", "v"),
-        ("u", "u"),
-        ("sdev_v", "sdev_v"),
-        ("sdev_u", "sdev_u"),
-    ]:
-        if src_name not in data:
+    day_count = len(group["day_values"])
+
+    excluded = {"year", "month", "day", "hour", "lat", "lon", "long", "latitude", "longitude"}
+    drop_original = {"vx", "vy", "sdev_vx", "sdev_vy"}
+
+    for var_name, values in data.items():
+        if var_name in excluded or var_name in drop_original:
             continue
-        values = np.asarray(data[src_name], dtype=float)
-        arr = group["data"][var_name]
-        arr[hours[valid_hours], day_idx] = values[valid_hours]
-        group["data"][var_name] = arr
+        target_name = var_name
+        if target_name not in group["data"]:
+            group["data"][target_name] = np.full((24, day_count), np.nan, dtype=float)
+        arr = group["data"][target_name]
+        values_arr = np.asarray(values, dtype=float)
+        arr[hours[valid_hours], day_idx] = values_arr[valid_hours]
+        group["data"][target_name] = arr
+
+
+def flush_annual_outputs(
+    annual_map: Dict[tuple[str, int], Dict[str, Any]],
+    annual_dir_template: str,
+    *,
+    years_to_flush: Iterable[int] | None = None,
+) -> None:
+    """
+    Write and remove annual groups that are complete (or all if unspecified).
+    """
+    if years_to_flush is None:
+        subset = dict(annual_map)
+        annual_map.clear()
+    else:
+        years_set = set(int(y) for y in years_to_flush)
+        subset = {key: val for key, val in list(annual_map.items()) if val["year"] in years_set}
+        for key in subset:
+            annual_map.pop(key, None)
+
+    if subset:
+        write_annual_outputs(subset, annual_dir_template)
 
 
 def write_annual_outputs(annual_map: Dict[tuple[str, int], Dict[str, Any]], annual_dir_template: str) -> None:
@@ -785,29 +818,28 @@ def write_annual_outputs(annual_map: Dict[tuple[str, int], Dict[str, Any]], annu
             hour_var.long_name = "hour of day (centered)"
             hour_var.units = "hours"
 
-            day_var = nc.createVariable("day_of_year", "i4", ("day_of_year",))
-            day_var[:] = group["day_values"]
-            day_var.long_name = "day of year"
-            day_var.units = "day"
+        day_var = nc.createVariable("day_of_year", "i4", ("day_of_year",))
+        day_var[:] = group["day_values"]
+        day_var.long_name = "day of year"
+        day_var.units = "day"
 
-            meta = {
-                "v": ("meridional wind", "(m/s)"),
-                "u": ("zonal wind", "(m/s)"),
-                "sdev_v": ("meridional wind error", "(m/s)"),
-                "sdev_u": ("zonal wind error", "(m/s)"),
-            }
+        meta_lookup = variable_metadata()
+        for name in sorted(group["data"].keys()):
+            arr = np.asarray(group["data"][name], dtype=float)
+            var = nc.createVariable(name, "f8", ("hour", "day_of_year"), zlib=True, complevel=6, fill_value=np.nan)
+            var[:, :] = arr
+            attrs = meta_lookup.get(name, {})
+            for key, val in attrs.items():
+                setattr(var, key, val)
 
-            for name, (long_name, units) in meta.items():
-                var = nc.createVariable(name, "f8", ("hour", "day_of_year"), zlib=True, complevel=6, fill_value=np.nan)
-                var[:, :] = group["data"][name]
-                var.long_name = long_name
-                var.units = units
-
-            nc.title = "Annual meteor wind grid (24 x 365/366)"
-            nc.radar = radar
-            nc.year = year
-            nc.days_in_year = len(group["day_values"])
-            nc.history = dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ") + " aggregated by fitnc_to_meteornc.py"
+        nc.title = "Annual meteor wind grid (24 x 365/366)"
+        nc.radar = radar
+        nc.year = year
+        nc.days_in_year = len(group["day_values"])
+        nc.source_file_count = group.get("file_count", 0)
+        if group.get("source_files"):
+            nc.first_source_file = group["source_files"][0]
+        nc.history = dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ") + " aggregated by fitnc_to_meteornc.py"
 
         tmp_file.replace(out_file)
 
@@ -817,7 +849,7 @@ def variable_metadata() -> Dict[str, Dict[str, str]]:
         "year": {"long_name": "Calendar year", "units": "year"},
         "month": {"long_name": "Month of year", "units": "month"},
         "day": {"long_name": "Day of month", "units": "day"},
-        "hour": {"long_name": "Hour (UT)", "units": "hour"},
+        "hour": {"long_name": "Hour (UT, centered)", "units": "hour"},
         "num_avgs": {
             "long_name": "Number of vlos samples included in averages",
             "units": "count",
@@ -832,6 +864,14 @@ def variable_metadata() -> Dict[str, Dict[str, str]]:
             "long_name": "Zonal wind component (positive eastward)",
             "units": "m/s",
         },
+        "v": {
+            "long_name": "meridional wind",
+            "units": "(m/s)",
+        },
+        "u": {
+            "long_name": "zonal wind",
+            "units": "(m/s)",
+        },
         "lat": {"long_name": "Geographic latitude of fit", "units": "deg"},
         "lon": {"long_name": "Geographic longitude of fit", "units": "deg"},
         "vm": {"long_name": "Line-of-sight velocity on vm beam", "units": "m/s"},
@@ -839,6 +879,8 @@ def variable_metadata() -> Dict[str, Dict[str, str]]:
         "vm_lon": {"long_name": "Longitude of vm beam intersection", "units": "deg"},
         "sdev_vx": {"long_name": "Uncertainty of Vx", "units": "m/s"},
         "sdev_vy": {"long_name": "Uncertainty of Vy", "units": "m/s"},
+        "sdev_v": {"long_name": "meridional wind error", "units": "(m/s)"},
+        "sdev_u": {"long_name": "zonal wind error", "units": "(m/s)"},
     }
 
 
@@ -919,7 +961,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--annual",
         action="store_true",
-        help="Aggregate processed days into per-radar annual files (legacy layout).",
+        default=True,
+        help="Aggregate processed days into per-radar annual files (legacy layout, enabled by default).",
     )
     parser.add_argument(
         "--annual-dir",

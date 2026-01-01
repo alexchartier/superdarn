@@ -16,6 +16,7 @@ mem_fn = '~/data/meteor_winds/mem_3_output_v1.nc';
 mem_fields = {'lo_dens_flux', 'hi_dens_flux', 'lo_dens_speed', 'hi_dens_speed'};
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
 meteor_angle_fn = '~/data/meteor_winds/angles_2008.nc';
+mwr_freq_fn = '~/data/meteor_winds/mwr_freqs.mat';
 
 yr = 2008;
 days = datenum(yr, 1, 1):datenum(yr, 12, 31);
@@ -43,6 +44,8 @@ mem = load_mem(mem_fn);
 mem_int = interp_mem(mem, mem_fields, Times, sd.pos(1), sd.pos(2));
 sw = readtable(sw_fn_csv);
 meteor_angles = load_nc(meteor_angle_fn);
+freqs = loadstruct(mwr_freq_fn);
+
 
 ctmt = calc_ctmt_wind(loadstruct(ctmt_coeff_fn), hr, sd.pos(2));
 ctmt.wind_lst = cat(3, ctmt.wind_lst, ctmt.wind_lst(:, :, 1, :, :));

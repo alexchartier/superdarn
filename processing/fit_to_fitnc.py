@@ -286,6 +286,13 @@ def main(args: argparse.Namespace) -> int:
     total_skipped = 0
     total_small = 0
 
+    banner = (
+        f"Starting fit_to_fitnc at {dt.datetime.now():%Y-%m-%d %H:%M:%S} "
+        f"(pid={os.getpid()}), range {args.start:%Y-%m-%d} to {args.end:%Y-%m-%d}, "
+        f"input={args.input_dir}, output={args.output_dir}, parallel_jobs={args.parallel_jobs}"
+    )
+    print(banner, flush=True)
+
     while time <= args.end:
         fitDir_t = time.strftime(args.input_dir)
         month_label = time.strftime('%Y/%m')

@@ -1,4 +1,6 @@
 *.pyc
 tmp.pkl
 *.log
-
+*png
+*nc
+*nc4

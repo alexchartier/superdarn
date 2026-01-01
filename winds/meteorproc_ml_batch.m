@@ -15,7 +15,8 @@ function meteorproc_ml_batch(inputPattern, startDate, endDate, varargin)
 %       'MemFile'        - Path to meteor environment model NetCDF (default: ~/data/meteor_winds/mem_3_output_v1.nc)
 %       'MLModelFile'    - Path to trained ML model .mat (default: ~/data/meteor_winds/ml_model.mat)
 %       'SWFile'         - Path to solar wind CSV (default: ~/data/indices/SW-All.csv)
-%       'RadarFreqMHz'   - Observing frequency in MHz for peak adjustment (default: 30)
+%       Radar frequency is derived from the input NetCDF tfreq variable
+%       (per-hour median, converted to MHz). No default/override is applied.
 %       Additional args are passed to METEORPROC_FROM_NETCDF.
 %
 %   This script depends on filename.m being on the MATLAB path.
@@ -39,7 +40,6 @@ parser.addParameter('AnglesFile', '~/data/meteor_winds/angles_2008.nc', @(s) isc
 parser.addParameter('MemFile', '~/data/meteor_winds/mem_3_output_v1.nc', @(s) ischar(s) || isstring(s));
 parser.addParameter('MLModelFile', '~/data/meteor_winds/ml_model.mat', @(s) ischar(s) || isstring(s));
 parser.addParameter('SWFile', '~/data/indices/SW-All.csv', @(s) ischar(s) || isstring(s));
-parser.addParameter('RadarFreqMHz', [], @(x) (isnumeric(x) && isscalar(x) && x > 0) || isempty(x));
 parser.parse(varargin{:});
 opts = parser.Results;
 passArgs = structToNameValue(parser.Unmatched);
@@ -47,11 +47,6 @@ passArgs = structToNameValue(parser.Unmatched);
 outputPattern = string(opts.OutputPattern);
 annualRoot = string(opts.AnnualRoot);
 makeAnnual = logical(opts.MakeAnnual);
-if isempty(opts.RadarFreqMHz)
-    error('meteorproc_ml_batch:MissingRadarFreq', ...
-        'Specify radar observing frequency via ''RadarFreqMHz'', no default applied.');
-end
-radarFreq = double(opts.RadarFreqMHz);
 
 support = load_ml_support(opts);
 
@@ -73,7 +68,7 @@ for idx = 1:numel(timeVec)
     fprintf('Processing %s -> %s\n', inFile, outFile);
 
     try
-        [results, site] = run_meteorproc_with_site(inFile, passArgs{:});
+        [results, site, freqByHour] = run_meteorproc_with_site(inFile, passArgs{:});
     catch ME
         warning('meteorproc_ml_batch:MeteorprocFailed', '%s failed (%s)', inFile, ME.message);
         continue;
@@ -85,7 +80,7 @@ for idx = 1:numel(timeVec)
 
     % Compute ML peak/FWHM for the full day and attach to the table.
     try
-        [peakVals, fwhmVals] = compute_ml_profile(results, site, t, support, radarFreq);
+        [peakVals, fwhmVals] = compute_ml_profile(results, site, t, support, freqByHour);
         results.Peak = map_hour_values(results.hour, peakVals);
         results.FWHM = map_hour_values(results.hour, fwhmVals);
     catch ME
@@ -121,8 +116,8 @@ for idx = 1:numel(timeVec)
 end
 end
 
-function [results, site] = run_meteorproc_with_site(ncfile, varargin)
-% Wrap meteorproc_from_netcdf to also return the site metadata.
+function [results, site, freqByHour] = run_meteorproc_with_site(ncfile, varargin)
+% Wrap meteorproc_from_netcdf to also return the site metadata and tfreq-derived frequency.
 parser = inputParser;
 parser.KeepUnmatched = true;
 parser.addParameter('RadarCode', inferCode(ncfile));
@@ -141,15 +136,17 @@ records = buildMeteorRecords(fileData, site);
 meteorArgs = structToNameValue(parser.Unmatched);
 meteorArgs = [meteorArgs, {'SourceName', char(ncfile)}];
 results = meteorproc(records, site, meteorArgs{:});
+freqByHour = derive_freq_by_hour(fileData, ncfile);
 end
 
-function [peakVals, fwhmVals] = compute_ml_profile(results, site, datenumDay, support, radarFreq)
+function [peakVals, fwhmVals] = compute_ml_profile(results, site, datenumDay, support, freqByHourMHz)
 % Build a full-day time grid, interpolate MEM, and run the ML model.
 hrs = (0:23).';
 Times = repmat(datenum(datetime(datevec(datenumDay)) + hours(hrs)), 1, 2); % 24 x 2 to satisfy interp_mem
 mem_int = interp_mem(support.mem, support.mem_fields, Times, site.geolat, site.geolon);
+freqGrid = repmat(freqByHourMHz(:), 1, size(Times, 2));
 [peakGrid, fwhmGrid] = run_ml_model(support.Mdl, Times, site.geolat, site.geolon, ...
-    mem_int, support.sw, support.meteor_angles, radarFreq);
+    mem_int, support.sw, support.meteor_angles, freqGrid);
 % Use first column (hours) for output.
 peakVals = peakGrid(:, 1);
 fwhmVals = fwhmGrid(:, 1);
@@ -529,6 +526,58 @@ for v = 1:numel(info.Variables)
 end
 end
 
+function freqByHour = derive_freq_by_hour(data, ncfile)
+% derive per-hour median transmit frequency in MHz using tfreq variable
+epoch = data.epoch(:);
+if ~isfield(data, 'tfreq') || isempty(data.tfreq)
+    error('meteorproc_ml_batch:MissingTFreq', ...
+        'tfreq variable not found in %s; cannot derive radar frequency.', ncfile);
+end
+tfreqVals = double(data.tfreq(:));
+if numel(tfreqVals) ~= numel(epoch)
+    % Fallback: broadcast available values to match epochs
+    reps = ceil(numel(epoch) / numel(tfreqVals));
+    tfreqVals = repmat(tfreqVals(:), reps, 1);
+    tfreqVals = tfreqVals(1:numel(epoch));
+end
+vec = datetime(epoch, 'ConvertFrom', 'posixtime', 'TimeZone', 'UTC');
+hrs = hour(vec);
+freqByHour = nan(24, 1);
+for h = 0:23
+    mask = hrs == h & ~isnan(tfreqVals);
+    if any(mask)
+        freqByHour(h + 1) = median(tfreqVals(mask), 'omitnan');
+    end
+end
+if all(isnan(freqByHour))
+    error('meteorproc_ml_batch:MissingTFreq', ...
+        'No usable tfreq values found in %s; cannot derive radar frequency.', ncfile);
+end
+units = '';
+if isfield(data, 'tfreq_units') && ~isempty(data.tfreq_units)
+    units = lower(strtrim(string(data.tfreq_units)));
+end
+if contains(units, 'hz')
+    if contains(units, 'khz')
+        freqByHour = freqByHour / 1e3;
+    elseif contains(units, 'mhz')
+        % leave as-is
+    else
+        freqByHour = freqByHour / 1e6; % Hz -> MHz
+    end
+else
+    % heuristic by magnitude
+    medVal = median(freqByHour(~isnan(freqByHour)));
+    if medVal > 1e5
+        freqByHour = freqByHour / 1e6; % assume Hz
+    elseif medVal > 1e3
+        freqByHour = freqByHour / 1e3; % assume kHz
+    end
+end
+overall = median(freqByHour(~isnan(freqByHour)), 'omitnan');
+freqByHour(isnan(freqByHour)) = overall;
+end
+
 function val = attributeValue(attrs, name, default)
 idx = find(strcmpi({attrs.Name}, name), 1);
 if isempty(idx)
@@ -561,6 +610,18 @@ data.range = double(ncread(ncfile, 'range'));
 data.v = double(ncread(ncfile, 'v'));
 data.p_l = double(ncread(ncfile, 'p_l'));
 data.v_e = double(ncread(ncfile, 'v_e'));
+% Optional transmit frequency (may be kHz or MHz; handled later)
+try
+    data.tfreq = double(ncread(ncfile, 'tfreq'));
+    try
+        data.tfreq_units = ncreadatt(ncfile, 'tfreq', 'units');
+    catch
+        data.tfreq_units = '';
+    end
+catch
+    data.tfreq = [];
+    data.tfreq_units = '';
+end
 data.epoch = (data.mjd - 40587.0) * 86400.0;
 data.timeKey = round(data.epoch * 1000); % milliseconds
 uniqueRange = unique(data.range);

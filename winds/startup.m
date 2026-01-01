@@ -1,4 +1,4 @@
-path(['~/utils'],path);
+path(['./utils'],path);
 
 
 %% Set plotting defaults (edit as required)

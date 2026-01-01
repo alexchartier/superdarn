@@ -63,6 +63,7 @@ parser.addParameter('AnglesFile', defaultAngles, @(s) ischar(s) || isstring(s));
 parser.addParameter('MemFile', defaultMem, @(s) ischar(s) || isstring(s));
 parser.addParameter('MLModelFile', defaultML, @(s) ischar(s) || isstring(s));
 parser.addParameter('SWFile', defaultSW, @(s) ischar(s) || isstring(s));
+parser.addParameter('UseParallel', [], @(x) islogical(x) || isnumeric(x));
 parser.parse(varargin{:});
 opts = parser.Results;
 passArgs = structToNameValue(parser.Unmatched);
@@ -70,8 +71,18 @@ passArgs = structToNameValue(parser.Unmatched);
 outputPattern = string(opts.OutputPattern);
 annualRoot = string(opts.AnnualRoot);
 makeAnnual = logical(opts.MakeAnnual);
+hasParallel = ~isempty(ver('parallel'));
+if isempty(opts.UseParallel)
+    useParallel = hasParallel;
+else
+    useParallel = logical(opts.UseParallel) && hasParallel;
+end
+if useParallel && isempty(gcp('nocreate'))
+    parpool('local');
+end
 
 support = load_ml_support(opts);
+defaultOutputDirTemplate = fileparts(defaultOutputPattern);
 
 timeVec = expandDatenum(startDate, endDate);
 if isempty(timeVec)
@@ -121,13 +132,17 @@ for idx = 1:numel(timeVec)
 
     outPatternPath = expandPath(filename(char(outputPattern), t, [], filesep));
     [outDirTemplate, outNameTemplate, ~] = fileparts(outPatternPath);
+    fallbackOutDir = fileparts(expandPath(filename(char(defaultOutputPattern), t, [], filesep)));
 
-    for mi = 1:numel(matches)
+    numMatches = numel(matches);
+    taskResults = cell(numMatches, 1);
+    taskOutFiles = cell(numMatches, 1);
+    taskSites = cell(numMatches, 1);
+    taskTimes = repmat(t, numMatches, 1);
+    taskInFiles = matches;
+
+    for mi = 1:numMatches
         inFile = matches{mi};
-        if exist(inFile, 'file') ~= 2
-            warning('meteorproc_ml_batch:MissingInput', 'Skipping %s (file not found).', inFile);
-            continue;
-        end
         [~, inBase, ~] = fileparts(inFile);
         if contains(outNameTemplate, '*') || isempty(outNameTemplate)
             outName = [inBase, '.winds.nc'];
@@ -136,42 +151,48 @@ for idx = 1:numel(timeVec)
         end
         outDir = outDirTemplate;
         if isempty(outDir)
-            outDir = fileparts(inFile);
+            outDir = fallbackOutDir;
         end
+        if strcmp(outDir, fileparts(inFile))
+            outDir = fallbackOutDir;
+        end
+        taskOutFiles{mi} = fullfile(outDir, outName);
+        taskSites{mi} = [];
+    end
+
+    if useParallel
+        parfor mi = 1:numMatches
+            inFile = taskInFiles{mi};
+            outFile = taskOutFiles{mi};
+            taskResults{mi} = process_single_file(inFile, outFile, t, support, passArgs);
+        end
+    else
+        for mi = 1:numMatches
+            inFile = taskInFiles{mi};
+            outFile = taskOutFiles{mi};
+            taskResults{mi} = process_single_file(inFile, outFile, t, support, passArgs);
+        end
+    end
+
+    for mi = 1:numMatches
+        res = taskResults{mi};
+        if isempty(res) || ~res.success
+            if ~isempty(res) && ~isempty(res.message)
+                warning('meteorproc_ml_batch:FileFailed', '%s', res.message);
+            end
+            continue;
+        end
+        outFile = res.outFile;
+        outDir = fileparts(outFile);
         if ~exist(outDir, 'dir')
             mkdir(outDir);
         end
-        outFile = fullfile(outDir, outName);
-        fprintf('Processing %s -> %s\n', inFile, outFile);
-
-        try
-            [results, site, freqByHour] = run_meteorproc_with_site(inFile, passArgs{:});
-        catch ME
-            warning('meteorproc_ml_batch:MeteorprocFailed', '%s failed (%s)', inFile, ME.message);
-            continue;
-        end
-        if isempty(results)
-            warning('meteorproc_ml_batch:EmptyResults', 'No valid winds for %s.', inFile);
-            continue;
-        end
-
-        % Compute ML peak/FWHM for the full day and attach to the table.
-        try
-            [peakVals, fwhmVals] = compute_ml_profile(results, site, t, support, freqByHour);
-            results.Peak = map_hour_values(results.hour, peakVals);
-            results.FWHM = map_hour_values(results.hour, fwhmVals);
-        catch ME
-            warning('meteorproc_ml_batch:MLModelFailed', 'ML model failed for %s (%s)', inFile, ME.message);
-            results.Peak = nan(height(results), 1);
-            results.FWHM = nan(height(results), 1);
-        end
-
-        writeResultsNetCDF(outFile, results, inFile);
+        writeResultsNetCDF(outFile, res.results, res.inFile);
         totalFiles = totalFiles + 1;
 
         if makeAnnual
             try
-                annualMap = updateAnnual(annualMap, results, site, t, inFile);
+                annualMap = updateAnnual(annualMap, res.results, res.site, res.t, res.inFile);
                 % Flush when crossing a year boundary or at the end.
                 nextYear = [];
                 if idx < numel(timeVec)
@@ -187,12 +208,35 @@ for idx = 1:numel(timeVec)
             flushAnnual(annualMap, thisYear, root);
                 end
             catch ME
-                warning('meteorproc_ml_batch:AnnualFailed', 'Annual aggregation failed for %s (%s)', inFile, ME.message);
+                warning('meteorproc_ml_batch:AnnualFailed', 'Annual aggregation failed for %s (%s)', res.inFile, ME.message);
             end
         end
     end
 end
 fprintf('[meteorproc_ml_batch] Completed. Files processed: %d\n', totalFiles);
+end
+
+function result = process_single_file(inFile, outFile, t, support, passArgs)
+result = struct('success', false, 'results', [], 'site', [], 'inFile', inFile, 'outFile', outFile, 't', t, 'message', '');
+if exist(inFile, 'file') ~= 2
+    result.message = sprintf('Skipping %s (file not found).', inFile);
+    return;
+end
+fprintf('Processing %s -> %s\n', inFile, outFile);
+
+[results, site, freqByHour] = run_meteorproc_with_site(inFile, passArgs{:});
+if isempty(results)
+    result.message = sprintf('No valid winds for %s.', inFile);
+    return;
+end
+
+[peakVals, fwhmVals] = compute_ml_profile(results, site, t, support, freqByHour);
+results.Peak = map_hour_values(results.hour, peakVals);
+results.FWHM = map_hour_values(results.hour, fwhmVals);
+
+result.success = true;
+result.results = results;
+result.site = site;
 end
 
 function [results, site, freqByHour] = run_meteorproc_with_site(ncfile, varargin)
@@ -232,7 +276,7 @@ fwhmVals = fwhmGrid(:, 1);
 end
 
 function vals = map_hour_values(hours, dailyVector)
-vals = nan(size(hours));
+vals = nan(numel(hours), 1);
 for i = 1:numel(hours)
     h = hours(i);
     if h >= 0 && h <= 23 && h == floor(h)

@@ -7,14 +7,14 @@ function meteorproc_ml_batch(inputPattern, startDate, endDate, varargin)
 %   compute Gaussian peak height and FWHM, writes a daily NetCDF, and
 %   aggregates annual per-radar outputs with legacy variable naming.
 %
-%   Name/Value options:
-%       'OutputPattern'  - Output path pattern (default: append ".winds.nc")
-%       'AnnualRoot'     - Root/template for annual outputs (default: OutputPattern root)
+%   Name/Value options (platform defaults below):
+%       'OutputPattern'  - Output path pattern (default: platform-specific, supports *)
+%       'AnnualRoot'     - Root/template for annual outputs (default: platform-specific)
 %       'MakeAnnual'     - Toggle annual aggregation (default: true)
-%       'AnglesFile'     - Path to meteor angle NetCDF (default: ~/data/meteor_winds/angles_2008.nc)
-%       'MemFile'        - Path to meteor environment model NetCDF (default: ~/data/meteor_winds/mem_3_output_v1.nc)
-%       'MLModelFile'    - Path to trained ML model .mat (default: ~/data/meteor_winds/ml_model.mat)
-%       'SWFile'         - Path to solar wind CSV (default: ~/data/indices/SW-All.csv)
+%       'AnglesFile'     - Path to meteor angle NetCDF (default: platform-specific)
+%       'MemFile'        - Path to meteor environment model NetCDF (default: platform-specific)
+%       'MLModelFile'    - Path to trained ML model .mat (default: platform-specific)
+%       'SWFile'         - Path to solar wind CSV (default: platform-specific)
 %       Radar frequency is derived from the input NetCDF tfreq variable
 %       (per-hour median, converted to MHz). No default/override is applied.
 %       Additional args are passed to METEORPROC_FROM_NETCDF.
@@ -30,16 +30,39 @@ if nargin < 3
         'Usage: meteorproc_ml_batch(inputPattern, startDate, endDate, ...)');
 end
 
+if ismac
+    defaultInputPattern = '~/data/netcdf/{yyyy}/{mm}/{yyyymmdd}*.nc';
+    defaultOutputPattern = '~/data/netcdf/{yyyy}/{mm}/{yyyymmdd}*.winds.nc';
+    defaultAnnualRoot = '~/data/netcdf';
+    defaultAngles = '~/data/meteor_winds/angles_2008.nc';
+    defaultMem = '~/data/meteor_winds/mem_3_output_v1.nc';
+    defaultML = '~/data/meteor_winds/ml_model.mat';
+    defaultSW = '~/data/indices/SW-All.csv';
+else
+    defaultInputPattern = '/project/superdarn/data/fit_nc_3/{yyyy}/{mm}/{yyyymmdd}*.nc';
+    defaultOutputPattern = '/project/superdarn/data/fit_nc_3_winds/{yyyy}/{mm}/{yyyymmdd}*.winds.nc';
+    defaultAnnualRoot = '/project/superdarn/data/fit_nc_3_winds/annual';
+    defaultAngles = '/project/superdarn/data/meteorwind_ancillary/angles_2008.nc';
+    defaultMem = '/project/superdarn/data/meteorwind_ancillary/mem_3_output_v1.nc';
+    defaultML = '/project/superdarn/data/meteorwind_ancillary/ml_model.mat';
+    defaultSW = '/project/superdarn/data/meteorwind_ancillary/SW-All.csv';
+end
+
+if nargin < 1 || isempty(inputPattern)
+    inputPattern = defaultInputPattern;
+end
+
 parser = inputParser;
 parser.FunctionName = 'meteorproc_ml_batch';
 parser.KeepUnmatched = true;
+
 parser.addParameter('OutputPattern', string(inputPattern) + ".winds.nc", @(s) ischar(s) || isstring(s));
-parser.addParameter('AnnualRoot', "", @(s) ischar(s) || isstring(s));
+parser.addParameter('AnnualRoot', defaultAnnualRoot, @(s) ischar(s) || isstring(s));
 parser.addParameter('MakeAnnual', true, @(x) islogical(x) || isnumeric(x));
-parser.addParameter('AnglesFile', '~/data/meteor_winds/angles_2008.nc', @(s) ischar(s) || isstring(s));
-parser.addParameter('MemFile', '~/data/meteor_winds/mem_3_output_v1.nc', @(s) ischar(s) || isstring(s));
-parser.addParameter('MLModelFile', '~/data/meteor_winds/ml_model.mat', @(s) ischar(s) || isstring(s));
-parser.addParameter('SWFile', '~/data/indices/SW-All.csv', @(s) ischar(s) || isstring(s));
+parser.addParameter('AnglesFile', defaultAngles, @(s) ischar(s) || isstring(s));
+parser.addParameter('MemFile', defaultMem, @(s) ischar(s) || isstring(s));
+parser.addParameter('MLModelFile', defaultML, @(s) ischar(s) || isstring(s));
+parser.addParameter('SWFile', defaultSW, @(s) ischar(s) || isstring(s));
 parser.parse(varargin{:});
 opts = parser.Results;
 passArgs = structToNameValue(parser.Unmatched);
@@ -59,58 +82,93 @@ end
 annualMap = containers.Map('KeyType', 'char', 'ValueType', 'any');
 for idx = 1:numel(timeVec)
     t = timeVec(idx);
-    inFile = expandPath(filename(char(inputPattern), t, [], filesep));
-    if isempty(inFile) || exist(inFile, 'file') ~= 2
-        warning('meteorproc_ml_batch:MissingInput', 'Skipping %s (file not found).', inFile);
+    inPatternPath = expandPath(filename(char(inputPattern), t, [], filesep));
+    matches = {};
+    if contains(inPatternPath, '*')
+        listing = dir(inPatternPath);
+        for li = 1:numel(listing)
+            if ~listing(li).isdir
+                matches{end+1} = fullfile(listing(li).folder, listing(li).name); %#ok<AGROW>
+            end
+        end
+    else
+        matches = {inPatternPath};
+    end
+
+    if isempty(matches)
+        warning('meteorproc_ml_batch:MissingInput', 'No files matched %s', inPatternPath);
         continue;
     end
-    outFile = expandPath(filename(char(outputPattern), t, [], filesep));
-    fprintf('Processing %s -> %s\n', inFile, outFile);
 
-    try
-        [results, site, freqByHour] = run_meteorproc_with_site(inFile, passArgs{:});
-    catch ME
-        warning('meteorproc_ml_batch:MeteorprocFailed', '%s failed (%s)', inFile, ME.message);
-        continue;
-    end
-    if isempty(results)
-        warning('meteorproc_ml_batch:EmptyResults', 'No valid winds for %s.', inFile);
-        continue;
-    end
+    outPatternPath = expandPath(filename(char(outputPattern), t, [], filesep));
+    [outDirTemplate, outNameTemplate, ~] = fileparts(outPatternPath);
 
-    % Compute ML peak/FWHM for the full day and attach to the table.
-    try
-        [peakVals, fwhmVals] = compute_ml_profile(results, site, t, support, freqByHour);
-        results.Peak = map_hour_values(results.hour, peakVals);
-        results.FWHM = map_hour_values(results.hour, fwhmVals);
-    catch ME
-        warning('meteorproc_ml_batch:MLModelFailed', 'ML model failed for %s (%s)', inFile, ME.message);
-        results.Peak = nan(height(results), 1);
-        results.FWHM = nan(height(results), 1);
-    end
+    for mi = 1:numel(matches)
+        inFile = matches{mi};
+        if exist(inFile, 'file') ~= 2
+            warning('meteorproc_ml_batch:MissingInput', 'Skipping %s (file not found).', inFile);
+            continue;
+        end
+        [~, inBase, ~] = fileparts(inFile);
+        if contains(outNameTemplate, '*') || isempty(outNameTemplate)
+            outName = [inBase, '.winds.nc'];
+        else
+            outName = [outNameTemplate, '.nc'];
+        end
+        outDir = outDirTemplate;
+        if isempty(outDir)
+            outDir = fileparts(inFile);
+        end
+        if ~exist(outDir, 'dir')
+            mkdir(outDir);
+        end
+        outFile = fullfile(outDir, outName);
+        fprintf('Processing %s -> %s\n', inFile, outFile);
 
-    writeResultsNetCDF(outFile, results, inFile);
-
-    if makeAnnual
         try
-            annualMap = updateAnnual(annualMap, results, site, t, inFile);
-            % Flush when crossing a year boundary or at the end.
-            nextYear = [];
-            if idx < numel(timeVec)
-                nextYear = year(datetime(timeVec(idx + 1), 'ConvertFrom', 'datenum'));
-            end
-            thisYear = year(datetime(t, 'ConvertFrom', 'datenum'));
-            if isempty(nextYear) || nextYear ~= thisYear
-                root = annualRoot;
-                if strlength(root) == 0
-                    % Use output pattern root by stripping filename portion.
-                    [rootDir, ~, ~] = fileparts(outFile);
-                    root = rootDir;
-                end
-                flushAnnual(annualMap, thisYear, root);
-            end
+            [results, site, freqByHour] = run_meteorproc_with_site(inFile, passArgs{:});
         catch ME
-            warning('meteorproc_ml_batch:AnnualFailed', 'Annual aggregation failed for %s (%s)', inFile, ME.message);
+            warning('meteorproc_ml_batch:MeteorprocFailed', '%s failed (%s)', inFile, ME.message);
+            continue;
+        end
+        if isempty(results)
+            warning('meteorproc_ml_batch:EmptyResults', 'No valid winds for %s.', inFile);
+            continue;
+        end
+
+        % Compute ML peak/FWHM for the full day and attach to the table.
+        try
+            [peakVals, fwhmVals] = compute_ml_profile(results, site, t, support, freqByHour);
+            results.Peak = map_hour_values(results.hour, peakVals);
+            results.FWHM = map_hour_values(results.hour, fwhmVals);
+        catch ME
+            warning('meteorproc_ml_batch:MLModelFailed', 'ML model failed for %s (%s)', inFile, ME.message);
+            results.Peak = nan(height(results), 1);
+            results.FWHM = nan(height(results), 1);
+        end
+
+        writeResultsNetCDF(outFile, results, inFile);
+
+        if makeAnnual
+            try
+                annualMap = updateAnnual(annualMap, results, site, t, inFile);
+                % Flush when crossing a year boundary or at the end.
+                nextYear = [];
+                if idx < numel(timeVec)
+                    nextYear = year(datetime(timeVec(idx + 1), 'ConvertFrom', 'datenum'));
+                end
+                thisYear = year(datetime(t, 'ConvertFrom', 'datenum'));
+                if isempty(nextYear) || nextYear ~= thisYear
+                    root = annualRoot;
+            if strlength(root) == 0
+                [rootDir, ~, ~] = fileparts(outFile);
+                root = rootDir;
+            end
+            flushAnnual(annualMap, thisYear, root);
+                end
+            catch ME
+                warning('meteorproc_ml_batch:AnnualFailed', 'Annual aggregation failed for %s (%s)', inFile, ME.message);
+            end
         end
     end
 end

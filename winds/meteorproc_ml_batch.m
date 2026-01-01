@@ -79,9 +79,27 @@ if isempty(timeVec)
     return;
 end
 
+fprintf('[meteorproc_ml_batch] Input pattern : %s\n', char(inputPattern));
+fprintf('[meteorproc_ml_batch] Output pattern: %s\n', char(outputPattern));
+fprintf('[meteorproc_ml_batch] Annual root   : %s\n', char(annualRoot));
+fprintf('[meteorproc_ml_batch] Angles : %s\n', expandPath(opts.AnglesFile));
+fprintf('[meteorproc_ml_batch] MEM    : %s\n', expandPath(opts.MemFile));
+fprintf('[meteorproc_ml_batch] ML model: %s\n', expandPath(opts.MLModelFile));
+fprintf('[meteorproc_ml_batch] SW file : %s\n', expandPath(opts.SWFile));
+fprintf('[meteorproc_ml_batch] Date range: %s to %s (%d days)\n', ...
+    datestr(timeVec(1), 'yyyy-mm-dd'), datestr(timeVec(end), 'yyyy-mm-dd'), numel(timeVec));
+
 annualMap = containers.Map('KeyType', 'char', 'ValueType', 'any');
+lastMonth = NaN;
+totalFiles = 0;
 for idx = 1:numel(timeVec)
     t = timeVec(idx);
+    curMonth = month(datetime(t, 'ConvertFrom', 'datenum'));
+    if isnan(lastMonth) || curMonth ~= lastMonth
+        fprintf('[meteorproc_ml_batch] Starting month %04d-%02d\n', year(datetime(t, 'ConvertFrom', 'datenum')), curMonth);
+        lastMonth = curMonth;
+    end
+
     inPatternPath = expandPath(filename(char(inputPattern), t, [], filesep));
     matches = {};
     if contains(inPatternPath, '*')
@@ -99,6 +117,7 @@ for idx = 1:numel(timeVec)
         warning('meteorproc_ml_batch:MissingInput', 'No files matched %s', inPatternPath);
         continue;
     end
+    fprintf('[meteorproc_ml_batch] %s matched %d file(s)\n', datestr(t, 'yyyy-mm-dd'), numel(matches));
 
     outPatternPath = expandPath(filename(char(outputPattern), t, [], filesep));
     [outDirTemplate, outNameTemplate, ~] = fileparts(outPatternPath);
@@ -148,6 +167,7 @@ for idx = 1:numel(timeVec)
         end
 
         writeResultsNetCDF(outFile, results, inFile);
+        totalFiles = totalFiles + 1;
 
         if makeAnnual
             try
@@ -172,6 +192,7 @@ for idx = 1:numel(timeVec)
         end
     end
 end
+fprintf('[meteorproc_ml_batch] Completed. Files processed: %d\n', totalFiles);
 end
 
 function [results, site, freqByHour] = run_meteorproc_with_site(ncfile, varargin)

@@ -580,7 +580,7 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         # Set up data storage
         out = {}
         for fld in (fov_flds + data_flds + short_flds + elv_flds):
-        out[fld] = []
+            out[fld] = []
 
         records_seen = 0
         skipped_missing_slist = 0

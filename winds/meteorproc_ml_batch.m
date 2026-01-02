@@ -31,13 +31,13 @@ if nargin < 3
 end
 
 if ismac
-    defaultInputPattern = '~/data/netcdf/{yyyy}/{mm}/{yyyymmdd}*.nc';
-    defaultOutputPattern = '~/data/netcdf/{yyyy}/{mm}/{yyyymmdd}*.winds.nc';
-    defaultAnnualRoot = '~/data/netcdf';
-    defaultAngles = '~/data/meteor_winds/angles_2008.nc';
-    defaultMem = '~/data/meteor_winds/mem_3_output_v1.nc';
-    defaultML = '~/data/meteor_winds/ml_model.mat';
-    defaultSW = '~/data/indices/SW-All.csv';
+    defaultInputPattern = '/Users/chartat1/data/superdarn/fit_nc_3/{yyyy}/{mm}/{yyyymmdd}*.nc';
+    defaultOutputPattern = '/Users/chartat1/data/superdarn/fit_nc_3_winds/{yyyy}/{mm}/{yyyymmdd}*.winds.nc';
+    defaultAnnualRoot = '/Users/chartat1/data/superdarn/fit_nc_3_winds/annual';
+    defaultAngles = '/Users/chartat1/data/meteor_winds/angles_2008.nc';
+    defaultMem = '/Users/chartat1/data/meteor_winds/mem_3_output_v1.nc';
+    defaultML = '/Users/chartat1/data/meteor_winds/ml_model.mat';
+    defaultSW = '/Users/chartat1/data/indices/SW-All.csv';
 else
     defaultInputPattern = '/project/superdarn/data/fit_nc_3/{yyyy}/{mm}/{yyyymmdd}*.nc';
     defaultOutputPattern = '/project/superdarn/data/fit_nc_3_winds/{yyyy}/{mm}/{yyyymmdd}*.winds.nc';
@@ -64,6 +64,7 @@ parser.addParameter('MemFile', defaultMem, @(s) ischar(s) || isstring(s));
 parser.addParameter('MLModelFile', defaultML, @(s) ischar(s) || isstring(s));
 parser.addParameter('SWFile', defaultSW, @(s) ischar(s) || isstring(s));
 parser.addParameter('UseParallel', [], @(x) islogical(x) || isnumeric(x));
+parser.addParameter('MaxWorkers', [], @(x) isempty(x) || (isscalar(x) && isnumeric(x) && x >= 1));
 parser.parse(varargin{:});
 opts = parser.Results;
 passArgs = structToNameValue(parser.Unmatched);
@@ -72,16 +73,45 @@ outputPattern = string(opts.OutputPattern);
 annualRoot = string(opts.AnnualRoot);
 makeAnnual = logical(opts.MakeAnnual);
 hasParallel = ~isempty(ver('parallel'));
-if isempty(opts.UseParallel)
-    useParallel = hasParallel;
-else
-    useParallel = logical(opts.UseParallel) && hasParallel;
+capRequested = [];
+if ~isempty(opts.MaxWorkers)
+    capRequested = floor(double(opts.MaxWorkers));
 end
-if useParallel && isempty(gcp('nocreate'))
-    parpool('local');
+maxWorkersAvailable = 1;
+if hasParallel
+    c = parcluster('local');
+    maxWorkersAvailable = max(1, c.NumWorkers - 4);
+end
+if isempty(capRequested)
+    capWorkers = min(maxWorkersAvailable, 4); % default cap to keep memory down
+else
+    capWorkers = min(maxWorkersAvailable, capRequested);
 end
 
-support = load_ml_support(opts);
+if isempty(opts.UseParallel)
+    useParallel = hasParallel && capWorkers > 1;
+else
+    useParallel = logical(opts.UseParallel) && hasParallel && capWorkers > 1;
+end
+
+pool = [];
+if useParallel
+    pool = gcp('nocreate');
+    if isempty(pool) || pool.NumWorkers ~= capWorkers
+        if ~isempty(pool)
+            delete(pool);
+        end
+        pool = parpool('local', capWorkers);
+    end
+end
+
+support = [];
+supportConst = [];
+if useParallel
+    supportConst = parallel.pool.Constant(@() load_ml_support(opts));
+else
+    support = load_ml_support(opts);
+end
 defaultOutputDirTemplate = fileparts(defaultOutputPattern);
 
 timeVec = expandDatenum(startDate, endDate);
@@ -99,6 +129,11 @@ fprintf('[meteorproc_ml_batch] ML model: %s\n', expandPath(opts.MLModelFile));
 fprintf('[meteorproc_ml_batch] SW file : %s\n', expandPath(opts.SWFile));
 fprintf('[meteorproc_ml_batch] Date range: %s to %s (%d days)\n', ...
     datestr(timeVec(1), 'yyyy-mm-dd'), datestr(timeVec(end), 'yyyy-mm-dd'), numel(timeVec));
+if useParallel
+    fprintf('[meteorproc_ml_batch] Parallel pool workers: %d (cap %d, available %d)\n', pool.NumWorkers, capWorkers, maxWorkersAvailable);
+else
+    fprintf('[meteorproc_ml_batch] Running serially (parallel toolbox unavailable or disabled).\n');
+end
 
 annualMap = containers.Map('KeyType', 'char', 'ValueType', 'any');
 lastMonth = NaN;
@@ -117,7 +152,11 @@ for idx = 1:numel(timeVec)
         listing = dir(inPatternPath);
         for li = 1:numel(listing)
             if ~listing(li).isdir
-                matches{end+1} = fullfile(listing(li).folder, listing(li).name); %#ok<AGROW>
+                fn = listing(li).name;
+                if endsWith(fn, '.winds.nc')
+                    continue;
+                end
+                matches{end+1} = fullfile(listing(li).folder, fn); %#ok<AGROW>
             end
         end
     else
@@ -161,10 +200,11 @@ for idx = 1:numel(timeVec)
     end
 
     if useParallel
+        constRef = supportConst;
         parfor mi = 1:numMatches
             inFile = taskInFiles{mi};
             outFile = taskOutFiles{mi};
-            taskResults{mi} = process_single_file(inFile, outFile, t, support, passArgs);
+            taskResults{mi} = process_single_file(inFile, outFile, t, constRef.Value, passArgs);
         end
     else
         for mi = 1:numMatches
@@ -214,6 +254,9 @@ for idx = 1:numel(timeVec)
     end
 end
 fprintf('[meteorproc_ml_batch] Completed. Files processed: %d\n', totalFiles);
+if ~isempty(supportConst)
+    delete(supportConst);
+end
 end
 
 function result = process_single_file(inFile, outFile, t, support, passArgs)
@@ -265,14 +308,14 @@ end
 function [peakVals, fwhmVals] = compute_ml_profile(results, site, datenumDay, support, freqByHourMHz)
 % Build a full-day time grid, interpolate MEM, and run the ML model.
 hrs = (0:23).';
-Times = repmat(datenum(datetime(datevec(datenumDay)) + hours(hrs)), 1, 2); % 24 x 2 to satisfy interp_mem
+Times = datenum(datetime(datevec(datenumDay)) + hours(hrs));
+Times = reshape(Times, [], 1);
 mem_int = interp_mem(support.mem, support.mem_fields, Times, site.geolat, site.geolon);
-freqGrid = repmat(freqByHourMHz(:), 1, size(Times, 2));
+freqGrid = freqByHourMHz(:);
 [peakGrid, fwhmGrid] = run_ml_model(support.Mdl, Times, site.geolat, site.geolon, ...
     mem_int, support.sw, support.meteor_angles, freqGrid);
-% Use first column (hours) for output.
-peakVals = peakGrid(:, 1);
-fwhmVals = fwhmGrid(:, 1);
+peakVals = peakGrid(:);
+fwhmVals = fwhmGrid(:);
 end
 
 function vals = map_hour_values(hours, dailyVector)
@@ -292,10 +335,15 @@ support.mem = load_mem(expandPath(opts.MemFile));
 support.mem_fields = {'lo_dens_flux', 'hi_dens_flux', 'lo_dens_speed', 'hi_dens_speed'};
 mdlStruct = load(expandPath(opts.MLModelFile));
 flds = fieldnames(mdlStruct);
-if ismember('Mdl', flds)
+support.Mdl = struct();
+if ismember('Peak', flds)
+    support.Mdl.Peak = mdlStruct.Peak;
+end
+if ismember('FWHM', flds)
+    support.Mdl.FWHM = mdlStruct.FWHM;
+end
+if isempty(fieldnames(support.Mdl)) && ismember('Mdl', flds)
     support.Mdl = mdlStruct.Mdl;
-else
-    support.Mdl = mdlStruct.(flds{1});
 end
 end
 
@@ -361,7 +409,11 @@ for i = 1:numel(keys)
     if group.year ~= yearToFlush || group.fileCount == 0
         continue;
     end
-    dstDir = fullfile(expandPath(annualRoot), char(group.radar));
+    annualRootExpanded = char(expandPath(annualRoot));
+    if ~exist(annualRootExpanded, 'dir')
+        mkdir(annualRootExpanded);
+    end
+    dstDir = fullfile(annualRootExpanded, sprintf('%04d', group.year));
     if ~exist(dstDir, 'dir')
         mkdir(dstDir);
     end

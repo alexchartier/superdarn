@@ -12,8 +12,6 @@ ref_freq = 30;
 
 %% Load 
 yr = year(min(Times(:)));
-hrs = (Times(:, 1) - min(Times(:, 1))) * 24;
-days = unique(floor(Times(:)));
 DOY = floor(Times(:)) - datenum(yr, 1, 1) + 1;
 
 
@@ -22,13 +20,7 @@ yr = year(min(Times(:)));
 
 % Meteor model
 speed = meteor_speed_density_model(Times, lat, lon, meteor_angles);
-pres = zeros(length(days), length(hrs))';
-for l1 = 1:length(hrs)
-    for l2 = 1:length(days)
-        pres(l1, l2) = calc_msis_pressure(...
-            Times(l1, l2), ref_alt, lat, lon, sw);
-    end
-end
+pres = calc_msis_pressure(Times, ref_alt, lat, lon, sw);
 
 
 Tbl = table; 
@@ -58,8 +50,15 @@ end
 
 Peak_30 = Mdl.Peak.predict(Tbl);
 FWHM = Mdl.FWHM.predict(Tbl);
-Peak = freq_vs_ht_model(freq, Peak_30, ref_freq);
+freq_vec = freq(:);
+if isscalar(freq_vec)
+    freq_vec = repmat(freq_vec, size(Peak_30));
+elseif numel(freq_vec) ~= numel(Peak_30)
+    error('run_ml_model:FreqSizeMismatch', 'freq length (%d) must match predictions (%d) or be scalar.', numel(freq_vec), numel(Peak_30));
+else
+    freq_vec = reshape(freq_vec, size(Peak_30));
+end
+Peak = freq_vs_ht_model(freq_vec, Peak_30, ref_freq);
 
-Peak = reshape(Peak, [length(hrs), length(days)]);
-FWHM = reshape(FWHM, [length(hrs), length(days)]);
-
+Peak = reshape(Peak, size(Times));
+FWHM = reshape(FWHM, size(Times));

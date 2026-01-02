@@ -1,7 +1,5 @@
 function out = interp_mem(mem, fields, Times, lat, lon)
 %%
-assert(size(Times, 2) > 1, 'Need a 2D array of Times')
-
 mem_yr = median(year(mem.times(:)));
 times_yr = median(year(Times(:)));
 yrs_to_add = times_yr - mem_yr;

@@ -24,22 +24,25 @@ function hPa = calc_msis_pressure(time, alt, lat, lon, sw)
 
 %% Calculate time
 dt = datetime(time, 'ConvertFrom', 'datenum');
-yr = year(dt);
-doy = day(dt, 'dayofyear'); 
-utcsec = seconds(timeofday(dt));
+dt_flat = dt(:);
+yr = year(dt_flat);
+doy = day(dt_flat, 'dayofyear'); 
+utcsec = seconds(timeofday(dt_flat));
+day_start = dateshift(dt_flat, 'start', 'day');
 
 %% Load Ap and F107
 warning('off', 'MATLAB:table:ModifiedAndSavedVarnames'); 
-f107a = sw.F10_7_ADJ_CENTER81(sw.DATE == dateshift(dt, 'start', 'day'));
-f107d = sw.F10_7_ADJ(sw.DATE == dateshift(dt, 'start', 'day'));
-Apd = sw.AP_AVG(sw.DATE == dateshift(dt, 'start', 'day'));
+f107a = interp1(sw.DATE, sw.F10_7_ADJ_CENTER81, day_start);
+f107d = interp1(sw.DATE, sw.F10_7_ADJ, day_start);
+Apd = interp1(sw.DATE, sw.AP_AVG, day_start);
 
 %% Calculate pressure
-[T, rho] = atmosnrlmsise00(alt, lat, lon, yr, doy, utcsec, f107a, f107d, Apd);
-N_tot = sum(rho([1:5, 7:9]));
+[T, rho] = atmosnrlmsise00(repmat(alt, numel(dt_flat), 1), ...
+    repmat(lat, numel(dt_flat), 1), repmat(lon, numel(dt_flat), 1), ...
+    yr, doy, utcsec, f107a, f107d, Apd);
+N_tot = sum(rho(:, [1:5, 7:9]), 2);
 Kb = 1.380649E-23;
-P = N_tot * Kb * T(2);
-hPa = P ./ 100;
-
+P = N_tot .* Kb .* T(:, 2);
+hPa = reshape(P ./ 100, size(time));
 
 

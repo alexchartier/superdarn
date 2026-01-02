@@ -46,27 +46,28 @@ LTs(LTs >= 24) = LTs(LTs >= 24) - 24;
 LTs(LTs < 0) = LTs(LTs < 0) + 24;
 
 %% Speeds
+angles_key = round(angles.times(:) * 86400);
+time_key = round(times(:) * 86400);
+[tf_idx, ti_idx] = ismember(time_key, angles_key);
+assert(all(tf_idx), 'Looking for exactly 1 time');
+ti_idx = reshape(ti_idx, size(times));
 for i = 1:length(Names)
     speeds.(Names{i}) = sind(angles.(Names{i})) .* Geocentric_Speeds(i);
 
     % Interpolate to station
-    for t1 = 1:size(times, 1)
-        for t2 = 1:size(times, 2)
-            ti = round(angles.times *86400) == round(times(t1, t2) *86400);
-
-            if sum(ti) ~= 1
-                disp('1')
-            end
-            assert(sum(ti) == 1, 'Looking for exactly 1 time')
-            speeds_s.(Names{i})(t1, t2) = interp2(...
-                angles.lat, angles.lon, squeeze(speeds.(Names{i})(:, :, ti)), ...
-                lat, lon);          
-            angles_s.(Names{i})(t1, t2) = interp2(...
-                angles.lat, angles.lon, squeeze(angles.(Names{i})(:, :, ti)), ...
-                lat, lon);
-
-        end
+    speeds_s.(Names{i}) = zeros(size(times));
+    angles_s.(Names{i}) = zeros(size(times));
+    for k = 1:numel(times)
+        tIdx = ti_idx(k);
+        speeds_s.(Names{i})(k) = interp2(...
+            angles.lat, angles.lon, speeds.(Names{i})(:, :, tIdx), ...
+            lat, lon);
+        angles_s.(Names{i})(k) = interp2(...
+            angles.lat, angles.lon, angles.(Names{i})(:, :, tIdx), ...
+            lat, lon);
     end
+    speeds_s.(Names{i}) = reshape(speeds_s.(Names{i}), size(times));
+    angles_s.(Names{i}) = reshape(angles_s.(Names{i}), size(times));
 end
 
 
@@ -107,4 +108,3 @@ for i = 1:size(weights_2d, 2)
 end
 
 spread = reshape(spread, size(times));
-

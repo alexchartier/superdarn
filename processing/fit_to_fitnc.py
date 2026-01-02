@@ -580,18 +580,24 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
         # Set up data storage
         out = {}
         for fld in (fov_flds + data_flds + short_flds + elv_flds):
-            out[fld] = []
+        out[fld] = []
 
         records_seen = 0
         skipped_missing_slist = 0
         skipped_outside_fov = 0
         skipped_invalid_beam = 0
+        skipped_outside_day = 0
+        day_start = dt.datetime(date.year, date.month, date.day)
+        day_end = day_start + dt.timedelta(days=1)
 
         # Run through each beam record and store
         for rec in data:
             records_seen += 1
             time = dt.datetime(rec['time.yr'], rec['time.mo'], rec['time.dy'],
                                rec['time.hr'], rec['time.mt'], rec['time.sc'])
+            if not (day_start <= time < day_end):
+                skipped_outside_day += 1
+                continue
             # slist is the list of range gates with backscatter
             if 'slist' not in rec.keys():
                 os.makedirs(conversionLogDir, exist_ok=True)
@@ -663,7 +669,8 @@ def convert_fitacf_data(date, in_fname, radar_info, fitVersion):
                 f'Records: seen={records_seen}, converted_points={total_points}, '
                 f'skipped_missing_slist={skipped_missing_slist}, '
                 f'skipped_outside_fov={skipped_outside_fov}, '
-                f'skipped_invalid_beam={skipped_invalid_beam}\n'
+                f'skipped_invalid_beam={skipped_invalid_beam}, '
+                f'skipped_outside_day={skipped_outside_day}\n'
             )
             with open(conversionLogfile, "a+") as fp:
                 fp.write(summary)

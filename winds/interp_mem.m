@@ -1,7 +1,10 @@
 function out = interp_mem(mem, fields, Times, lat, lon)
 %%
-mem_yr = median(year(mem.times(:)));
-times_yr = median(year(Times(:)));
+dv_mem = datevec(mem.times(:));
+mem_yr = median(dv_mem(:, 1));
+tv = Times(:);
+dv = datevec(tv);
+times_yr = median(dv(:, 1));
 yrs_to_add = times_yr - mem_yr;
 mem_dt = datetime(mem.times, 'ConvertFrom', 'datenum');
 mem_times = datenum(mem_dt + calyears(yrs_to_add));

@@ -17,7 +17,8 @@ lon(lon < 0) = lon(lon < 0) + 360;
 
 %% load
 % Note angles are the same every year
-yr = year(min(times(:)));
+dv0 = datevec(min(times(:)));
+yr = dv0(1);
 flds = fieldnames(angles);
 if ~leapyear(yr)
     lyi = angles.month == 2 & angles.day == 29;

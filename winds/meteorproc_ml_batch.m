@@ -142,7 +142,7 @@ for idx = 1:numel(timeVec)
     t = timeVec(idx);
     curMonth = month(datetime(t, 'ConvertFrom', 'datenum'));
     if isnan(lastMonth) || curMonth ~= lastMonth
-        fprintf('[meteorproc_ml_batch] Starting month %04d-%02d\n', year(datetime(t, 'ConvertFrom', 'datenum')), curMonth);
+        fprintf('[meteorproc_ml_batch] Starting month %04d-%02d\n', yearSafe(datetime(t, 'ConvertFrom', 'datenum')), curMonth);
         lastMonth = curMonth;
     end
 
@@ -236,9 +236,9 @@ for idx = 1:numel(timeVec)
                 % Flush when crossing a year boundary or at the end.
                 nextYear = [];
                 if idx < numel(timeVec)
-                    nextYear = year(datetime(timeVec(idx + 1), 'ConvertFrom', 'datenum'));
-                end
-                thisYear = year(datetime(t, 'ConvertFrom', 'datenum'));
+                nextYear = yearSafe(datetime(timeVec(idx + 1), 'ConvertFrom', 'datenum'));
+            end
+            thisYear = yearSafe(datetime(t, 'ConvertFrom', 'datenum'));
                 if isempty(nextYear) || nextYear ~= thisYear
                     root = annualRoot;
             if strlength(root) == 0
@@ -267,13 +267,25 @@ if exist(inFile, 'file') ~= 2
 end
 fprintf('Processing %s -> %s\n', inFile, outFile);
 
-[results, site, freqByHour] = run_meteorproc_with_site(inFile, passArgs{:});
+[results, site, freqByHour] = deal([]);
+try
+    [results, site, freqByHour] = run_meteorproc_with_site(inFile, passArgs{:});
+catch ME
+    result.message = sprintf('Failed %s (%s)', inFile, ME.message);
+    return;
+end
 if isempty(results)
     result.message = sprintf('No valid winds for %s.', inFile);
     return;
 end
 
-[peakVals, fwhmVals] = compute_ml_profile(results, site, t, support, freqByHour);
+[peakVals, fwhmVals] = deal([]);
+try
+    [peakVals, fwhmVals] = compute_ml_profile(results, site, t, support, freqByHour);
+catch ME
+    result.message = sprintf('ML model failed for %s (%s)', inFile, ME.message);
+    return;
+end
 results.Peak = map_hour_values(results.hour, peakVals);
 results.FWHM = map_hour_values(results.hour, fwhmVals);
 
@@ -310,10 +322,39 @@ function [peakVals, fwhmVals] = compute_ml_profile(results, site, datenumDay, su
 hrs = (0:23).';
 Times = datenum(datetime(datevec(datenumDay)) + hours(hrs));
 Times = reshape(Times, [], 1);
-mem_int = interp_mem(support.mem, support.mem_fields, Times, site.geolat, site.geolon);
+persistent memCache presCache speedCache
+if isempty(memCache)
+    memCache = containers.Map('KeyType', 'char', 'ValueType', 'any');
+    presCache = containers.Map('KeyType', 'char', 'ValueType', 'any');
+    speedCache = containers.Map('KeyType', 'char', 'ValueType', 'any');
+end
+dayKey = sprintf('%s_%.6f_%.6f_%0.0f_%s', string(site.code), site.geolat, site.geolon, floor(datenumDay), support.mem_source);
+if memCache.isKey(dayKey)
+    mem_int = memCache(dayKey);
+else
+    mem_int = interp_mem(support.mem, support.mem_fields, Times, site.geolat, site.geolon);
+    memCache(dayKey) = mem_int;
+end
+
+presKey = sprintf('%s_%s_%0.0f', string(site.code), support.sw_source, floor(datenumDay));
+if presCache.isKey(presKey)
+    pres = presCache(presKey);
+else
+    pres = calc_msis_pressure(Times, 90E3, site.geolat, site.geolon, support.sw);
+    presCache(presKey) = pres;
+end
+
+speedKey = sprintf('%s_%s_%0.0f_%.6f_%.6f', string(site.code), support.angles_source, floor(datenumDay), site.geolat, site.geolon);
+if speedCache.isKey(speedKey)
+    speed = speedCache(speedKey);
+else
+    speed = meteor_speed_density_model(Times, site.geolat, site.geolon, support.meteor_angles);
+    speedCache(speedKey) = speed;
+end
+
 freqGrid = freqByHourMHz(:);
 [peakGrid, fwhmGrid] = run_ml_model(support.Mdl, Times, site.geolat, site.geolon, ...
-    mem_int, support.sw, support.meteor_angles, freqGrid);
+    mem_int, support.sw, support.meteor_angles, freqGrid, speed, pres);
 peakVals = peakGrid(:);
 fwhmVals = fwhmGrid(:);
 end
@@ -333,6 +374,9 @@ support.sw = readtable(expandPath(opts.SWFile));
 support.meteor_angles = load_nc(expandPath(opts.AnglesFile));
 support.mem = load_mem(expandPath(opts.MemFile));
 support.mem_fields = {'lo_dens_flux', 'hi_dens_flux', 'lo_dens_speed', 'hi_dens_speed'};
+support.sw_source = expandPath(opts.SWFile);
+support.mem_source = expandPath(opts.MemFile);
+support.angles_source = expandPath(opts.AnglesFile);
 mdlStruct = load(expandPath(opts.MLModelFile));
 flds = fieldnames(mdlStruct);
 support.Mdl = struct();
@@ -345,6 +389,7 @@ end
 if isempty(fieldnames(support.Mdl)) && ismember('Mdl', flds)
     support.Mdl = mdlStruct.Mdl;
 end
+support.ml_source = expandPath(opts.MLModelFile);
 end
 
 function annualMap = updateAnnual(annualMap, results, site, datenumDay, sourceFile)
@@ -779,12 +824,16 @@ end
 % ---- Minimal copies from meteorproc_from_netcdf to access site/records ----
 function data = readMeteorNetCDF(ncfile)
 ncfile = char(ncfile);
-data.mjd = double(ncread(ncfile, 'mjd'));
-data.beam = double(ncread(ncfile, 'beam'));
-data.range = double(ncread(ncfile, 'range'));
-data.v = double(ncread(ncfile, 'v'));
-data.p_l = double(ncread(ncfile, 'p_l'));
-data.v_e = double(ncread(ncfile, 'v_e'));
+try
+    data.mjd = double(ncread(ncfile, 'mjd'));
+    data.beam = double(ncread(ncfile, 'beam'));
+    data.range = double(ncread(ncfile, 'range'));
+    data.v = double(ncread(ncfile, 'v'));
+    data.p_l = double(ncread(ncfile, 'p_l'));
+    data.v_e = double(ncread(ncfile, 'v_e'));
+catch ME
+    error('meteorproc_ml_batch:ReadNetCDF', 'Failed to read %s (%s)', ncfile, ME.message);
+end
 % Optional transmit frequency (may be kHz or MHz; handled later)
 try
     data.tfreq = double(ncread(ncfile, 'tfreq'));
@@ -897,5 +946,18 @@ if (mod(year, 4) == 0 && mod(year, 100) ~= 0) || mod(year, 400) == 0
     dayCount = 366;
 else
     dayCount = 365;
+end
+end
+
+function yrs = yearSafe(val)
+% Extract year(s) from datenum or datetime without relying on year().
+if isnumeric(val)
+    dv = datevec(val);
+    yrs = dv(:, 1);
+elseif isdatetime(val)
+    yrs = datevec(datenum(val));
+    yrs = yrs(:, 1);
+else
+    yrs = [];
 end
 end

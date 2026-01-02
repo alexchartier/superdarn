@@ -1,5 +1,5 @@
 function [Peak, FWHM] = run_ml_model(Mdl, Times, lat, lon, mem_int, ...
-    sw, meteor_angles, freq)
+    sw, meteor_angles, freq, precomputed_speed, precomputed_pressure)
 %% run_ml_model(times, mwr, sw_fn_csv)
 % [Peak, FWHM] = run_ml_model(Mdl, Times, lat, lon, mem_int, sw, meteor_angles)
 % Training or 'reference' frequency is 30 MHz
@@ -11,16 +11,25 @@ ref_freq = 30;
 
 
 %% Load 
-yr = year(min(Times(:)));
+dv0 = datevec(min(Times(:)));
+yr = dv0(1);
 DOY = floor(Times(:)) - datenum(yr, 1, 1) + 1;
 
 
 LT = ((Times(:) - floor(Times(:))) + lon/360) * 24;
-yr = year(min(Times(:)));
+yr = dv0(1);
 
 % Meteor model
-speed = meteor_speed_density_model(Times, lat, lon, meteor_angles);
-pres = calc_msis_pressure(Times, ref_alt, lat, lon, sw);
+if nargin >= 9 && ~isempty(precomputed_speed)
+    speed = precomputed_speed;
+else
+    speed = meteor_speed_density_model(Times, lat, lon, meteor_angles);
+end
+if nargin >= 10 && ~isempty(precomputed_pressure)
+    pres = precomputed_pressure;
+else
+    pres = calc_msis_pressure(Times, ref_alt, lat, lon, sw);
+end
 
 
 Tbl = table; 

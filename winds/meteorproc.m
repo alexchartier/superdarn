@@ -83,8 +83,10 @@ parser.addParameter('BeamType', 'meridional', @(s) ischar(s) || isstring(s));
 parser.addParameter('RequestedHour', [], @(x) isempty(x) || (isscalar(x) && x >= 0 && x <= 23));
 parser.addParameter('PositionFunction', [], @(f) isempty(f) || isa(f, 'function_handle'));
 parser.addParameter('SourceName', "", @(s) ischar(s) || isstring(s));
+parser.addParameter('VerboseFits', false, @(x) islogical(x) || isnumeric(x));
 parser.parse(varargin{:});
 opt = parser.Results;
+verboseFits = logical(opt.VerboseFits);
 
 bmType = lower(string(opt.BeamType));
 if ~(bmType == "meridional" || bmType == "zonal")
@@ -100,6 +102,15 @@ frang = [];
 rsep = [];
 rxrise = [];
 vmBeam = opt.BeamNumber;
+timeVec = [records.time];
+dt = datetime(timeVec, 'ConvertFrom', 'posixtime', 'TimeZone', 'UTC');
+dv_all = datevec(dt);
+yrVec = dv_all(:, 1);
+moVec = dv_all(:, 2);
+dyVec = dv_all(:, 3);
+hrVec = dv_all(:, 4);
+mtVec = dv_all(:, 5);
+scVec = dv_all(:, 6);
 
 for idx = 1:numel(records)
     rec = records(idx);
@@ -122,7 +133,12 @@ for idx = 1:numel(records)
         end
     end
 
-    [yr, mo, dy, hr, mt, sc] = epochToDate(rec.time);
+    yr = yrVec(idx);
+    mo = moVec(idx);
+    dy = dyVec(idx);
+    hr = hrVec(idx);
+    mt = mtVec(idx);
+    sc = scVec(idx);
 
     if ~isempty(opt.RequestedHour) && hr ~= opt.RequestedHour
         continue;
@@ -184,23 +200,25 @@ if isempty(frang)
 end
 
 coseps = calcCoseps(opt.MaxRange / 2.0, METEOR_HEIGHT);
-fprintf('# Vlos(max)=%.2f\n# S/N(min)=%.2f\n# range(max)=%d\n', ...
-    opt.MaxVelocity, opt.MinSN, opt.MaxRange);
-fprintf('# Verr(max)=%.2f\n# num_beams(min)=%d\n', ...
-    opt.MaxVelocityErr, opt.MinBeams);
-fprintf('# w_l(max)=%.2f\n', opt.MaxLineWidth);
-if bmType == "meridional"
-    fprintf('# beam_num=%d\n# wind=meridional\n', vmBeam);
-else
-    fprintf('# beam_num=%d\n# wind=zonal\n', vmBeam);
+if verboseFits
+    fprintf('# Vlos(max)=%.2f\n# S/N(min)=%.2f\n# range(max)=%d\n', ...
+        opt.MaxVelocity, opt.MinSN, opt.MaxRange);
+    fprintf('# Verr(max)=%.2f\n# num_beams(min)=%d\n', ...
+        opt.MaxVelocityErr, opt.MinBeams);
+    fprintf('# w_l(max)=%.2f\n', opt.MaxLineWidth);
+    if bmType == "meridional"
+        fprintf('# beam_num=%d\n# wind=meridional\n', vmBeam);
+    else
+        fprintf('# beam_num=%d\n# wind=zonal\n', vmBeam);
+    end
+    srcStr = strtrim(string(opt.SourceName));
+    if strlength(srcStr) > 0
+        fprintf('# source=%s\n', srcStr);
+    else
+        fprintf('# source=unknown\n');
+    end
+    fprintf('# year month day hour num_avgs frang rsep Vx Vy lat long Vm Vm_lat Vm_long sdev_Vx sdev_Vy\n');
 end
-srcStr = strtrim(string(opt.SourceName));
-if strlength(srcStr) > 0
-    fprintf('# source=%s\n', srcStr);
-else
-    fprintf('# source=unknown\n');
-end
-fprintf('# year month day hour num_avgs frang rsep Vx Vy lat long Vm Vm_lat Vm_long sdev_Vx sdev_Vy\n');
 
 rows = cell(0, 15);
 
@@ -287,7 +305,11 @@ for hr = hrRange
         sig(kk) = sdev(validIdx(kk));
     end
 
-    fprintf('Fitting %d of %d beams\n', bc, mxbm);
+    if verboseFits
+    if verboseFits
+        fprintf('Fitting %d of %d beams\n', bc, mxbm);
+    end
+    end
 
     design = [-cos(azimuth), sin(azimuth)];
     weights = 1 ./ max(sig.^2, eps);
@@ -342,13 +364,13 @@ results = cell2table(rows, 'VariableNames', ...
 end
 
 function [yr, mo, dy, hr, mt, sc] = epochToDate(epoch)
-dt = datetime(epoch, 'ConvertFrom', 'posixtime', 'TimeZone', 'UTC');
-yr = year(dt);
-mo = month(dt);
-dy = day(dt);
-hr = hour(dt);
-mt = minute(dt);
-sc = second(dt);
+dv = datevec(epoch/86400 + datenum(1970,1,1));
+yr = dv(:, 1);
+mo = dv(:, 2);
+dy = dv(:, 3);
+hr = dv(:, 4);
+mt = dv(:, 5);
+sc = dv(:, 6);
 end
 
 function value = calcCoseps(range, height)

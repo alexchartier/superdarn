@@ -12,15 +12,28 @@ function LTwinds = UT_to_LT(winds, hrs, lthri, lon)
 % contourf(LTwinds')
 
 %%
+hrs = hrs(:)';                     % force row vector
+[n_hr, n_col] = size(winds);
+if n_hr ~= numel(hrs)
+    error('UT_to_LT:DimMismatch', 'winds first dimension (%d) must match hrs length (%d)', n_hr, numel(hrs));
+end
+
+% local time hours, wrapped to [0,24)
 lthrs = hrs + lon/360 * 24;
 lthrs(lthrs >= 24) = lthrs(lthrs >= 24) - 24;
 lthrs(lthrs < 0) = lthrs(lthrs < 0) + 24;
 
-[lthrs, si] = sort(lthrs);
-winds_s = winds(si, :);
-winds_s = cat(1,  winds_s(end, :), winds_s, winds_s(1, :));
-lthrs = [min(lthrs) - 1, lthrs, max(lthrs) + 1];
+% sort for monotonic interpolation
+[lthrs_sort, si] = sort(lthrs);
+winds_sort = winds(si, :);
 
-LTwinds = interp2(lthrs, 1:size(winds_s, 2), winds_s', ...
-    lthri', 1:size(winds, 2))';
+L = numel(lthri);
+LTwinds = nan(L, n_col);
 
+for cc = 1:n_col
+    ws = winds_sort(:, cc);
+    % periodic extension to cover wrap-around
+    lt_ext = [lthrs_sort(:); lthrs_sort(1) + 24];
+    ws_ext = [ws(:); ws(1)];
+    LTwinds(:, cc) = interp1(lt_ext, ws_ext, lthri, 'linear', 'extrap');
+end

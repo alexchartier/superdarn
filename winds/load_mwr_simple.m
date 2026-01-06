@@ -18,8 +18,8 @@ mwr.time = h5read(mwr_fn, '/info/datenums');
 
 ndays = length(mwr.time) / 24;
 mwr_2d.Time = reshape(mwr.time, [24, ndays]);
-mwr_2d.u0 = reshape(mwr.u0, [length(mwr.alt), 24, ndays]);
-mwr_2d.v0 = reshape(mwr.v0, [length(mwr.alt), 24, ndays]);
+mwr_2d.u = reshape(mwr.u0, [length(mwr.alt), 24, ndays]);
+mwr_2d.v = reshape(mwr.v0, [length(mwr.alt), 24, ndays]);
 mwr_2d.counts = reshape(mwr.counts, [length(mwr.alt), 24, ndays]);
 mwr_2d.alt = mwr.alt;
 mwr_2d.lat = mwr.pos(1);

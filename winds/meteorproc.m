@@ -1,4 +1,4 @@
-function results = meteorproc(records, site, varargin)
+function [results, debug] = meteorproc(records, site, varargin)
 %METEORPROC Estimate horizontal meteor winds from SuperDARN-style data.
 %
 %   RESULTS = METEORPROC(RECORDS, SITE) replicates the behaviour of the
@@ -29,8 +29,6 @@ function results = meteorproc(records, site, varargin)
 %       'MaxVelocityErr' Maximum velocity error (default 50 m/s)
 %       'MaxLineWidth'   Maximum line width (default 25 m/s)
 %       'MaxRange'       Highest range gate considered (default 405 km)
-%       'BeamNumber'     Beam used for Vm output (default determined
-%                        automatically from SITE metadata)
 %       'MinBeams'       Minimum number of beams with >=2 echoes (default 5)
 %       'BeamType'       'meridional' or 'zonal' (controls labelling only)
 %       'RequestedHour'  Restrict processing to a specific UT hour (0-23)
@@ -43,7 +41,14 @@ function results = meteorproc(records, site, varargin)
 % 
 %   The returned RESULTS is a table with one row per processed hour:
 %       year, month, day, hour, num_avgs, frang, rsep, vx, vy, lat, lon,
-%       vm, vm_lat, vm_lon, sdev_vx, sdev_vy
+%       sdev_vx, sdev_vy
+%
+%   When requested, a second output DEBUG is a struct containing per-hour
+%   raw vectors used in the fit (azimuth, vlos, sdev):
+%       DEBUG.hour   - vector of hours that were fit
+%       DEBUG.azimuth{hi} - beam azimuths (rad) used for hour DEBUG.hour(hi)
+%       DEBUG.vlos{hi}    - corresponding LOS velocities (m/s)
+%       DEBUG.sdev{hi}    - LOS standard deviations (m/s)
 %
 %   NOTE:
 %   -----
@@ -77,7 +82,6 @@ parser.addParameter('MinSN', 3.0, @(x) isscalar(x) && x > 0);
 parser.addParameter('MaxVelocityErr', 50.0, @(x) isscalar(x) && x > 0);
 parser.addParameter('MaxLineWidth', 25.0, @(x) isscalar(x) && x > 0);
 parser.addParameter('MaxRange', 405, @(x) isscalar(x) && x > 0);
-parser.addParameter('BeamNumber', [], @(x) isempty(x) || (isscalar(x) && x >= 0));
 parser.addParameter('MinBeams', 5, @(x) isscalar(x) && x >= 1);
 parser.addParameter('BeamType', 'meridional', @(s) ischar(s) || isstring(s));
 parser.addParameter('RequestedHour', [], @(x) isempty(x) || (isscalar(x) && x >= 0 && x <= 23));
@@ -101,7 +105,6 @@ met = cell(24, 1);
 frang = [];
 rsep = [];
 rxrise = [];
-vmBeam = opt.BeamNumber;
 timeVec = [records.time];
 dt = datetime(timeVec, 'ConvertFrom', 'posixtime', 'TimeZone', 'UTC');
 dv_all = datevec(dt);
@@ -120,16 +123,6 @@ for idx = 1:numel(records)
         rxrise = rec.rxrise;
         if rxrise == 0
             rxrise = site.recrise;
-        end
-        if isempty(vmBeam)
-            if site.geolat > 0
-                bstp = site.boresite / site.bmsep;
-                vmBeam = round(site.maxbeam / 2.0 - 0.5 - bstp);
-            else
-                bstp = (180.0 - site.boresite) / site.bmsep;
-                vmBeam = round(site.maxbeam / 2.0 - 0.5 + bstp);
-            end
-            vmBeam = max(0, min(site.maxbeam - 1, vmBeam));
         end
     end
 
@@ -168,6 +161,9 @@ for idx = 1:numel(records)
             continue;
         end
         echo = rec.data(jj);
+        if isfield(echo, 'gflg') && ~isempty(echo.gflg) && echo.gflg == 1
+            continue; % drop ground scatter echoes
+        end
         if abs(echo.v) > opt.MaxVelocity
             continue;
         end
@@ -206,26 +202,26 @@ if verboseFits
     fprintf('# Verr(max)=%.2f\n# num_beams(min)=%d\n', ...
         opt.MaxVelocityErr, opt.MinBeams);
     fprintf('# w_l(max)=%.2f\n', opt.MaxLineWidth);
-    if bmType == "meridional"
-        fprintf('# beam_num=%d\n# wind=meridional\n', vmBeam);
-    else
-        fprintf('# beam_num=%d\n# wind=zonal\n', vmBeam);
-    end
     srcStr = strtrim(string(opt.SourceName));
     if strlength(srcStr) > 0
         fprintf('# source=%s\n', srcStr);
     else
         fprintf('# source=unknown\n');
     end
-    fprintf('# year month day hour num_avgs frang rsep Vx Vy lat long Vm Vm_lat Vm_long sdev_Vx sdev_Vy\n');
+    fprintf('# year month day hour num_avgs Vx(v) Vy(u)\n');
 end
 
-rows = cell(0, 15);
+rows = cell(0, 13);
+hour_log = [];
+az_log = {};
+vlos_log = {};
+sdev_log = {};
 
 hrRange = 0:23;
 if ~isempty(opt.RequestedHour)
     hrRange = opt.RequestedHour;
 end
+printedHeader = false;
 
 for hr = hrRange
     hourIdx = hr + 1;
@@ -330,13 +326,6 @@ for hr = hrRange
     sdvx = sqrt(max(cvm(1, 1), 0));
     sdvy = sqrt(max(cvm(2, 2), 0));
 
-    if vmBeam + 1 > numel(vlos)
-        vmBeamIdx = numel(vlos);
-    else
-        vmBeamIdx = vmBeam + 1;
-    end
-    vm = vlos(vmBeamIdx) / coseps;
-
     frang = entries(1).frang;
     rsep = entries(1).rsep;
     rxrise_val = entries(1).rxrise;
@@ -344,22 +333,35 @@ for hr = hrRange
     if isempty(opt.PositionFunction)
         lat = NaN;
         lon = NaN;
-        vmlat = NaN;
-        vmlon = NaN;
     else
         [~, lat, lon] = opt.PositionFunction(0, 7, 3, site, frang, rsep, rxrise_val, METEOR_HEIGHT);
-        [~, vmlat, vmlon] = opt.PositionFunction(0, vmBeam, 3, site, frang, rsep, rxrise_val, METEOR_HEIGHT);
     end
 
-    fprintf('%4d %02d %02d %02d %d %d %d %.0f %.0f %.1f %.1f %.0f %.1f %.1f %.2f %.2f\n', ...
-        year, month, day, hr, num_avgs, frang, rsep, vx, vy, lat, lon, vm, vmlat, vmlon, sdvx, sdvy);
+    if ~printedHeader && ~verboseFits
+        fprintf('year month day hour num_avgs Vx(v) Vy(u)\n');
+        printedHeader = true;
+    end
+    fprintf('%4d %02d %02d %02d %d %.2f %.2f\n', ...
+        year, month, day, hr, num_avgs, vx, vy);
 
-    rows = [rows; {year, month, day, hr, num_avgs, frang, rsep, vx, vy, lat, lon, vm, vmlat, vmlon, sdvx, sdvy}]; %#ok<AGROW>
+    rows = [rows; {year, month, day, hr, num_avgs, frang, rsep, vx, vy, lat, lon, sdvx, sdvy}]; %#ok<AGROW>
+    hour_log(end+1, 1) = hr; %#ok<AGROW>
+    az_log{end+1, 1} = azimuth; %#ok<AGROW>
+    vlos_log{end+1, 1} = y .* coseps; %#ok<AGROW>
+    sdev_log{end+1, 1} = sig; %#ok<AGROW>
 end
 
 results = cell2table(rows, 'VariableNames', ...
     {'year', 'month', 'day', 'hour', 'num_avgs', 'frang', 'rsep', ...
-     'vx', 'vy', 'lat', 'lon', 'vm', 'vm_lat', 'vm_lon', 'sdev_vx', 'sdev_vy'});
+     'vx', 'vy', 'lat', 'lon', 'sdev_vx', 'sdev_vy'});
+
+if nargout > 1
+    debug = struct();
+    debug.hour = hour_log;
+    debug.azimuth = az_log;
+    debug.vlos = vlos_log;
+    debug.sdev = sdev_log;
+end
 
 end
 
@@ -382,10 +384,9 @@ value = cos(epsAng);
 end
 
 function angle = calcAzi(bmnum, site)
-if isfield(site,'beam_azimuths_rad') && numel(site.beam_azimuths_rad) >= bmnum + 1
-    angle = site.beam_azimuths_rad(bmnum + 1);
-    return;
+if ~isfield(site,'beam_azimuths_rad') || numel(site.beam_azimuths_rad) < bmnum + 1
+    error('meteorproc:MissingAzimuths', ...
+        'Explicit beam azimuths are required; site.beam_azimuths_rad missing or too short.');
 end
-aziDeg = site.bmsep * (bmnum - 7.5) + site.boresite;
-angle = aziDeg * pi / 180.0;
+angle = site.beam_azimuths_rad(bmnum + 1);
 end

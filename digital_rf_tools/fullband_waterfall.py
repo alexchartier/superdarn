@@ -62,8 +62,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--step-seconds",
         type=float,
-        default=1.0,
-        help="Seconds to advance between chunks (default: 1 s; increase to thin the waterfall).",
+        default=None,
+        help="Seconds to advance between chunks (default: match chunk-seconds; increase to thin the waterfall).",
     )
     p.add_argument("--nfft", type=int, default=8192, help="FFT length for Welch PSD (default: 8192).")
     p.add_argument(
@@ -331,7 +331,15 @@ def main() -> None:
     epoch = epoch_to_datetime(props["epoch"])
 
     chunk_samples = int(round(fs * args.chunk_seconds))
-    step_samples = int(round(fs * args.step_seconds))
+    if chunk_samples <= 0:
+        print("chunk-seconds must be positive.")
+        return
+
+    step_seconds = args.step_seconds if args.step_seconds is not None else args.chunk_seconds
+    if step_seconds <= 0:
+        print("step-seconds must be positive.")
+        return
+    step_samples = max(1, int(round(fs * step_seconds)))
     skip_seconds = max(args.skip_seconds, 0.0)
     skip_samples = int(round(fs * skip_seconds))
     if skip_samples > 0:
@@ -364,7 +372,7 @@ def main() -> None:
     print(
         f"Input fs={fs/1e6:.3f} MS/s, center={center_msg}"
         f"\nSpan in bounds ~{total_span_seconds:.1f} s, available data ~{total_seconds_available:.1f} s;"
-        f" chunk={args.chunk_seconds}s, step={args.step_seconds}s, skip={skip_seconds}s, estimated chunks={est_chunks}"
+        f" chunk={args.chunk_seconds}s, step={step_seconds}s, skip={skip_seconds}s, estimated chunks={est_chunks}"
     )
 
     psd_rows: List[np.ndarray] = []

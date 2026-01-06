@@ -78,9 +78,19 @@ if ~isempty(opts.MaxWorkers)
     capRequested = floor(double(opts.MaxWorkers));
 end
 maxWorkersAvailable = 1;
+clusterObj = [];
+clusterType = "processes";
 if hasParallel
-    c = parcluster('local');
-    maxWorkersAvailable = max(1, c.NumWorkers - 4);
+    % Prefer threads to avoid per-worker MATLAB processes.
+    try
+        clusterObj = parcluster('threads');
+        clusterType = "threads";
+        maxWorkersAvailable = max(1, clusterObj.NumWorkers);
+    catch
+        clusterObj = parcluster('local');
+        maxWorkersAvailable = max(1, clusterObj.NumWorkers - 4);
+        clusterType = "processes";
+    end
 end
 if isempty(capRequested)
     capWorkers = min(maxWorkersAvailable, 4); % default cap to keep memory down
@@ -97,11 +107,11 @@ end
 pool = [];
 if useParallel
     pool = gcp('nocreate');
-    if isempty(pool) || pool.NumWorkers ~= capWorkers
+    if isempty(pool) || pool.NumWorkers ~= capWorkers || ~strcmpi(pool.Cluster.Type, clusterType)
         if ~isempty(pool)
             delete(pool);
         end
-        pool = parpool('local', capWorkers);
+        pool = parpool(clusterObj, capWorkers);
     end
 end
 
@@ -130,7 +140,7 @@ fprintf('[meteorproc_ml_batch] SW file : %s\n', expandPath(opts.SWFile));
 fprintf('[meteorproc_ml_batch] Date range: %s to %s (%d days)\n', ...
     datestr(timeVec(1), 'yyyy-mm-dd'), datestr(timeVec(end), 'yyyy-mm-dd'), numel(timeVec));
 if useParallel
-    fprintf('[meteorproc_ml_batch] Parallel pool workers: %d (cap %d, available %d)\n', pool.NumWorkers, capWorkers, maxWorkersAvailable);
+    fprintf('[meteorproc_ml_batch] Parallel pool workers: %d (cap %d, available %d, type %s)\n', pool.NumWorkers, capWorkers, maxWorkersAvailable, clusterType);
 else
     fprintf('[meteorproc_ml_batch] Running serially (parallel toolbox unavailable or disabled).\n');
 end
@@ -167,7 +177,8 @@ for idx = 1:numel(timeVec)
         warning('meteorproc_ml_batch:MissingInput', 'No files matched %s', inPatternPath);
         continue;
     end
-    fprintf('[meteorproc_ml_batch] %s matched %d file(s)\n', datestr(t, 'yyyy-mm-dd'), numel(matches));
+    matches = select_preferred_matches(matches);
+    fprintf('[meteorproc_ml_batch] %s matched %d file(s) after radar preference filtering\n', datestr(t, 'yyyy-mm-dd'), numel(matches));
 
     outPatternPath = expandPath(filename(char(outputPattern), t, [], filesep));
     [outDirTemplate, outNameTemplate, ~] = fileparts(outPatternPath);
@@ -227,7 +238,7 @@ for idx = 1:numel(timeVec)
         if ~exist(outDir, 'dir')
             mkdir(outDir);
         end
-        writeResultsNetCDF(outFile, res.results, res.inFile);
+        writeResultsNetCDF(outFile, res.results, res.inFile, res.site);
         totalFiles = totalFiles + 1;
 
         if makeAnnual
@@ -251,11 +262,27 @@ for idx = 1:numel(timeVec)
                 warning('meteorproc_ml_batch:AnnualFailed', 'Annual aggregation failed for %s (%s)', res.inFile, ME.message);
             end
         end
-    end
+end
 end
 fprintf('[meteorproc_ml_batch] Completed. Files processed: %d\n', totalFiles);
 if ~isempty(supportConst)
     delete(supportConst);
+end
+% Final flush to ensure any remaining years are written
+if makeAnnual
+    try
+        keys = annualMap.keys;
+        for ki = 1:numel(keys)
+            grp = annualMap(keys{ki});
+            root = annualRoot;
+            if strlength(root) == 0
+                root = fileparts(outFile);
+            end
+            flushAnnual(annualMap, grp.year, root);
+        end
+    catch ME
+        warning('meteorproc_ml_batch:FinalAnnualFlush', 'Final annual flush failed (%s)', ME.message);
+    end
 end
 end
 
@@ -274,6 +301,14 @@ catch ME
     result.message = sprintf('Failed %s (%s)', inFile, ME.message);
     return;
 end
+% Keep only rows from the target calendar day to avoid spillover records
+% that sometimes appear at hour 00 of the following day.
+dayMask = results.year == year(t) & results.month == month(t) & results.day == day(t);
+results = results(dayMask, :);
+if isempty(results)
+    result.message = sprintf('No valid winds for %s after day filter.', inFile);
+    return;
+end
 if isempty(results)
     result.message = sprintf('No valid winds for %s.', inFile);
     return;
@@ -288,6 +323,14 @@ catch ME
 end
 results.Peak = map_hour_values(results.hour, peakVals);
 results.FWHM = map_hour_values(results.hour, fwhmVals);
+results.tfreq = map_hour_values(results.hour, freqByHour);
+
+% Drop fields not desired in daily/annual outputs.
+dropVars = intersect(results.Properties.VariableNames, ...
+    {'vm', 'vm_lat', 'vm_lon', 'frang', 'rsep'});
+if ~isempty(dropVars)
+    results = removevars(results, dropVars);
+end
 
 result.success = true;
 result.results = results;
@@ -369,6 +412,59 @@ for i = 1:numel(hours)
 end
 end
 
+function preferred = select_preferred_matches(matches)
+% For each radar/day, prefer the base file (e.g., fir) over qualifiers (fir.a, fir.b, ...).
+prefMap = containers.Map('KeyType', 'char', 'ValueType', 'char');
+rankMap = containers.Map('KeyType', 'char', 'ValueType', 'double');
+for i = 1:numel(matches)
+    filePath = matches{i};
+    [radar, qual] = parse_radar_and_quality(filePath);
+    if strlength(radar) == 0
+        continue;
+    end
+    rnk = quality_rank(qual);
+    key = char(radar);
+    if ~isKey(rankMap, key) || rnk < rankMap(key)
+        rankMap(key) = rnk;
+        prefMap(key) = filePath;
+    end
+end
+radars = prefMap.keys;
+radars = sort(radars);
+preferred = cell(numel(radars), 1);
+for i = 1:numel(radars)
+    preferred{i} = prefMap(radars{i});
+end
+if isempty(preferred)
+    preferred = matches;
+end
+end
+
+function [radar, qual] = parse_radar_and_quality(path)
+[~, base, ~] = fileparts(path);
+m = regexp(base, '(?<radar>[A-Za-z]{3})(?:\.(?<qual>[A-Za-z0-9]+))?$', 'names');
+if isempty(m)
+    radar = "";
+    qual = "";
+    return;
+end
+radar = lower(string(m.radar));
+if isfield(m, 'qual') && ~isempty(m.qual)
+    qual = lower(string(m.qual));
+else
+    qual = "";
+end
+end
+
+function rnk = quality_rank(qual)
+if strlength(qual) == 0
+    rnk = 0;
+    return;
+end
+q = char(qual);
+rnk = 1 + double(lower(q(1)));
+end
+
 function support = load_ml_support(opts)
 support.sw = readtable(expandPath(opts.SWFile));
 support.meteor_angles = load_nc(expandPath(opts.AnglesFile));
@@ -414,6 +510,8 @@ if ~isKey(annualMap, key)
     group.varOrder = {};
     group.sourceFiles = {};
     group.fileCount = 0;
+    group.lat = site.geolat;
+    group.lon = site.geolon;
     annualMap(key) = group;
 end
 group = annualMap(key);
@@ -524,7 +622,7 @@ else
 end
 end
 
-function writeResultsNetCDF(outFile, results, sourceFile)
+function writeResultsNetCDF(outFile, results, sourceFile, site)
 if isempty(results)
     return;
 end
@@ -557,6 +655,23 @@ ncwriteatt(outFile, '/', 'description', 'Hourly meteor winds with ML peak/FWHM')
 ncwriteatt(outFile, '/', 'generated', datestr(now, 'yyyy-mm-ddTHH:MM:SS'));
 if nargin >= 3 && ~isempty(sourceFile)
     ncwriteatt(outFile, '/', 'source', sourceFile);
+end
+latAttr = NaN; lonAttr = NaN;
+if nargin >= 4 && ~isempty(site) && isfield(site, 'geolat') && isfield(site, 'geolon')
+    latAttr = site.geolat;
+    lonAttr = site.geolon;
+end
+if isnan(latAttr) && isfield(results, 'lat') && ~isempty(results.lat)
+    latAttr = results.lat(1);
+end
+if isnan(lonAttr) && isfield(results, 'lon') && ~isempty(results.lon)
+    lonAttr = results.lon(1);
+end
+if ~isnan(latAttr)
+    ncwriteatt(outFile, '/', 'radar_latitude', latAttr);
+end
+if ~isnan(lonAttr)
+    ncwriteatt(outFile, '/', 'radar_longitude', lonAttr);
 end
 end
 
@@ -629,6 +744,9 @@ switch name
     case 'sdev_u'
         attrs.long_name = 'zonal wind error';
         attrs.units = '(m/s)';
+    case 'tfreq'
+        attrs.long_name = 'Transmit frequency (median, per hour)';
+        attrs.units = 'MHz';
 end
 end
 
@@ -650,6 +768,8 @@ switch name
         newName = 'sdev_u';
     case 'sdev_Vy'
         newName = 'sdev_u';
+    case 'tfreq'
+        newName = 'tfreq';
     otherwise
         newName = name;
 end
@@ -657,8 +777,6 @@ end
 
 function values = transform_variable_data(name, values)
 switch name
-    case {'Vy', 'vy'}
-        values = -values;
     otherwise
         % no-op
 end
@@ -702,6 +820,8 @@ netcdf.putAtt(ncid, ncGlobal, 'radar', group.radar);
 netcdf.putAtt(ncid, ncGlobal, 'year', group.year);
 netcdf.putAtt(ncid, ncGlobal, 'days_in_year', group.numDays);
 netcdf.putAtt(ncid, ncGlobal, 'source_file_count', group.fileCount);
+netcdf.putAtt(ncid, ncGlobal, 'radar_latitude', group.lat);
+netcdf.putAtt(ncid, ncGlobal, 'radar_longitude', group.lon);
 if ~isempty(group.sourceFiles)
     netcdf.putAtt(ncid, ncGlobal, 'first_source_file', group.sourceFiles{1});
 end
@@ -846,6 +966,12 @@ catch
     data.tfreq = [];
     data.tfreq_units = '';
 end
+% Optional ground scatter flag
+try
+    data.gflg = int32(ncread(ncfile, 'gflg'));
+catch
+    data.gflg = [];
+end
 data.epoch = (data.mjd - 40587.0) * 86400.0;
 data.timeKey = round(data.epoch * 1000); % milliseconds
 uniqueRange = unique(data.range);
@@ -860,7 +986,28 @@ data.numPoints = numel(data.mjd);
 end
 
 function records = buildMeteorRecords(data, site)
-combo = [data.timeKey(:), data.beam(:)];
+mask = true(data.numPoints, 1);
+if isfield(data, 'gflg') && ~isempty(data.gflg) && numel(data.gflg) == data.numPoints
+    mask = mask & (data.gflg(:) ~= 1); % reject ground scatter
+end
+if ~any(mask)
+    records = struct([]);
+    return;
+end
+timeKey = data.timeKey(mask);
+beamVals = data.beam(mask);
+gateVals = data.gate(mask);
+velVals = data.v(mask);
+snrVals = data.p_l(mask);
+verrVals = data.v_e(mask);
+epochVals = data.epoch(mask);
+if isfield(data, 'gflg') && ~isempty(data.gflg) && numel(data.gflg) == data.numPoints
+    gflgVals = data.gflg(mask);
+else
+    gflgVals = zeros(nnz(mask), 1, 'like', velVals);
+end
+
+combo = [timeKey(:), beamVals(:)];
 [~, ~, grpIdx] = unique(combo, 'rows', 'stable');
 counts = accumarray(grpIdx, 1);
 [~, sortOrder] = sort(grpIdx);
@@ -876,14 +1023,15 @@ for g = 1:numel(counts)
     grpIndices = sortOrder(idxStart:idxStart + len - 1);
     idxStart = idxStart + len;
 
-    ranges = data.gate(grpIndices);
-    vel = data.v(grpIndices);
-    snr = data.p_l(grpIndices);
-    verr = data.v_e(grpIndices);
-    beam = data.beam(grpIndices(1));
+    ranges = gateVals(grpIndices);
+    vel = velVals(grpIndices);
+    snr = snrVals(grpIndices);
+    verr = verrVals(grpIndices);
+    beam = beamVals(grpIndices(1));
+    gflg = gflgVals(grpIndices);
 
     rec = template;
-    rec.time = data.epoch(grpIndices(1));
+    rec.time = epochVals(grpIndices(1));
     rec.bmnum = beam;
     rec.num = len;
     rec.rng = ranges(:);
@@ -891,7 +1039,8 @@ for g = 1:numel(counts)
         'v', num2cell(vel(:)), ...
         'p_l', num2cell(snr(:)), ...
         'v_e', num2cell(verr(:)), ...
-        'w_l', num2cell(zeros(len, 1)));
+        'w_l', num2cell(zeros(len, 1)), ...
+        'gflg', num2cell(gflg(:)));
 
     records(g) = rec;
 end
@@ -928,7 +1077,7 @@ end
 
 site = struct();
 site.code = lower(string(radarCode));
-site.bmsep = double(bmsep);
+site.bmsep = abs(double(bmsep));
 site.boresite = double(boresite);
 site.maxbeam = numel(beamList);
 site.geolat = double(geolat);

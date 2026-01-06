@@ -31,7 +31,6 @@ else
     pres = calc_msis_pressure(Times, ref_alt, lat, lon, sw);
 end
 
-
 Tbl = table; 
 
 Tbl.DOY = DOY(:);

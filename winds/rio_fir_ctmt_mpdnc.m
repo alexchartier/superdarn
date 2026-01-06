@@ -1,17 +1,15 @@
-%% rio_fir_ctmt.m
-% Compare the FIR SuperDARN winds against the RIO 
-% meteor winds, plus the CTMT model
+%% rio_fir_ctmt_MPD.m
+% Compare the FIR SuperDARN winds against the RIO meteor winds fitted from 
+% MPD files, plus the CTMT model
 
 clear
 
 %% Set inputs
-days = datenum(2019, 1, 1):datenum(2019,12,31);
+days = datenum(2020, 1, 1):datenum(2020,12,31);
 hr = 0:23;
-n_days = numel(days);
-n_hr = numel(hr);
 sd_fn_fmt = '~/data/superdarn/fit_nc_3_winds/annual/{yyyy}/{NAME}_{yyyy}.nc';
-wind_fn_fmt = ['~/data/meteor_winds/riogrande/Winds/', '' ...
-    'wind_Rio_GW_w_errors_{yyyymm}.txt'];
+mpd_nc_dir = fullfile(getenv('HOME'), 'data', 'meteor_winds', 'riogrande', 'MPD_2020_nc');
+mpd_nc_glob = fullfile(mpd_nc_dir, '2020*_riogrande_winds.nc');
 
 ctmt_coeff_fn = '~/data/ctmt/coeffs.mat';
 
@@ -20,115 +18,150 @@ mwr_radar = 'rio';
 
 
 %% Load
-yr = year(min(days));
-% sd_fn = string(filename(sd_fn_fmt, min(days), radarcode));
-sd_fn = string(filename(sd_fn_fmt, datenum(2020, 1, 1), radarcode));
-if ~isfile(sd_fn)
-    error('rio_fir_ctmt:MissingAnnual', 'SuperDARN annual file not found: %s', sd_fn);
-end
+yr = year(min(days)); 
+sd_fn = string(filename(sd_fn_fmt, min(days), radarcode));
 sd_nc = load_nc(sd_fn);
 sd.hour = sd_nc.hour(:);
 sd.day_of_year = sd_nc.day_of_year(:);
 u_raw = sd_nc.u;
 v_raw = sd_nc.v;
-Mod_Peak = sd_nc.Peak;
-Mod_FWHM = sd_nc.FWHM;
 if size(u_raw, 1) == numel(sd.day_of_year) && size(u_raw, 2) == numel(sd.hour)
     u_raw = u_raw';
     v_raw = v_raw';
-elseif ~(size(u_raw, 1) == numel(sd.hour) && size(u_raw, 2) == numel(sd.day_of_year))
+elseif size(u_raw, 1) == numel(sd.hour) && size(u_raw, 2) == numel(sd.day_of_year)
+    % already hour x day
+else
     error('rio_fir_ctmt:WindShape', 'Unexpected u/v dimensions %s', mat2str(size(u_raw)));
 end
-if size(Mod_Peak, 1) == numel(sd.day_of_year) && size(Mod_Peak, 2) == numel(sd.hour)
-    Mod_Peak = Mod_Peak';
-    Mod_FWHM = Mod_FWHM';
-elseif ~(size(Mod_Peak, 1) == numel(sd.hour) && size(Mod_Peak, 2) == numel(sd.day_of_year))
-    error('rio_fir_ctmt:PeakShape', 'Unexpected Peak dimensions %s', mat2str(size(Mod_Peak)));
+sd.u = u_raw;
+sd.v = v_raw;
+sd.u_med = movmedian(sd.u, 31, 2, "omitnan");
+sd.v_med = movmedian(sd.v, 31, 2, "omitnan");
+peak_raw = sd_nc.Peak;
+fwhm_raw = sd_nc.FWHM;
+if size(peak_raw, 1) == numel(sd.day_of_year) && size(peak_raw, 2) == numel(sd.hour)
+    peak_raw = peak_raw';
+    fwhm_raw = fwhm_raw';
+elseif size(peak_raw, 1) == numel(sd.hour) && size(peak_raw, 2) == numel(sd.day_of_year)
+    % already hour x day
+else
+    error('rio_fir_ctmt:PeakShape', 'Unexpected Peak dimensions %s', mat2str(size(peak_raw)));
 end
-colMean = nanmean(Mod_Peak, 2);
-for d = 1:size(Mod_Peak, 2)
-    if all(isnan(Mod_Peak(:, d)))
-        Mod_Peak(:, d) = colMean;
-        Mod_FWHM(:, d) = nanmean(Mod_FWHM, 2);
-    end
-end
-Mod_Peak = fillmissing(Mod_Peak, 'linear', 2, 'EndValues', 'nearest');
-Mod_FWHM = fillmissing(Mod_FWHM, 'linear', 2, 'EndValues', 'nearest');
-Mod_Peak = fillmissing(Mod_Peak, 'linear', 1, 'EndValues', 'nearest');
-Mod_FWHM = fillmissing(Mod_FWHM, 'linear', 1, 'EndValues', 'nearest');
-Mod_Peak = fillmissing(Mod_Peak, 'nearest');
-Mod_FWHM = fillmissing(Mod_FWHM, 'nearest');
-sd.Mod_Peak = Mod_Peak;
-sd.Mod_FWHM = Mod_FWHM;
-sd.Vy = u_raw;
-sd.Vx = v_raw;
-sd.Vx_med = movmedian(sd.Vx, 31, 2, "omitnan");
-sd.Vy_med = movmedian(sd.Vy, 31, 2, "omitnan");
+sd.Mod_Peak = peak_raw;
+sd.Mod_FWHM = fwhm_raw;
+sd.Mod_Peak = fillmissing(sd.Mod_Peak, 'linear', 2, 'EndValues', 'nearest');
+sd.Mod_Peak = fillmissing(sd.Mod_Peak, 'linear', 1, 'EndValues', 'nearest');
+sd.Mod_FWHM = fillmissing(sd.Mod_FWHM, 'linear', 2, 'EndValues', 'nearest');
+sd.Mod_FWHM = fillmissing(sd.Mod_FWHM, 'linear', 1, 'EndValues', 'nearest');
+sd.Mod_Peak = fillmissing(sd.Mod_Peak, 'nearest');
+sd.Mod_FWHM = fillmissing(sd.Mod_FWHM, 'nearest');
 try
     sd.pos = [ncreadatt(sd_fn, '/', 'radar_latitude'), ...
         ncreadatt(sd_fn, '/', 'radar_longitude')];
 catch
     sd.pos = [NaN, NaN];
 end
-if any(~isfinite(sd.pos))
-    fallback = fallback_sd_pos(radarcode);
-    missing = ~isfinite(sd.pos);
-    sd.pos(missing) = fallback(missing);
+% Load Rio Grande MPD winds from daily NetCDF files (2020)
+files = dir(mpd_nc_glob);
+if isempty(files)
+    error('rio_fir_ctmt:NoMPDNetCDF', 'No MPD NetCDF files matched %s', mpd_nc_glob);
 end
-if any(~isfinite(sd.pos))
-    error('rio_fir_ctmt:MissingPosition', ...
-        'Radar lat/lon missing in %s; add attributes or extend fallback map.', sd_fn);
-end
-if isempty(sd.hour) || any(~isfinite(sd.hour))
-    sd.hour = ((0:n_hr-1)' + 0.5);
-end
+[~, si] = sort({files.name});
+files = files(si);
 
-for ti = 1:length(days)
-    if ti == 1 
-       mwr = load_rio_wind(filename(wind_fn_fmt, days(ti)));
-       fn = fieldnames(mwr);
-    elseif month(days(ti)) ~= month(days(ti - 1))
-        mwr_t = (filename(wind_fn_fmt, days(ti)));
-        for fi = 1:length(fn)
-            mwr.(fn{fi}) = cat(1, mwr.(fn{fi}), mwr_t.(fn{fi}));
-            mwr.alt = mwr_t.alt;
-            mwr.lat = mwr_t.lat;
-            mwr.lon = mwr_t.lon;
-            mwr.hour = mwr_t.hour;
+first_nc = fullfile(files(1).folder, files(1).name);
+time_units = ncreadatt(first_nc, 'time', 'units');
+time_units = char(time_units);
+tok = textscan(time_units, 'hours since %d-%d-%d %d:%d:%d');
+if any(cellfun(@isempty, tok))
+    error('rio_fir_ctmt:TimeUnits', 'Unexpected time units string: %s', time_units);
+end
+offset_hours = double(tok{4}) + double(tok{5})/60 + double(tok{6})/3600;
+time_raw = double(ncread(first_nc, 'time'));
+hour_grid = time_raw(:)' + offset_hours;
+n_hr = numel(hour_grid);
+mwr.hour = hour_grid(:);
+mwr.alt = ncread(first_nc, 'alt');
+mwr.lat = ncreadatt(first_nc, '/', 'site_latitude_deg');
+mwr.lon = ncreadatt(first_nc, '/', 'site_longitude_deg');
 
-        end
-        
+n_alt = numel(mwr.alt);
+n_days = numel(files);
+mwr.u = nan(n_hr * n_days, n_alt);
+mwr.v = nan(n_hr * n_days, n_alt);
+mwr.Time = nan(n_hr * n_days, 1);
+
+for fi = 1:n_days
+    ncfile = fullfile(files(fi).folder, files(fi).name);
+    time_units = ncreadatt(ncfile, 'time', 'units');
+    time_units = char(time_units);
+    tok = textscan(time_units, 'hours since %d-%d-%d %d:%d:%d');
+    if any(cellfun(@isempty, tok))
+        error('rio_fir_ctmt:TimeUnits', 'Unexpected time units string in %s: %s', files(fi).name, time_units);
     end
+    offset_hours = double(tok{4}) + double(tok{5})/60 + double(tok{6})/3600;
+    time_raw = double(ncread(ncfile, 'time'));
+    hrs_this = time_raw(:)' + offset_hours;
+    if numel(hrs_this) ~= n_hr
+        error('rio_fir_ctmt:HourCount', 'Unexpected hour dimension in %s', files(fi).name);
+    end
+    if any(abs(hrs_this(:) - mwr.hour) > 1e-6)
+        error('rio_fir_ctmt:HourGridChange', 'Hour grid changed in %s', files(fi).name);
+    end
+
+    u_raw = ncread(ncfile, 'u');
+    v_raw = ncread(ncfile, 'v');
+    if size(u_raw, 1) == n_hr
+        u_mat = u_raw;
+        v_mat = v_raw;
+    elseif size(u_raw, 2) == n_hr
+        u_mat = u_raw';
+        v_mat = v_raw';
+    else
+        error('rio_fir_ctmt:MPDWindShape', 'Unexpected u/v dimensions %s in %s', mat2str(size(u_raw)), files(fi).name);
+    end
+
+    base_dn = datenum(double(tok{1}), double(tok{2}), double(tok{3}));
+    time_dn = base_dn + hrs_this(:) / 24;
+
+    idx0 = (fi - 1) * n_hr + 1;
+    idx1 = idx0 + n_hr - 1;
+    mwr.u(idx0:idx1, :) = u_mat;
+    mwr.v(idx0:idx1, :) = v_mat;
+    mwr.Time(idx0:idx1) = time_dn;
 end
 
 ctmt = calc_ctmt_wind(loadstruct(ctmt_coeff_fn), hr, sd.pos(2));
 ctmt.wind_lst = cat(3, ctmt.wind_lst, ctmt.wind_lst(:, :, 1, :, :));
 
-%% MWR height-avg
-if numel(mwr.Time) ~= n_hr * n_days
-    error('rio_fir_ctmt:MWRTimeLength', ...
-        'Expected %d MWR time samples, found %d', n_hr * n_days, numel(mwr.Time));
+%% Prepare Mod Peak/FWHM from SuperDARN annual file
+if mod(numel(mwr.Time), n_hr) ~= 0
+    error('rio_fir_ctmt:TimeGrid', 'MPD time array length (%d) not divisible by %d-hour grid', numel(mwr.Time), n_hr);
 end
-mwr.Time = reshape(mwr.Time, n_hr, n_days);
+mwr_days = numel(mwr.Time) / n_hr;
+mwr.Time = reshape(mwr.Time, n_hr, mwr_days);
 mwr_doy = day(datetime(mwr.Time(:), 'ConvertFrom', 'datenum'), 'dayofyear');
 mwr_doy = reshape(mwr_doy, size(mwr.Time));
 Mod_Peak_mwr = nan(size(mwr.Time));
 Mod_FWHM_mwr = nan(size(mwr.Time));
 for di = 1:size(mwr.Time, 2)
-    doy = min(max(mwr_doy(1, di), 1), size(sd.Mod_Peak, 2));
+    doy = mwr_doy(1, di);
+    doy = min(max(doy, 1), size(sd.Mod_Peak, 2));
     Mod_Peak_mwr(:, di) = interp1(sd.hour, sd.Mod_Peak(:, doy), mwr.hour, 'linear', 'extrap');
     Mod_FWHM_mwr(:, di) = interp1(sd.hour, sd.Mod_FWHM(:, doy), mwr.hour, 'linear', 'extrap');
 end
 Mod_Peak_mwr = fillmissing(Mod_Peak_mwr, 'linear', 2, 'EndValues', 'nearest');
-Mod_FWHM_mwr = fillmissing(Mod_FWHM_mwr, 'linear', 2, 'EndValues', 'nearest');
 Mod_Peak_mwr = fillmissing(Mod_Peak_mwr, 'linear', 1, 'EndValues', 'nearest');
+Mod_FWHM_mwr = fillmissing(Mod_FWHM_mwr, 'linear', 2, 'EndValues', 'nearest');
 Mod_FWHM_mwr = fillmissing(Mod_FWHM_mwr, 'linear', 1, 'EndValues', 'nearest');
 Mod_Peak_mwr = fillmissing(Mod_Peak_mwr, 'nearest');
 Mod_FWHM_mwr = fillmissing(Mod_FWHM_mwr, 'nearest');
-mwr.u_3d = permute(reshape(mwr.u, [n_hr, n_days, length(mwr.alt)]), [3, 1, 2]);
-mwr.v_3d = permute(reshape(mwr.v, [n_hr, n_days, length(mwr.alt)]), [3, 1, 2]);
-mwr.u_modwt = zeros(n_hr, n_days);
-mwr.v_modwt = zeros(n_hr, n_days);
+
+%% MWR height-avg
+mwr.u_3d = permute(reshape(mwr.u, [n_hr, mwr_days, length(mwr.alt)]), [3, 1, 2]);
+mwr.v_3d = permute(reshape(mwr.v, [n_hr, mwr_days, length(mwr.alt)]), [3, 1, 2]);
+mwr.u_modwt = zeros(n_hr, mwr_days);
+mwr.v_modwt = zeros(n_hr, mwr_days);
 for hri = 1:size(mwr.Time, 1)
     for ti = 1:size(mwr.Time, 2)
         modcts = normpdf(mwr.alt, Mod_Peak_mwr(hri, ti), Mod_FWHM_mwr(hri, ti) / 2);
@@ -143,7 +176,7 @@ mwr.u0_30daymed_avg = movmedian(mwr.u_modwt, 31, 2, "omitnan");
 mwr.v0_30daymed_avg = movmedian(mwr.v_modwt, 31, 2, "omitnan");
 
 
-%% Interpolate and height-avg CTMT to the SuperDARN location and boresight
+%% Interpolate and height-avg CTMT to the SuperDARN location
 month_doys = day(datetime(datenum(yr, double(ctmt.months), 15), 'ConvertFrom', 'datenum'), 'dayofyear');
 Mod_Peak_month = nan(length(sd.hour), length(month_doys));
 Mod_FWHM_month = nan(length(sd.hour), length(month_doys));
@@ -158,6 +191,7 @@ Mod_Peak_month = fillmissing(Mod_Peak_month, 'linear', 1, 'EndValues', 'nearest'
 Mod_FWHM_month = fillmissing(Mod_FWHM_month, 'linear', 1, 'EndValues', 'nearest');
 Mod_Peak_month = fillmissing(Mod_Peak_month, 'nearest');
 Mod_FWHM_month = fillmissing(Mod_FWHM_month, 'nearest');
+Mod_FWHM_month = fillmissing(Mod_FWHM_month, 'linear', 2, 'EndValues', 'nearest');
 
 ctmt.u = squeeze(ctmt.wind_lst(1, :, :, :, :, :)); 
 ctmt.v = squeeze(ctmt.wind_lst(2, :, :, :, :, :));
@@ -201,6 +235,7 @@ ctmt_v = cat(2, ctmt_v(:, end), ctmt_v, ctmt_v(:, 1));
 ctmt_vi = interp2(ctmt_time, 1:25, ctmt_v, days, [1:24]');
 
 %% Plot 
+climit  = [-30, 30];
 rgb = [ ...
     94    79   162
     50   136   189
@@ -216,8 +251,8 @@ rgb = [ ...
 
 LTwinds_mwr_u = UT_to_LT(mwr.u0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
 LTwinds_mwr_v = UT_to_LT(mwr.v0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
-LTwinds_sd_u = UT_to_LT(sd.Vy_med, sd.hour', 0:23, sd.pos(2));
-LTwinds_sd_v = UT_to_LT(-sd.Vx_med, sd.hour', 0:23, sd.pos(2));
+LTwinds_sd_u = UT_to_LT(sd.u_med, sd.hour', 0:23, sd.pos(2));
+LTwinds_sd_v = UT_to_LT(sd.v_med, sd.hour', 0:23, sd.pos(2));
 LTwinds_sd_u(abs(LTwinds_sd_u) > 50) = NaN;
 tiledlayout(2, 3, 'TileSpacing', 'compact')
 
@@ -229,7 +264,7 @@ title(sprintf('%s (%1.1f°N, %1.1f°E)', ...
 ylabel(['\bf{Zonal}\rm', newline,'LST (hr)'])
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 xticklabels('')
 
 nexttile
@@ -239,7 +274,7 @@ title(sprintf('%s (%1.1f°N, %1.1f°E)', ...
     upper(radarcode), sd.pos(1),sd.pos(2)))
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 xticklabels('')
 yticklabels('')
 
@@ -249,7 +284,7 @@ colormap(gca, rgb)
 title(sprintf('CTMT @ %s', upper(radarcode)))
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 xticklabels('')
 yticklabels('')
 
@@ -261,7 +296,7 @@ colormap(gca, rgb)
 ylabel(['\bf{Meridional}\rm', newline,'LST (hr)'])
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 xlabel("Day of Year")
 
 
@@ -270,7 +305,7 @@ contourf(LTwinds_sd_v)
 colormap(gca, rgb)
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 yticklabels('')
 xlabel("Day of Year")
 
@@ -280,7 +315,7 @@ contourf(ctmt_vi)
 colormap(gca, rgb)
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 yticklabels('')
 xlabel("Day of Year")
 
@@ -289,82 +324,3 @@ colorbar
 cb = colorbar;
 cb.Layout.Tile = 'east';
 ylabel(cb, 'Wind (m/s)', 'FontSize', 24)
-
-
-%% correlations
-crr = xcorr2(LTwinds_mwr_u, LTwinds_sd_u);
-[ssr, snd] = max(crr(:));
-[ij,ji] = ind2sub(size(crr),snd);
-fprintf('MWR vs SD: %i, %i\n', ij, ji)
-
-
-
-crr = xcorr2(ctmt_u, LTwinds_sd_u);
-[ssr, snd] = max(crr(:));
-[ij,ji] = ind2sub(size(crr),snd);
-fprintf('CTMT vs SD: %i, %i\n', ij, ji)
-
-function pos = fallback_sd_pos(code)
-% Fallback radar coordinates for common SuperDARN sites (lat, lon).
-sd_codes = {'sye','inv','ekb','gbr','tig','sze','kap','szw','unw','cvw', ...
-    'dce','hok','cve','wal','fir','jme','pyk','hkw','fhe','hal','sch', ...
-    'fhw','rkn','ice','kod','mcm','bpk','pgr','icw','sys','adw','sps', ...
-    'ade','hjw','san','hje','ksr','lje','sas','ljw','dcn','han','bks', ...
-    'tst','sto','lyr','zho','cly','ker'};
-sd_coords = [ ...
-    -69.01 39.61
-    68.413 -133.769
-    56.43568 58.57142
-    53.31753 -60.46424
-    -43.40012 147.21627
-    41.83265 111.93369
-    49.3926 -82.32184
-    41.83272 111.93093
-    -46.5133 168.37569
-    43.27101 -120.35856
-    -75.08952 123.35125
-    43.5319 143.6146
-    43.27053 -120.35642
-    37.8573 -75.51019
-    -51.8314 -58.9793
-    46.76656 130.48594
-    63.77258 -20.54476
-    43.5374 143.6073
-    38.85877 -99.38843
-    -75.62 -26.219
-    54.8 -66.8
-    38.85909 -99.39061
-    62.828 -92.113
-    63.77443 -20.54167
-    57.61215 -152.19116
-    -77.83777 166.657
-    -34.6271 138.466
-    53.98 -122.59
-    63.77396 -20.54578
-    -69.0 39.58
-    51.89337 -176.63121
-    -89.995 118.291
-    51.89309 -176.62827
-    42.885 83.709
-    -71.67714 -2.82816
-    42.885 83.709
-    58.69206 -156.65922
-    42.82406 129.42244
-    52.16 -106.53
-    42.8267 129.41775
-    -75.08629 123.3599
-    62.31357 26.60562
-    37.10211 -77.95033
-    53.32 -60.46
-    63.86045 -21.0315
-    78.15338 16.07342
-    -69.37669 76.36646
-    70.487 -68.504
-    -49.35073 70.26652];
-idx = find(strcmpi(code, sd_codes), 1);
-if isempty(idx)
-    pos = [NaN, NaN];
-else
-    pos = sd_coords(idx, :);
-end
-end

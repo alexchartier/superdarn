@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-Create a waterfall plot from full-band DigitalRF data (e.g., 25 MS/s).
+Create a band-limited waterfall plot from DigitalRF data by isolating a chosen RF band.
 
 Example:
-    python3 fullband_waterfall.py \\
+    python3 bandpass_waterfall.py \\
         --dataset-root ~/data/hf_data/itsi_rooftop/2025_06_04_14_19_14 \\
+        --band-low-hz 9.9e6 \\
+        --band-high-hz 10.3e6 \\
         --center-hz 17.5e6 \\
         --chunk-seconds 1.0 \\
         --step-seconds 1.0 \\
-        --nfft 8192 \\
-        --freq-span-hz 200e3
+        --nfft 4096 \\
+        --filter-order 6 \\
+        --transition-hz 50e3
 
 The output is a PNG waterfall saved next to the script by default.
 """
@@ -17,6 +20,7 @@ The output is a PNG waterfall saved next to the script by default.
 from __future__ import annotations
 
 import argparse
+import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -27,7 +31,7 @@ from scipy import signal
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Generate a waterfall from full-band DigitalRF data.")
+    p = argparse.ArgumentParser(description="Generate a band-limited waterfall from DigitalRF data.")
     p.add_argument(
         "--dataset-root",
         type=Path,
@@ -40,6 +44,36 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help="RF center frequency for labeling (Hz). If omitted, uses drf_properties center_frequency_hz if present.",
+    )
+    p.add_argument(
+        "--band-low-hz",
+        type=float,
+        default=9.9e6,
+        help="Lower edge of the band to isolate (Hz). Default: 9.9 MHz.",
+    )
+    p.add_argument(
+        "--band-high-hz",
+        type=float,
+        default=10.3e6,
+        help="Upper edge of the band to isolate (Hz). Default: 10.3 MHz.",
+    )
+    p.add_argument(
+        "--transition-hz",
+        type=float,
+        default=50e3,
+        help="Transition width for the lowpass after mixing to baseband (Hz).",
+    )
+    p.add_argument(
+        "--filter-order",
+        type=int,
+        default=6,
+        help="Butterworth order for the post-mix lowpass filter.",
+    )
+    p.add_argument(
+        "--decimate",
+        type=int,
+        default=None,
+        help="Optional integer decimation after filtering. If omitted, auto-selects the largest safe decimation for the band.",
     )
     p.add_argument(
         "--chunk-seconds",
@@ -62,15 +96,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--step-seconds",
         type=float,
-        default=1.0,
-        help="Seconds to advance between chunks (default: 1 s; increase to thin the waterfall).",
+        default=None,
+        help="Seconds to advance between chunks. Default: match --chunk-seconds (dense). Increase to thin the waterfall.",
     )
-    p.add_argument("--nfft", type=int, default=8192, help="FFT length for Welch PSD (default: 8192).")
+    p.add_argument("--nfft", type=int, default=4096, help="FFT length for Welch PSD (default: 4096).")
     p.add_argument(
-        "--freq-span-hz",
+        "--plot-span-hz",
         type=float,
         default=None,
-        help="Optional two-sided span around center (Hz) to crop (e.g., 200e3 keeps ±100 kHz).",
+        help="Two-sided span around the band center to plot (Hz). Default: band width.",
     )
     p.add_argument(
         "--vmin",
@@ -100,7 +134,7 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         default=None,
-        help="Output PNG path. If omitted, uses fullband_waterfall_<dataset_basename>.png.",
+        help="Output PNG path. If omitted, uses bandpass_waterfall_<dataset>_<band>.png.",
     )
     return p.parse_args()
 
@@ -220,15 +254,26 @@ def analyze_regular_spacing(psd_rows: List[np.ndarray], freqs: np.ndarray, row_s
         print("  time spacing peaks: none detected")
 
 
+def design_lowpass(fs: float, bandwidth_hz: float, transition_hz: float, order: int) -> np.ndarray:
+    cutoff = bandwidth_hz / 2.0 + transition_hz
+    nyquist = fs / 2.0
+    cutoff = min(cutoff, nyquist * 0.95)
+    if cutoff <= 0:
+        raise ValueError("Invalid cutoff for lowpass design.")
+    return signal.butter(order, cutoff, btype="low", fs=fs, output="sos")
+
+
 def make_waterfall(
     psd_rows: List[np.ndarray],
     freqs: np.ndarray,
     row_starts: List[datetime],
     path: Path,
-    center_hz: Optional[float],
-    dataset_root: Path,
+    band_center_hz: float,
+    band_low_hz: float,
+    band_high_hz: float,
     vmin: Optional[float],
     vmax: Optional[float],
+    dataset_root: Path,
 ) -> None:
     try:
         import matplotlib.pyplot as plt  # type: ignore
@@ -243,12 +288,7 @@ def make_waterfall(
         return
 
     data = np.vstack(psd_rows)
-    if center_hz is not None:
-        x_axis = (freqs + center_hz) / 1e6  # MHz
-        x_label = "Frequency (MHz)"
-    else:
-        x_axis = freqs / 1e3  # kHz relative
-        x_label = "Frequency offset (kHz)"
+    x_axis = (freqs + band_center_hz) / 1e6  # MHz absolute
 
     fig, (ax_fft, ax_wf) = plt.subplots(
         2,
@@ -286,6 +326,7 @@ def make_waterfall(
             )
         )
     else:
+        # Default to a 1-second slab if only one row is present.
         y_edges = np.array([y_centers[0], y_centers[0] + 1.0 / (24 * 3600.0)])
 
     im = ax_wf.pcolormesh(
@@ -297,8 +338,10 @@ def make_waterfall(
         vmin=vmin,
         vmax=vmax,
     )
-    ax_fft.set_title(f"Full-band waterfall (Welch PSD) – {dataset_root.name}")
-    ax_wf.set_xlabel(x_label)
+    ax_fft.set_title(
+        f"Bandpass waterfall {band_low_hz/1e6:.3f}-{band_high_hz/1e6:.3f} MHz (Welch PSD) – {dataset_root.name}"
+    )
+    ax_wf.set_xlabel("Frequency (MHz)")
     ax_wf.set_ylabel("UTC start time")
     ax_wf.yaxis_date()
     ax_wf.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
@@ -321,23 +364,58 @@ def main() -> None:
     args = parse_args()
     reader = drf.DigitalRFReader(str(args.dataset_root))
     props = reader.get_properties(args.channel)
-    fs = float(props["samples_per_second"])
+    fs_raw = float(props["samples_per_second"])
     center_hz = args.center_hz if args.center_hz is not None else props.get("center_frequency_hz", None)
-    if center_hz is not None:
-        center_hz = float(center_hz)
+    if center_hz is None:
+        raise ValueError("Center frequency is required (supply --center-hz or set center_frequency_hz in properties).")
+    center_hz = float(center_hz)
+
+    band_low_hz = float(args.band_low_hz)
+    band_high_hz = float(args.band_high_hz)
+    if band_high_hz <= band_low_hz:
+        raise ValueError(f"Band must have high > low (got {band_low_hz} .. {band_high_hz}).")
+    bandwidth_hz = band_high_hz - band_low_hz
+    band_center_hz = (band_low_hz + band_high_hz) / 2.0
+    mix_hz = band_center_hz - center_hz
+    transition_hz = max(float(args.transition_hz), 0.0)
+    plot_span_hz = args.plot_span_hz if args.plot_span_hz is not None else bandwidth_hz
+
+    cutoff_hz = bandwidth_hz / 2.0 + transition_hz
+    nyquist_raw = fs_raw / 2.0
+    if cutoff_hz >= nyquist_raw:
+        raise ValueError(
+            f"Requested band ({bandwidth_hz/1e3:.1f} kHz) plus transition exceeds Nyquist at fs={fs_raw} Hz."
+        )
+
+    guard = 1.2  # keep lowpass well inside Nyquist after decimation
+    auto_decimate = args.decimate is None
+    max_decimate_safe = max(1, int(math.floor(fs_raw / (2.0 * cutoff_hz * guard))))
+    if auto_decimate:
+        decimate = max_decimate_safe
+    else:
+        decimate = max(1, int(args.decimate))
+        if decimate > max_decimate_safe:
+            print(
+                f"Requested decimation {decimate} too high for cutoff {cutoff_hz:.1f} Hz at fs {fs_raw:.1f} Hz; "
+                f"using decimation={max_decimate_safe} instead."
+            )
+            decimate = max_decimate_safe
+    nyquist_after = fs_raw / (2.0 * decimate)
 
     dataset_start_sample, stop_sample = reader.get_bounds(args.channel)
     start_sample = dataset_start_sample
     epoch = epoch_to_datetime(props["epoch"])
 
-    chunk_samples = int(round(fs * args.chunk_seconds))
-    step_samples = int(round(fs * args.step_seconds))
+    step_seconds = args.step_seconds if args.step_seconds is not None else args.chunk_seconds
+
+    chunk_samples = int(round(fs_raw * args.chunk_seconds))
+    step_samples = int(round(fs_raw * step_seconds))
     skip_seconds = max(args.skip_seconds, 0.0)
-    skip_samples = int(round(fs * skip_seconds))
+    skip_samples = int(round(fs_raw * skip_seconds))
     if skip_samples > 0:
         start_sample = start_sample + skip_samples
         if start_sample > stop_sample:
-            available_seconds = max(0.0, (stop_sample - dataset_start_sample + 1) / fs)
+            available_seconds = max(0.0, (stop_sample - dataset_start_sample + 1) / fs_raw)
             print(
                 f"Requested skip of {skip_seconds:.3f} s exceeds available data "
                 f"(available {available_seconds:.3f} s)."
@@ -345,7 +423,7 @@ def main() -> None:
             return
 
     if args.total_seconds is not None and args.total_seconds > 0:
-        requested = int(round(fs * args.total_seconds))
+        requested = int(round(fs_raw * args.total_seconds))
         stop_sample = min(stop_sample, start_sample + requested - 1)
         if stop_sample < start_sample:
             print("Requested total_seconds leaves no samples to process.")
@@ -357,15 +435,20 @@ def main() -> None:
         return
 
     total_available = sum(blocks.values())
-    total_span_seconds = (stop_sample - start_sample + 1) / fs
-    total_seconds_available = total_available / fs
+    total_span_seconds = (stop_sample - start_sample + 1) / fs_raw
+    total_seconds_available = total_available / fs_raw
     est_chunks = max(1, int(total_available // step_samples))
-    center_msg = f"{center_hz/1e6:.3f} MHz" if center_hz else "unknown center"
+    decim_txt = f"decimate={decimate}" + (" (auto)" if auto_decimate else "")
     print(
-        f"Input fs={fs/1e6:.3f} MS/s, center={center_msg}"
+        f"Input fs={fs_raw/1e6:.3f} MS/s, center={center_hz/1e6:.3f} MHz, band={band_low_hz/1e6:.3f}-{band_high_hz/1e6:.3f} MHz "
+        f"(width {bandwidth_hz/1e3:.1f} kHz, mix {mix_hz/1e6:.3f} MHz), {decim_txt}"
         f"\nSpan in bounds ~{total_span_seconds:.1f} s, available data ~{total_seconds_available:.1f} s;"
-        f" chunk={args.chunk_seconds}s, step={args.step_seconds}s, skip={skip_seconds}s, estimated chunks={est_chunks}"
+        f" chunk={args.chunk_seconds}s, step={step_seconds}s, skip={skip_seconds}s, estimated chunks={est_chunks}"
     )
+    if abs(band_low_hz - center_hz) > nyquist_raw or abs(band_high_hz - center_hz) > nyquist_raw:
+        print("Warning: requested band extends beyond the recorded RF passband; results may be empty or aliased.")
+
+    bp_sos = design_lowpass(fs_raw, bandwidth_hz, transition_hz, args.filter_order)
 
     psd_rows: List[np.ndarray] = []
     psd_freqs: Optional[np.ndarray] = None
@@ -392,7 +475,7 @@ def main() -> None:
                 if args.max_chunks is not None and chunk_count >= args.max_chunks:
                     break
                 psd_rows.append(np.full_like(psd_freqs, np.nan, dtype=np.float32))
-                row_starts.append(epoch + timedelta(seconds=gap_cursor / fs))
+                row_starts.append(epoch + timedelta(seconds=gap_cursor / fs_raw))
                 gap_cursor += step_samples
                 chunk_count += 1
 
@@ -409,11 +492,25 @@ def main() -> None:
                 cursor += step_samples
                 continue
 
+            t = np.arange(data.size, dtype=np.float64) / fs_raw
+            if mix_hz != 0.0:
+                data = data * np.exp(-2j * np.pi * mix_hz * t)
+
+            data = signal.sosfiltfilt(bp_sos, data).astype(np.complex64, copy=False)
+            if decimate > 1:
+                data = data[::decimate]
+
+            fs_eff = fs_raw / decimate
+            nperseg = min(args.nfft, data.size)
+            if nperseg < 4:
+                cursor += step_samples
+                continue
+
             f, pxx = signal.welch(
                 data,
-                fs=fs,
-                nperseg=args.nfft,
-                noverlap=args.nfft // 2,
+                fs=fs_eff,
+                nperseg=nperseg,
+                noverlap=nperseg // 2,
                 return_onesided=False,
                 detrend=False,
             )
@@ -421,11 +518,8 @@ def main() -> None:
             pxx = np.fft.fftshift(pxx)
 
             if psd_freqs is None:
-                if args.freq_span_hz is not None:
-                    half = args.freq_span_hz / 2.0
-                    mask = (f >= -half) & (f <= half)
-                else:
-                    mask = np.ones_like(f, dtype=bool)
+                half = plot_span_hz / 2.0
+                mask = (f >= -half) & (f <= half)
                 psd_freqs = f[mask]
                 psd_mask = mask
             else:
@@ -440,7 +534,7 @@ def main() -> None:
             pxx_db = 10.0 * np.log10(pxx[psd_mask] + 1e-12).astype(np.float32)
             pxx_db = fill_center_notch(psd_freqs, pxx_db)
             psd_rows.append(pxx_db)
-            row_starts.append(epoch + timedelta(seconds=cursor / fs))
+            row_starts.append(epoch + timedelta(seconds=cursor / fs_raw))
 
             cursor += step_samples
             chunk_count += 1
@@ -455,7 +549,9 @@ def main() -> None:
         return
 
     if args.output is None:
-        default_name = f"fullband_waterfall_{args.dataset_root.name}.png"
+        default_name = (
+            f"bandpass_waterfall_{args.dataset_root.name}_{band_low_hz/1e6:.3f}-{band_high_hz/1e6:.3f}MHz.png"
+        )
         out_path = Path(default_name)
     else:
         out_path = args.output
@@ -467,10 +563,12 @@ def main() -> None:
         freqs=psd_freqs,
         row_starts=row_starts,
         path=out_path,
-        center_hz=center_hz,
-        dataset_root=args.dataset_root,
+        band_center_hz=band_center_hz,
+        band_low_hz=band_low_hz,
+        band_high_hz=band_high_hz,
         vmin=args.vmin,
         vmax=args.vmax,
+        dataset_root=args.dataset_root,
     )
 
 

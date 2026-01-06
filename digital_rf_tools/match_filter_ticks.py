@@ -22,6 +22,7 @@ from tqdm import tqdm
 DEFAULT_ROOT = Path("/Users/chartat1/data/hf_data/itsi_rooftop/2025_06_04_14_19_14_10mhz_100ksps")
 DEFAULT_CHANNEL = "cha"
 DEFAULT_FS = 100_000.0
+C_KM_PER_S = 299_792.458
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,6 +45,19 @@ def parse_args() -> argparse.Namespace:
         help="Where to save the raw-signal waterfall image.",
     )
     p.add_argument("--waterfall-nfft", type=int, default=2048, help="FFT length for the raw waterfall (Welch PSD).")
+    p.add_argument("--no-range-plot", action="store_true", help="Skip the virtual-range contour plot.")
+    p.add_argument(
+        "--range-plot-file",
+        type=Path,
+        default=Path("virtual_range.png"),
+        help="Where to save the virtual-range contour plot.",
+    )
+    p.add_argument(
+        "--save-range-data",
+        type=Path,
+        default=None,
+        help="Optional .npz file to save range-map data (corr rows, times, fs) for offline analysis.",
+    )
     p.add_argument("--stop-after-chunks", type=int, default=None, help="Limit chunks for a quick smoke test.")
     return p.parse_args()
 
@@ -159,6 +173,42 @@ def make_waterfall(
     return path
 
 
+def make_range_plot(
+    range_rows: List[np.ndarray], block_times: List[datetime], fs: float, path: Path
+) -> Optional[Path]:
+    try:
+        import matplotlib.pyplot as plt  # type: ignore
+        import matplotlib.dates as mdates  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional
+        print(f"Virtual-range plot skipped (matplotlib not available: {exc})")
+        return None
+
+    if not range_rows:
+        print("Virtual-range plot skipped (no data captured).")
+        return None
+
+    data = np.vstack(range_rows).T  # shape: (range_bins, time_bins)
+    y_seconds = np.arange(data.shape[0], dtype=np.float64) / fs
+    virtual_range_km = y_seconds * C_KM_PER_S
+    x_nums = mdates.date2num(block_times)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    cf = ax.pcolormesh(x_nums, virtual_range_km, data, shading="auto", cmap="viridis")
+    ax.set_title("Matched filter output vs. virtual range (sigma-normalized)")
+    ax.set_xlabel("UTC time")
+    ax.set_ylabel("Virtual range (km)")
+    ax.xaxis_date()
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+    fig.colorbar(cf, ax=ax, label="Matched filter score (sigma units)")
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path)
+    plt.close(fig)
+    print(f"Saved virtual-range plot: {path}")
+    return path
+
+
 def main() -> None:
     args = parse_args()
     reader = drf.DigitalRFReader(str(args.dataset_root))
@@ -189,6 +239,9 @@ def main() -> None:
     psd_freqs: Optional[np.ndarray] = None
     psd_mask: Optional[np.ndarray] = None
     psd_row_starts: List[datetime] = []
+    range_rows: List[np.ndarray] = []
+    range_rows_raw: List[np.ndarray] = []
+    range_row_times: List[datetime] = []
 
     for _ in tqdm(range(total_chunks), desc="Scanning"):
         if cursor > stop_sample:
@@ -238,6 +291,35 @@ def main() -> None:
         if args.stop_after_chunks is not None and chunk_count >= args.stop_after_chunks:
             break
 
+    if not args.no_range_plot:
+        block_samples = int(round(fs))
+        total_blocks = max(0, (stop_sample - start_sample + 1 - block_samples) // block_samples + 1)
+        range_cursor = start_sample
+        max_blocks = args.stop_after_chunks
+        for _ in tqdm(range(total_blocks), desc="Range map"):
+            if range_cursor + block_samples > stop_sample + 1:
+                break
+            data = reader.read_vector_1d(range_cursor, block_samples, args.channel)
+            if data.size != block_samples:
+                break
+
+            env = np.abs(data).astype(np.float32)
+            env = env - np.mean(env)
+            if sos is not None:
+                env = signal.sosfiltfilt(sos, env)
+
+            corr = signal.correlate(env, tpl, mode="valid").astype(np.float32)
+            corr = corr - np.median(corr)
+            range_rows_raw.append(corr)
+            range_row_times.append(epoch + timedelta(seconds=range_cursor / fs))
+            range_cursor += block_samples
+            if max_blocks is not None and len(range_rows_raw) >= max_blocks:
+                break
+
+        if range_rows_raw:
+            global_sigma = robust_sigma(np.concatenate(range_rows_raw))
+            range_rows = [row / (global_sigma + 1e-12) for row in range_rows_raw]
+
     hits.sort(key=lambda x: x[0], reverse=True)
     print(f"\nTop {min(len(hits), args.max_hits)} hits (threshold={args.sigma_threshold} * robust sigma):")
     for score, sample in hits[: args.max_hits]:
@@ -249,6 +331,19 @@ def main() -> None:
         sigma_all = robust_sigma(scores_all)
         plot_thresh = args.sigma_threshold * sigma_all
         make_plot(hits, fs, epoch, threshold=plot_thresh, path=args.plot_file, span=span)
+
+    if not args.no_range_plot and range_rows:
+        make_range_plot(range_rows, range_row_times, fs, path=args.range_plot_file)
+        if args.save_range_data:
+            args.save_range_data.parent.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(
+                args.save_range_data,
+                corr_rows=np.stack(range_rows, axis=0),
+                times=np.array([t.timestamp() for t in range_row_times], dtype=np.float64),
+                fs=float(fs),
+                virtual_range_km=(np.arange(range_rows[0].shape[0]) / fs) * C_KM_PER_S,
+            )
+            print(f"Saved range-map data to {args.save_range_data}")
 
     if not args.no_waterfall and psd_rows and psd_freqs is not None:
         make_waterfall(

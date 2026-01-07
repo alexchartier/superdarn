@@ -6,6 +6,7 @@ function meteorproc_ml_batch(inputPattern, startDate, endDate, varargin)
 %   runs METEORPROC on the meteor NetCDF, uses the trained ML model to
 %   compute Gaussian peak height and FWHM, writes a daily NetCDF, and
 %   aggregates annual per-radar outputs with legacy variable naming.
+%   For a full-year rebuild from existing daily files, run aggregate_winds_annual.m.
 %
 %   Name/Value options (platform defaults below):
 %       'OutputPattern'  - Output path pattern (default: platform-specific, supports *)
@@ -15,6 +16,7 @@ function meteorproc_ml_batch(inputPattern, startDate, endDate, varargin)
 %       'MemFile'        - Path to meteor environment model NetCDF (default: platform-specific)
 %       'MLModelFile'    - Path to trained ML model .mat (default: platform-specific)
 %       'SWFile'         - Path to solar wind CSV (default: platform-specific)
+%       'FilterGroundScatter' - Toggle removal of ground scatter (gflg==1) before processing (default: true)
 %       Radar frequency is derived from the input NetCDF tfreq variable
 %       (per-hour median, converted to MHz). No default/override is applied.
 %       Additional args are passed to METEORPROC_FROM_NETCDF.
@@ -63,11 +65,13 @@ parser.addParameter('AnglesFile', defaultAngles, @(s) ischar(s) || isstring(s));
 parser.addParameter('MemFile', defaultMem, @(s) ischar(s) || isstring(s));
 parser.addParameter('MLModelFile', defaultML, @(s) ischar(s) || isstring(s));
 parser.addParameter('SWFile', defaultSW, @(s) ischar(s) || isstring(s));
-parser.addParameter('UseParallel', [], @(x) islogical(x) || isnumeric(x));
-parser.addParameter('MaxWorkers', [], @(x) isempty(x) || (isscalar(x) && isnumeric(x) && x >= 1));
+parser.addParameter('FilterGroundScatter', true, @(x) islogical(x) || isnumeric(x));
+parser.addParameter('UseParallel', false, @(x) islogical(x) || isnumeric(x));
+parser.addParameter('MaxWorkers', 4, @(x) isempty(x) || (isscalar(x) && isnumeric(x) && x >= 1));
 parser.parse(varargin{:});
 opts = parser.Results;
 passArgs = structToNameValue(parser.Unmatched);
+filterGroundScatter = logical(opts.FilterGroundScatter);
 
 outputPattern = string(opts.OutputPattern);
 annualRoot = string(opts.AnnualRoot);
@@ -215,13 +219,13 @@ for idx = 1:numel(timeVec)
         parfor mi = 1:numMatches
             inFile = taskInFiles{mi};
             outFile = taskOutFiles{mi};
-            taskResults{mi} = process_single_file(inFile, outFile, t, constRef.Value, passArgs);
+            taskResults{mi} = process_single_file(inFile, outFile, t, constRef.Value, filterGroundScatter, passArgs);
         end
     else
         for mi = 1:numMatches
             inFile = taskInFiles{mi};
             outFile = taskOutFiles{mi};
-            taskResults{mi} = process_single_file(inFile, outFile, t, support, passArgs);
+            taskResults{mi} = process_single_file(inFile, outFile, t, support, filterGroundScatter, passArgs);
         end
     end
 
@@ -286,7 +290,8 @@ if makeAnnual
 end
 end
 
-function result = process_single_file(inFile, outFile, t, support, passArgs)
+%%
+function result = process_single_file(inFile, outFile, t, support, filterGroundScatter, passArgs)
 result = struct('success', false, 'results', [], 'site', [], 'inFile', inFile, 'outFile', outFile, 't', t, 'message', '');
 if exist(inFile, 'file') ~= 2
     result.message = sprintf('Skipping %s (file not found).', inFile);
@@ -296,7 +301,7 @@ fprintf('Processing %s -> %s\n', inFile, outFile);
 
 [results, site, freqByHour] = deal([]);
 try
-    [results, site, freqByHour] = run_meteorproc_with_site(inFile, passArgs{:});
+    [results, site, freqByHour] = run_meteorproc_with_site(inFile, filterGroundScatter, passArgs{:});
 catch ME
     result.message = sprintf('Failed %s (%s)', inFile, ME.message);
     return;
@@ -309,6 +314,7 @@ if isempty(results)
     result.message = sprintf('No valid winds for %s after day filter.', inFile);
     return;
 end
+results = apply_zonal_sign_fix(results, site);
 if isempty(results)
     result.message = sprintf('No valid winds for %s.', inFile);
     return;
@@ -337,7 +343,8 @@ result.results = results;
 result.site = site;
 end
 
-function [results, site, freqByHour] = run_meteorproc_with_site(ncfile, varargin)
+%%
+function [results, site, freqByHour] = run_meteorproc_with_site(ncfile, filterGroundScatter, varargin)
 % Wrap meteorproc_from_netcdf to also return the site metadata and tfreq-derived frequency.
 parser = inputParser;
 parser.KeepUnmatched = true;
@@ -353,13 +360,14 @@ else
     site = opts.Site;
 end
 
-records = buildMeteorRecords(fileData, site);
+records = buildMeteorRecords(fileData, site, filterGroundScatter);
 meteorArgs = structToNameValue(parser.Unmatched);
 meteorArgs = [meteorArgs, {'SourceName', char(ncfile)}];
 results = meteorproc(records, site, meteorArgs{:});
 freqByHour = derive_freq_by_hour(fileData, ncfile);
 end
 
+%%
 function [peakVals, fwhmVals] = compute_ml_profile(results, site, datenumDay, support, freqByHourMHz)
 % Build a full-day time grid, interpolate MEM, and run the ML model.
 hrs = (0:23).';
@@ -402,6 +410,7 @@ peakVals = peakGrid(:);
 fwhmVals = fwhmGrid(:);
 end
 
+%%
 function vals = map_hour_values(hours, dailyVector)
 vals = nan(numel(hours), 1);
 for i = 1:numel(hours)
@@ -412,6 +421,30 @@ for i = 1:numel(hours)
 end
 end
 
+function results = apply_zonal_sign_fix(results, site)
+% Flip zonal component sign when bmsep is positive (per radar convention).
+if isempty(results) || ~istable(results)
+    return;
+end
+bmsep_raw = NaN;
+if isstruct(site)
+    if isfield(site, 'bmsep_raw')
+        bmsep_raw = site.bmsep_raw;
+    elseif isfield(site, 'bmsep')
+        bmsep_raw = site.bmsep;
+    end
+end
+if isnan(bmsep_raw) || bmsep_raw <= 0
+    return;
+end
+fieldsToFlip = intersect(results.Properties.VariableNames, {'vy', 'u'});
+for fi = 1:numel(fieldsToFlip)
+    fld = fieldsToFlip{fi};
+    results.(fld) = -results.(fld);
+end
+end
+
+%%
 function preferred = select_preferred_matches(matches)
 % For each radar/day, prefer the base file (e.g., fir) over qualifiers (fir.a, fir.b, ...).
 prefMap = containers.Map('KeyType', 'char', 'ValueType', 'char');
@@ -440,6 +473,7 @@ if isempty(preferred)
 end
 end
 
+%%
 function [radar, qual] = parse_radar_and_quality(path)
 [~, base, ~] = fileparts(path);
 m = regexp(base, '(?<radar>[A-Za-z]{3})(?:\.(?<qual>[A-Za-z0-9]+))?$', 'names');
@@ -456,6 +490,7 @@ else
 end
 end
 
+%%
 function rnk = quality_rank(qual)
 if strlength(qual) == 0
     rnk = 0;
@@ -465,6 +500,7 @@ q = char(qual);
 rnk = 1 + double(lower(q(1)));
 end
 
+%%
 function support = load_ml_support(opts)
 support.sw = readtable(expandPath(opts.SWFile));
 support.meteor_angles = load_nc(expandPath(opts.AnglesFile));
@@ -488,6 +524,7 @@ end
 support.ml_source = expandPath(opts.MLModelFile);
 end
 
+%%
 function annualMap = updateAnnual(annualMap, results, site, datenumDay, sourceFile)
 % Aggregate daily results into annual per-radar maps.
 if ~istable(results) || height(results) == 0
@@ -544,6 +581,7 @@ group.sourceFiles{end+1} = sourceFile;
 annualMap(key) = group;
 end
 
+%%
 function flushAnnual(annualMap, yearToFlush, annualRoot)
 keys = annualMap.keys;
 for i = 1:numel(keys)
@@ -567,6 +605,7 @@ for i = 1:numel(keys)
 end
 end
 
+%%
 function path = expandPath(rawPath)
 if isempty(rawPath)
     path = '';
@@ -583,6 +622,7 @@ path = strrep(path, '\', filesep);
 path = strrep(path, '//', '/');
 end
 
+%%
 function args = structToNameValue(s)
 if isempty(fieldnames(s))
     args = {};
@@ -593,6 +633,7 @@ values = struct2cell(s);
 args = reshape([names.'; values.'], 1, []);
 end
 
+%%
 function vec = expandDatenum(startDate, endDate)
 startNum = toDatenum(startDate);
 endNum = toDatenum(endDate);
@@ -606,6 +647,7 @@ end
 vec = startNum:endNum;
 end
 
+%%
 function num = toDatenum(val)
 if isdatetime(val)
     num = datenum(val);
@@ -622,6 +664,7 @@ else
 end
 end
 
+%%
 function writeResultsNetCDF(outFile, results, sourceFile, site)
 if isempty(results)
     return;
@@ -782,6 +825,7 @@ switch name
 end
 end
 
+%%
 function write_group_file(group, dstFile)
 tmpFile = [dstFile, '.tmp'];
 delete_if_exists(tmpFile);
@@ -842,12 +886,14 @@ delete_if_exists(dstFile);
 movefile(tmpFile, dstFile, 'f');
 end
 
+%%
 function delete_if_exists(filename)
 if exist(filename, 'file')
     delete(filename);
 end
 end
 
+%%
 function safeClose(ncid)
 if ~isempty(ncid)
     try
@@ -866,6 +912,7 @@ for v = 1:numel(info.Variables)
 end
 end
 
+%%
 function freqByHour = derive_freq_by_hour(data, ncfile)
 % derive per-hour median transmit frequency in MHz using tfreq variable
 epoch = data.epoch(:);
@@ -941,7 +988,7 @@ function radians = deg2rad(degrees)
 radians = degrees .* (pi / 180);
 end
 
-% ---- Minimal copies from meteorproc_from_netcdf to access site/records ----
+%% ---- Minimal copies from meteorproc_from_netcdf to access site/records ----
 function data = readMeteorNetCDF(ncfile)
 ncfile = char(ncfile);
 try
@@ -985,9 +1032,9 @@ data.gate = int32(round((data.range - data.frang) ./ data.rsep));
 data.numPoints = numel(data.mjd);
 end
 
-function records = buildMeteorRecords(data, site)
+function records = buildMeteorRecords(data, site, filterGroundScatter)
 mask = true(data.numPoints, 1);
-if isfield(data, 'gflg') && ~isempty(data.gflg) && numel(data.gflg) == data.numPoints
+if filterGroundScatter && isfield(data, 'gflg') && ~isempty(data.gflg) && numel(data.gflg) == data.numPoints
     mask = mask & (data.gflg(:) ~= 1); % reject ground scatter
 end
 if ~any(mask)
@@ -1047,6 +1094,7 @@ end
 records = reshape(records, 1, []);
 end
 
+%%
 function site = buildSiteFromAttributes(ncfile, data, radarCode)
 info = ncinfo(ncfile);
 attrs = info.Attributes;
@@ -1077,6 +1125,7 @@ end
 
 site = struct();
 site.code = lower(string(radarCode));
+site.bmsep_raw = double(bmsep);
 site.bmsep = abs(double(bmsep));
 site.boresite = double(boresite);
 site.maxbeam = numel(beamList);

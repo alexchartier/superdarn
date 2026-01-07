@@ -138,6 +138,8 @@ ctmt_v = cat(2, ctmt_v(:, end), ctmt_v, ctmt_v(:, 1));
 ctmt_vi = interp2(ctmt_time, 1:25, ctmt_v, days, [1:24]');
 
 %% Plot 
+
+climit= [-50, 50];
 rgb = [ ...
     94    79   162
     50   136   189
@@ -153,9 +155,8 @@ rgb = [ ...
 
 LTwinds_mwr_u = UT_to_LT(mwr.u0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
 LTwinds_mwr_v = UT_to_LT(mwr.v0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
-LTwinds_sd_u = UT_to_LT(sd.Vy_med, sd.hour', 0:23, sd.pos(2));
-LTwinds_sd_v = UT_to_LT(-sd.Vx_med, sd.hour', 0:23, sd.pos(2));
-LTwinds_sd_u(abs(LTwinds_sd_u) > 50) = NaN;
+LTwinds_sd_u = UT_to_LT(sd.u_med, sd.hour', 0:23, sd.pos(2));
+LTwinds_sd_v = UT_to_LT(sd.v_med, sd.hour', 0:23, sd.pos(2));
 tiledlayout(2, 3, 'TileSpacing', 'compact')
 
 nexttile
@@ -166,7 +167,7 @@ title(sprintf('%s (%1.1f°N, %1.1f°E)', ...
 ylabel(['\bf{Zonal}\rm', newline,'LST (hr)'])
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 xticklabels('')
 
 nexttile
@@ -176,7 +177,7 @@ title(sprintf('%s (%1.1f°N, %1.1f°E)', ...
     upper(sd_code), sd.pos(1),sd.pos(2)))
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 xticklabels('')
 yticklabels('')
 
@@ -186,7 +187,7 @@ colormap(gca, rgb)
 title(sprintf('CTMT @ %s', upper(sd_code)))
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 xticklabels('')
 yticklabels('')
 
@@ -198,7 +199,7 @@ colormap(gca, rgb)
 ylabel(['\bf{Meridional}\rm', newline,'LST (hr)'])
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 xlabel("Day of Year")
 
 
@@ -207,7 +208,7 @@ contourf(LTwinds_sd_v)
 colormap(gca, rgb)
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 yticklabels('')
 xlabel("Day of Year")
 
@@ -217,7 +218,7 @@ contourf(ctmt_vi)
 colormap(gca, rgb)
 grid on
 grid minor
-clim([-50, 50])
+clim(climit)
 yticklabels('')
 xlabel("Day of Year")
 
@@ -279,10 +280,10 @@ Mod_Peak = fillmissing(Mod_Peak, 'nearest');
 Mod_FWHM = fillmissing(Mod_FWHM, 'nearest');
 sd.Mod_Peak = Mod_Peak;
 sd.Mod_FWHM = Mod_FWHM;
-sd.Vy = u_raw;
-sd.Vx = v_raw;
-sd.Vx_med = movmedian(sd.Vx, 31, 2, "omitnan");
-sd.Vy_med = movmedian(sd.Vy, 31, 2, "omitnan");
+sd.u = u_raw;
+sd.v = v_raw;
+sd.v_med = movmedian(sd.v, 31, 2, "omitnan");
+sd.u_med = movmedian(sd.u, 31, 2, "omitnan");
 try
     sd.pos = [ncreadatt(sd_fn, '/', 'radar_latitude'), ...
         ncreadatt(sd_fn, '/', 'radar_longitude')];

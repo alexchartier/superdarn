@@ -133,18 +133,7 @@ ctmt_v = cat(2, ctmt_v(:, end), ctmt_v, ctmt_v(:, 1));
 ctmt_vi = interp2(ctmt_time, 1:25, ctmt_v, days, [1:24]');
 
 %% Plot 
-rgb = [ ...
-    94    79   162
-    50   136   189
-   102   194   165
-   171   221   164
-   230   245   152
-   255   255   191
-   254   224   139
-   253   174    97
-   244   109    67
-   213    62    79
-   158     1    66  ] / 255;
+rgb = rgb();
 
 tidx = ismember(round(mwr.Time * 1E5), round(Times * 1E5));
 LTwinds_mwr_u = UT_to_LT(mwr.u0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
@@ -181,7 +170,6 @@ colorbar
 cb = colorbar;
 cb.Layout.Tile = 'east';
 ylabel(cb, 'Wind (m/s)', 'FontSize', 24)
-
 
 
 

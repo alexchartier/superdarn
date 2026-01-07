@@ -5,7 +5,7 @@
 clear
 
 %% Case selection
-case_name = 'mcm_mcm'; % options: 'fir_rio', 'han_and', 'mcm_mcm'
+case_name = 'han_and'; % options: 'fir_rio', 'han_and', 'mcm_mcm'
 
 sd_fn_fmt = '~/data/superdarn/fit_nc_3_winds/annual/{yyyy}/{NAME}_{yyyy}.nc';
 ctmt_coeff_fn = '~/data/ctmt/coeffs.mat';
@@ -17,18 +17,22 @@ switch lower(case_name)
         mwr_cfg.type = 'mat';
         mwr_cfg.mat_fn_fmt = '~/data/meteor_winds/notused_mat/riogrande_{yyyy}.mat';
         mwr_cfg.site_name = 'rio';
+        climit= [-50, 50];
     case 'han_and'
         yr = 2008;
         sd_code = 'han';
         mwr_cfg.type = 'mat';
         mwr_cfg.mat_fn_fmt = '~/data/meteor_winds/mat/And_{yyyy}.mat';
         mwr_cfg.site_name = 'and';
+        climit= [-70, 70];
     case 'mcm_mcm'
         yr = 2019;
         sd_code = 'mcm';
         mwr_cfg.type = 'mat';
         mwr_cfg.mat_fn_fmt = '~/data/meteor_winds/mat/McMurdo_{yyyy}.mat';
         mwr_cfg.site_name = 'mcm';
+        climit= [-50, 50];
+
     otherwise
         error('sd_mwr_ctmt_multi:UnknownCase', 'Unknown case_name: %s', case_name);
 end
@@ -136,22 +140,13 @@ ctmt_ui = interp2(ctmt_time, 1:25, ctmt_u, days, [1:24]');
 ctmt_v = ctmt.v_i;
 ctmt_v = cat(2, ctmt_v(:, end), ctmt_v, ctmt_v(:, 1));
 ctmt_vi = interp2(ctmt_time, 1:25, ctmt_v, days, [1:24]');
-
+ 
 %% Plot 
 
-climit= [-50, 50];
-rgb = [ ...
-    94    79   162
-    50   136   189
-   102   194   165
-   171   221   164
-   230   245   152
-   255   255   191
-   254   224   139
-   253   174    97
-   244   109    67
-   213    62    79
-   158     1    66  ] / 255;
+rgb = rgb();
+contour_levels = 30;
+line_levels = 11;
+level_list = [-100:10:100];
 
 LTwinds_mwr_u = UT_to_LT(mwr.u0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
 LTwinds_mwr_v = UT_to_LT(mwr.v0_30daymed_avg, mwr.hour', 0:23, mwr.lon);
@@ -159,30 +154,47 @@ LTwinds_sd_u = UT_to_LT(sd.u_med, sd.hour', 0:23, sd.pos(2));
 LTwinds_sd_v = UT_to_LT(sd.v_med, sd.hour', 0:23, sd.pos(2));
 tiledlayout(2, 3, 'TileSpacing', 'compact')
 
+minmax = @(x) [min(x(:), [], 'omitnan'), max(x(:), [], 'omitnan')];
+fprintf('Subplot min/max (m/s):\n');
+fprintf('  MWR zonal:   [%0.1f, %0.1f]\n', minmax(LTwinds_mwr_u));
+fprintf('  SD zonal:    [%0.1f, %0.1f]\n', minmax(LTwinds_sd_u));
+fprintf('  CTMT zonal:  [%0.1f, %0.1f]\n', minmax(ctmt_ui));
+fprintf('  MWR merid.:  [%0.1f, %0.1f]\n', minmax(LTwinds_mwr_v));
+fprintf('  SD merid.:   [%0.1f, %0.1f]\n', minmax(LTwinds_sd_v));
+fprintf('  CTMT merid.: [%0.1f, %0.1f]\n', minmax(ctmt_vi));
+
 nexttile
-contourf(LTwinds_mwr_u)
+contourf(LTwinds_mwr_u, contour_levels, 'LineStyle', 'none')
+hold on
+contour(LTwinds_mwr_u, level_list, 'LineColor', [0.2 0.2 0.2], 'ShowText', 'on')
 colormap(gca, rgb)
-title(sprintf('%s (%1.1f°N, %1.1f°E)', ...
+title(sprintf('%s (MWR, %1.1f°N, %1.1f°E)', ...
     upper(mwr_cfg.site_name), mwr.lat, mwr.lon))
 ylabel(['\bf{Zonal}\rm', newline,'LST (hr)'])
 grid on
 grid minor
 clim(climit)
 xticklabels('')
+hold off
 
 nexttile
-contourf(LTwinds_sd_u)
+contourf(LTwinds_sd_u, contour_levels, 'LineStyle', 'none')
+hold on
+contour(LTwinds_sd_u, level_list, 'LineColor', [0.2 0.2 0.2], 'ShowText', 'on')
 colormap(gca, rgb)
-title(sprintf('%s (%1.1f°N, %1.1f°E)', ...
+title(sprintf('%s (SD, %1.1f°N, %1.1f°E)', ...
     upper(sd_code), sd.pos(1),sd.pos(2)))
 grid on
 grid minor
 clim(climit)
 xticklabels('')
 yticklabels('')
+hold off
 
 nexttile
-contourf(ctmt_ui)
+contourf(ctmt_ui, contour_levels, 'LineStyle', 'none')
+hold on
+contour(ctmt_ui, level_list, 'LineColor', [0.2 0.2 0.2], 'ShowText', 'on')
 colormap(gca, rgb)
 title(sprintf('CTMT @ %s', upper(sd_code)))
 grid on
@@ -190,37 +202,47 @@ grid minor
 clim(climit)
 xticklabels('')
 yticklabels('')
+hold off
 
 
 
 nexttile
-contourf(LTwinds_mwr_v)
+contourf(LTwinds_mwr_v, contour_levels, 'LineStyle', 'none')
+hold on
+contour(LTwinds_mwr_v, level_list, 'LineColor', [0.2 0.2 0.2], 'ShowText', 'on')
 colormap(gca, rgb)
 ylabel(['\bf{Meridional}\rm', newline,'LST (hr)'])
 grid on
 grid minor
 clim(climit)
 xlabel("Day of Year")
+hold off
 
 
 nexttile
-contourf(LTwinds_sd_v)
+contourf(LTwinds_sd_v, contour_levels, 'LineStyle', 'none')
+hold on
+contour(LTwinds_sd_v, level_list, 'LineColor', [0.2 0.2 0.2], 'ShowText', 'on')
 colormap(gca, rgb)
 grid on
 grid minor
 clim(climit)
 yticklabels('')
 xlabel("Day of Year")
+hold off
 
 
 nexttile
-contourf(ctmt_vi)
+contourf(ctmt_vi, contour_levels, 'LineStyle', 'none')
+hold on
+contour(ctmt_vi, level_list, 'LineColor', [0.2 0.2 0.2], 'ShowText', 'on')
 colormap(gca, rgb)
 grid on
 grid minor
 clim(climit)
 yticklabels('')
 xlabel("Day of Year")
+hold off
 
 
 colorbar

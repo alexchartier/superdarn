@@ -115,18 +115,7 @@ ctmt_Vx = cat(2, ctmt_Vx(:, end), ctmt_Vx, ctmt_Vx(:, 1));
 ctmt_Vxi = interp2(ctmt_time, 1:25, ctmt_Vx, days, [1:24]');
 
 %% Plot 
-rgb = [ ...
-    94    79   162
-    50   136   189
-   102   194   165
-   171   221   164
-   230   245   152
-   255   255   191
-   254   224   139
-   253   174    97
-   244   109    67
-   213    62    79
-   158     1    66  ] / 255;
+rgb = rgb();
 
 tidx = ismember(round(mwr.Time * 1E5), round(Times * 1E5));
 LTwinds_mwr = UT_to_LT(mwr.Vx_med_avg, mwr.hour', 0:23, mwr.lon);
@@ -212,7 +201,6 @@ crr = xcorr2(LTwinds_sd, LTwinds_sd);
 [ssr,snd] = max(crr(:));
 [ij,ji] = ind2sub(size(crr),snd);
 fprintf('SD vs SD (autocorr): %i, %i\n', ij, ji)
-
 
 
 

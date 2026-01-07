@@ -98,18 +98,7 @@ LTwinds_sd_u = UT_to_LT(sd.u_med, sd.hour', 0:23, sd.pos(2));
 LTwinds_sd_v = UT_to_LT(sd.v_med, sd.hour', 0:23, sd.pos(2));
 
 % Plot
-rgb = [ ...
-    94    79   162
-    50   136   189
-   102   194   165
-   171   221   164
-   230   245   152
-   255   255   191
-   254   224   139
-   253   174    97
-   244   109    67
-   213    62    79
-   158     1    66  ] / 255;
+rgb = rgb();
 
 figure;
 tiledlayout(2, 2, 'TileSpacing', 'compact')

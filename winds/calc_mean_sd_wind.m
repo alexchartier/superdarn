@@ -46,18 +46,7 @@ for i = 3:length(flist)
 end
 
 %%
-rgb = [ ...
-    94    79   162
-    50   136   189
-    102   194   165
-    171   221   164
-    230   245   152
-    255   255   191
-    254   224   139
-    253   174    97
-    244   109    67
-    213    62    79
-    158     1    66  ] / 255;
+rgb = rgb();
 
 colormap(rgb)
 i = 0;
@@ -105,7 +94,6 @@ set(ax(2), 'Position', pos2, 'FontSize', 20)
 cb = colorbar('Position', [0.85, 0.12, 0.02, 0.8]);
 
 ylabel(cb, 'Mean Meridional Wind (m/s)', 'FontSize', 20)
-
 
 
 

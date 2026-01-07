@@ -45,18 +45,31 @@ def parse_args() -> argparse.Namespace:
         help="Where to save the raw-signal waterfall image.",
     )
     p.add_argument("--waterfall-nfft", type=int, default=2048, help="FFT length for the raw waterfall (Welch PSD).")
-    p.add_argument("--no-range-plot", action="store_true", help="Skip the virtual-range contour plot.")
+    p.add_argument("--no-range-plot", action="store_true", help="Skip the virtual-range heatmap plot.")
     p.add_argument(
         "--range-plot-file",
         type=Path,
         default=Path("virtual_range.png"),
-        help="Where to save the virtual-range contour plot.",
+        help="Where to save the virtual-range heatmap plot.",
     )
     p.add_argument(
         "--save-range-data",
         type=Path,
         default=None,
         help="Optional .npz file to save range-map data (corr rows, times, fs) for offline analysis.",
+    )
+    p.add_argument(
+        "--range-xlim",
+        nargs=2,
+        metavar=("START", "END"),
+        help="X-axis limits for the virtual-range plot (ISO datetime or seconds offset from recording start).",
+    )
+    p.add_argument(
+        "--range-ylim",
+        type=float,
+        nargs=2,
+        metavar=("MIN_KM", "MAX_KM"),
+        help="Y-axis limits for the virtual-range plot in kilometers.",
     )
     p.add_argument("--stop-after-chunks", type=int, default=None, help="Limit chunks for a quick smoke test.")
     return p.parse_args()
@@ -85,6 +98,29 @@ def epoch_to_datetime(epoch_str: str) -> datetime:
     if epoch_str.endswith("Z"):
         epoch_str = epoch_str.replace("Z", "+00:00")
     return datetime.fromisoformat(epoch_str).astimezone(timezone.utc)
+
+
+def parse_plot_time_arg(value: str, reference: datetime) -> datetime:
+    try:
+        offset_s = float(value)
+        return reference + timedelta(seconds=offset_s)
+    except ValueError:
+        pass
+
+    cleaned = value[:-1] + "+00:00" if value.endswith("Z") else value
+    dt = datetime.fromisoformat(cleaned)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def add_channel_suffix(path: Path, channel: str) -> Path:
+    suffix = "".join(path.suffixes)
+    base = path.name[: -len(suffix)] if suffix else path.name
+    if base == channel or base.endswith(f"_{channel}"):
+        return path
+    new_name = f"{base}_{channel}{suffix}"
+    return path.with_name(new_name)
 
 
 def make_plot(
@@ -174,7 +210,12 @@ def make_waterfall(
 
 
 def make_range_plot(
-    range_rows: List[np.ndarray], block_times: List[datetime], fs: float, path: Path
+    range_rows: List[np.ndarray],
+    block_times: List[datetime],
+    fs: float,
+    path: Path,
+    xlim: Optional[Tuple[datetime, datetime]] = None,
+    ylim_km: Optional[Tuple[float, float]] = None,
 ) -> Optional[Path]:
     try:
         import matplotlib.pyplot as plt  # type: ignore
@@ -199,6 +240,10 @@ def make_range_plot(
     ax.set_ylabel("Virtual range (km)")
     ax.xaxis_date()
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+    if xlim is not None:
+        ax.set_xlim([mdates.date2num(xlim[0]), mdates.date2num(xlim[1])])
+    if ylim_km is not None:
+        ax.set_ylim(ylim_km)
     fig.colorbar(cf, ax=ax, label="Matched filter score (sigma units)")
     fig.autofmt_xdate()
     fig.tight_layout()
@@ -222,6 +267,21 @@ def main() -> None:
         epoch + timedelta(seconds=start_sample / fs),
         epoch + timedelta(seconds=stop_sample / fs),
     )
+    range_xlim: Optional[Tuple[datetime, datetime]] = None
+    if args.range_xlim:
+        try:
+            range_xlim = (
+                parse_plot_time_arg(args.range_xlim[0], span[0]),
+                parse_plot_time_arg(args.range_xlim[1], span[0]),
+            )
+        except ValueError as exc:
+            raise SystemExit(f"Failed to parse --range-xlim: {exc}") from exc
+    range_ylim: Optional[Tuple[float, float]] = tuple(args.range_ylim) if args.range_ylim else None
+
+    plot_file = add_channel_suffix(args.plot_file, args.channel)
+    waterfall_file = add_channel_suffix(args.waterfall_file, args.channel)
+    range_plot_file = add_channel_suffix(args.range_plot_file, args.channel)
+    save_range_data = add_channel_suffix(args.save_range_data, args.channel) if args.save_range_data else None
 
     tpl = make_template(fs, args.tone_hz, args.cycles)
     tpl_len = tpl.shape[0]
@@ -330,20 +390,27 @@ def main() -> None:
         scores_all = np.array([h[0] for h in hits], dtype=np.float64)
         sigma_all = robust_sigma(scores_all)
         plot_thresh = args.sigma_threshold * sigma_all
-        make_plot(hits, fs, epoch, threshold=plot_thresh, path=args.plot_file, span=span)
+        make_plot(hits, fs, epoch, threshold=plot_thresh, path=plot_file, span=span)
 
     if not args.no_range_plot and range_rows:
-        make_range_plot(range_rows, range_row_times, fs, path=args.range_plot_file)
-        if args.save_range_data:
-            args.save_range_data.parent.mkdir(parents=True, exist_ok=True)
+        make_range_plot(
+            range_rows,
+            range_row_times,
+            fs,
+            path=range_plot_file,
+            xlim=range_xlim,
+            ylim_km=range_ylim,
+        )
+        if save_range_data:
+            save_range_data.parent.mkdir(parents=True, exist_ok=True)
             np.savez_compressed(
-                args.save_range_data,
+                save_range_data,
                 corr_rows=np.stack(range_rows, axis=0),
                 times=np.array([t.timestamp() for t in range_row_times], dtype=np.float64),
                 fs=float(fs),
                 virtual_range_km=(np.arange(range_rows[0].shape[0]) / fs) * C_KM_PER_S,
             )
-            print(f"Saved range-map data to {args.save_range_data}")
+            print(f"Saved range-map data to {save_range_data}")
 
     if not args.no_waterfall and psd_rows and psd_freqs is not None:
         make_waterfall(
@@ -351,7 +418,7 @@ def main() -> None:
             freqs=psd_freqs,
             row_starts=psd_row_starts,
             chunk_seconds=args.chunk_seconds,
-            path=args.waterfall_file,
+            path=waterfall_file,
             center_hz=center_hz,
         )
 

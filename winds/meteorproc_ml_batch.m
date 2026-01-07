@@ -150,6 +150,7 @@ else
 end
 
 annualMap = containers.Map('KeyType', 'char', 'ValueType', 'any');
+radarYearsSeen = strings(0, 1);
 lastMonth = NaN;
 totalFiles = 0;
 for idx = 1:numel(timeVec)
@@ -244,6 +245,7 @@ for idx = 1:numel(timeVec)
         end
         writeResultsNetCDF(outFile, res.results, res.inFile, res.site);
         totalFiles = totalFiles + 1;
+        radarYearsSeen(end + 1, 1) = string(lower(res.site.code)) + "_" + sprintf('%04d', yearSafe(datetime(res.t, 'ConvertFrom', 'datenum'))); %#ok<AGROW>
 
         if makeAnnual
             try
@@ -265,14 +267,14 @@ for idx = 1:numel(timeVec)
             catch ME
                 warning('meteorproc_ml_batch:AnnualFailed', 'Annual aggregation failed for %s (%s)', res.inFile, ME.message);
             end
-        end
+    end
 end
 end
 fprintf('[meteorproc_ml_batch] Completed. Files processed: %d\n', totalFiles);
 if ~isempty(supportConst)
     delete(supportConst);
 end
-% Final flush to ensure any remaining years are written
+% Final flush to ensure any remaining years are written and rebuild annuals per radar/year.
 if makeAnnual
     try
         keys = annualMap.keys;
@@ -286,6 +288,31 @@ if makeAnnual
         end
     catch ME
         warning('meteorproc_ml_batch:FinalAnnualFlush', 'Final annual flush failed (%s)', ME.message);
+    end
+    try
+        ryUnique = unique(radarYearsSeen);
+        if ~isempty(ryUnique)
+            annualInputPattern = char(opts.OutputPattern);
+            annualInputPattern = regexprep(annualInputPattern, '\\*', '{NAME}*');
+            for ri = 1:numel(ryUnique)
+                parts = split(ryUnique(ri), "_");
+                if numel(parts) ~= 2
+                    continue;
+                end
+                rcode = char(parts(1));
+                yrval = str2double(parts(2));
+                if isnan(yrval)
+                    continue;
+                end
+                try
+                    aggregate_winds_annual(yrval, rcode, annualInputPattern, annualRoot);
+                catch ME
+                    warning('meteorproc_ml_batch:RebuildAnnual', 'Rebuild annual failed for %s_%04d (%s)', rcode, yrval, ME.message);
+                end
+            end
+        end
+    catch ME
+        warning('meteorproc_ml_batch:RebuildAnnual', 'Rebuild annual pass failed (%s)', ME.message);
     end
 end
 end
@@ -421,20 +448,9 @@ for i = 1:numel(hours)
 end
 end
 
-function results = apply_zonal_sign_fix(results, site)
-% Flip zonal component sign when bmsep is positive (per radar convention).
+function results = apply_zonal_sign_fix(results, site) %#ok<INUSD>
+% Unconditionally flip zonal component sign (vy/u) to match desired convention.
 if isempty(results) || ~istable(results)
-    return;
-end
-bmsep_raw = NaN;
-if isstruct(site)
-    if isfield(site, 'bmsep_raw')
-        bmsep_raw = site.bmsep_raw;
-    elseif isfield(site, 'bmsep')
-        bmsep_raw = site.bmsep;
-    end
-end
-if isnan(bmsep_raw) || bmsep_raw <= 0
     return;
 end
 fieldsToFlip = intersect(results.Properties.VariableNames, {'vy', 'u'});

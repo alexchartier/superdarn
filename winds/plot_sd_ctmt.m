@@ -4,8 +4,8 @@
 clear
 
 %% Inputs
-days = datenum(2019, 1, 1):datenum(2019, 12, 31);
-% days = datenum(2020, 1, 1):datenum(2020, 12, 31);
+% days = datenum(2008, 1, 1):datenum(2008, 12, 31);
+days = datenum(2020, 1, 1):datenum(2020, 12, 31);
 hr = 0:23;
 sd_fn_fmt = '~/data/superdarn/fit_nc_3_winds/annual/{yyyy}/{NAME}_{yyyy}.nc';
 ctmt_coeff_fn = '~/data/ctmt/coeffs.mat';
@@ -96,7 +96,6 @@ ctmt_vi = interp2(ctmt_time, 1:25, ctmt_v, days, [1:24]');
 % LST conversion
 LTwinds_sd_u = UT_to_LT(sd.u_med, sd.hour', 0:23, sd.pos(2));
 LTwinds_sd_v = UT_to_LT(sd.v_med, sd.hour', 0:23, sd.pos(2));
-LTwinds_sd_u(abs(LTwinds_sd_u) > 50) = NaN;
 
 % Plot
 rgb = [ ...

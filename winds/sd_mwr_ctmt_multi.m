@@ -5,7 +5,7 @@
 clear
 
 %% Case selection
-case_name = 'han_and'; % options: 'fir_rio', 'han_and', 'mcm_mcm'
+case_name = 'mcm_mcm'; % options: 'fir_rio', 'han_and', 'mcm_mcm'
 
 sd_fn_fmt = '~/data/superdarn/fit_nc_3_winds/annual/{yyyy}/{NAME}_{yyyy}.nc';
 ctmt_coeff_fn = '~/data/ctmt/coeffs.mat';

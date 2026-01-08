@@ -90,7 +90,7 @@ annualMap = containers.Map('KeyType', 'char', 'ValueType', 'any');
 filesSeen = 0;
 
 for rk = 1:numel(radarList)
-    rc = radarList(rk);
+    rc = char(radarList(rk));
     for t = timeVec
         patternPath = expandPath(filename(inputPattern, t, rc));
         matches = {};

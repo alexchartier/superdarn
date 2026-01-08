@@ -94,67 +94,59 @@ fprintf('[aggregate_winds_annual] Starting aggregation for %d radars, %d days\n'
 for rk = 1:numel(radarList)
     rc = char(radarList(rk));
     fprintf('[aggregate_winds_annual] Radar %s...\n', rc);
-    for t = timeVec
-        patternPath = expandPath(filename(inputPattern, t, rc));
-        baseDir = fileparts(patternPath);
-        if exist(baseDir, 'dir') ~= 7
-            if ~warnedMissingDir
-                warning('aggregate_winds_annual:MissingDailyDir', ...
-                    'Daily directory not found: %s (skipping; set inputPattern if needed)', baseDir);
-                warnedMissingDir = true;
-            end
+    basePattern = expandPath(filename(inputPattern, datenum(yr, 1, 1), rc));
+    yearDir = fileparts(fileparts(basePattern)); % /.../<yyyy>/
+    if exist(yearDir, 'dir') ~= 7
+        warning('aggregate_winds_annual:MissingDailyDir', ...
+            'Daily directory not found: %s (skipping radar %s; set inputPattern if needed)', yearDir, rc);
+        continue;
+    end
+    listing = dir(fullfile(yearDir, '**', sprintf('*%s.winds.nc', rc)));
+    if isempty(listing)
+        for mm = 1:12
+            listing = [listing; dir(fullfile(yearDir, sprintf('%02d', mm), sprintf('*%s.winds.nc', rc)))]; %#ok<AGROW>
+        end
+    end
+    if isempty(listing)
+        warning('aggregate_winds_annual:NoFilesForRadar', 'No daily files found for %s in %s', rc, yearDir);
+        continue;
+    end
+    for li = 1:numel(listing)
+        fn = fullfile(listing(li).folder, listing(li).name);
+        fprintf('  [%s] %s\n', rc, fn);
+        tok = regexp(listing(li).name, '(\\d{4})(\\d{2})(\\d{2})', 'tokens', 'once');
+        if isempty(tok)
             continue;
         end
-        matches = {};
-        if contains(patternPath, '*')
-            listing = dir(patternPath);
-            for li = 1:numel(listing)
-                if listing(li).isdir
-                    continue;
-                end
-                matches{end+1} = fullfile(listing(li).folder, listing(li).name); %#ok<AGROW>
-            end
-        else
-            if exist(patternPath, 'file') == 2
-                matches = {patternPath};
-            end
-        end
-        if isempty(matches)
+        dayNum = datenum(str2double(tok{1}), str2double(tok{2}), str2double(tok{3}));
+        try
+            data = load_nc(fn);
+        catch ME
+            warning('aggregate_winds_annual:LoadFail', 'Failed to load %s (%s)', fn, ME.message);
             continue;
         end
-        matches = select_preferred_matches(matches);
-        for mi = 1:numel(matches)
-            fn = matches{mi};
-            fprintf('  [%s] %s\n', rc, fn);
-            try
-                data = load_nc(fn);
-            catch ME
-                warning('aggregate_winds_annual:LoadFail', 'Failed to load %s (%s)', fn, ME.message);
-                continue;
-            end
-            hours = data.hour(:);
-            if isempty(hours)
-                continue;
-            end
-            results = table;
-            results.year = repmat(yearSafe(datetime(t, 'ConvertFrom', 'datenum')), numel(hours), 1);
-            results.month = repmat(month(datetime(t, 'ConvertFrom', 'datenum')), numel(hours), 1);
-            results.day = repmat(day(datetime(t, 'ConvertFrom', 'datenum')), numel(hours), 1);
-            results.hour = hours;
-            flds = {'num_avgs','frang','rsep','u','v','sdev_u','sdev_v','Peak','FWHM','tfreq','lat','lon','vx','vy','sdev_vx','sdev_vy'};
-            for i = 1:numel(flds)
-                f = flds{i};
-                if isfield(data, f)
-                    results.(f) = data.(f)(:);
-                end
-            end
-            site = struct();
-            site.code = lower(string(rc));
-            site.geolat = attributeValue(ncinfo(fn).Attributes, 'radar_latitude', NaN);
-            site.geolon = attributeValue(ncinfo(fn).Attributes, 'radar_longitude', NaN);
-            annualMap = updateAnnual(annualMap, results, site, t, fn);
-            filesSeen = filesSeen + 1;
+        hours = data.hour(:);
+        if isempty(hours)
+            continue;
         end
+        results = table;
+        results.year = repmat(yearSafe(datetime(dayNum, 'ConvertFrom', 'datenum')), numel(hours), 1);
+        results.month = repmat(month(datetime(dayNum, 'ConvertFrom', 'datenum')), numel(hours), 1);
+        results.day = repmat(day(datetime(dayNum, 'ConvertFrom', 'datenum')), numel(hours), 1);
+        results.hour = hours;
+        flds = {'num_avgs','frang','rsep','u','v','sdev_u','sdev_v','Peak','FWHM','tfreq','lat','lon','vx','vy','sdev_vx','sdev_vy'};
+        for i = 1:numel(flds)
+            f = flds{i};
+            if isfield(data, f)
+                results.(f) = data.(f)(:);
+            end
+        end
+        site = struct();
+        site.code = lower(string(rc));
+        site.geolat = attributeValue(ncinfo(fn).Attributes, 'radar_latitude', NaN);
+        site.geolon = attributeValue(ncinfo(fn).Attributes, 'radar_longitude', NaN);
+        annualMap = updateAnnual(annualMap, results, site, dayNum, fn);
+        filesSeen = filesSeen + 1;
     end
 end
 

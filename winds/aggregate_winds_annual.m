@@ -89,9 +89,11 @@ timeVec = datenum(yr, 1, 1):datenum(yr, 12, 31);
 annualMap = containers.Map('KeyType', 'char', 'ValueType', 'any');
 filesSeen = 0;
 warnedMissingDir = false;
+fprintf('[aggregate_winds_annual] Starting aggregation for %d radars, %d days\n', numel(radarList), numel(timeVec));
 
 for rk = 1:numel(radarList)
     rc = char(radarList(rk));
+    fprintf('[aggregate_winds_annual] Radar %s...\n', rc);
     for t = timeVec
         patternPath = expandPath(filename(inputPattern, t, rc));
         baseDir = fileparts(patternPath);
@@ -123,6 +125,7 @@ for rk = 1:numel(radarList)
         matches = select_preferred_matches(matches);
         for mi = 1:numel(matches)
             fn = matches{mi};
+            fprintf('  [%s] %s\n', rc, fn);
             try
                 data = load_nc(fn);
             catch ME

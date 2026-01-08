@@ -47,22 +47,26 @@ end
 
 radarList = string(radarCode);
 if strlength(radarCode) == 0
-    % Discover all radars by scanning daily patterns across the year.
+    % Discover all radars by scanning daily directories across the year.
     radarList = strings(0, 1);
-    for t = datenum(yr, 1, 1):datenum(yr, 12, 31)
-        patternPath = expandPath(filename(inputPattern, t, '*'));
-        % dir with ** requires separators; fallback to two-step glob
-        listing = dir(patternPath);
-        if isempty(listing) && contains(patternPath, '**')
-            % Replace ** with */* to approximate recursive search
-            patternPath2 = strrep(patternPath, '**', fullfile('*', '*'));
-            listing = dir(patternPath2);
+    dayVec = datenum(yr, 1, 1):datenum(yr, 12, 31);
+    folders = strings(numel(dayVec), 1);
+    for ti = 1:numel(dayVec)
+        samplePath = expandPath(filename(inputPattern, dayVec(ti), 'tmp'));
+        folders(ti) = string(fileparts(samplePath)); %#ok<AGROW>
+    end
+    folders = unique(folders);
+    for fi = 1:numel(folders)
+        folder = char(folders(fi));
+        if exist(folder, 'dir') ~= 7
+            continue;
         end
+        listing = dir(fullfile(folder, '*.winds.nc'));
         for li = 1:numel(listing)
             if listing(li).isdir
                 continue;
             end
-            tok = regexp(listing(li).name, '\\d{8}\\.([A-Za-z]{3})\\.winds', 'tokens', 'once');
+            tok = regexp(listing(li).name, '\d{8}\.([A-Za-z]{3})\.winds', 'tokens', 'once');
             if ~isempty(tok)
                 radarList(end+1, 1) = lower(string(tok{1})); %#ok<AGROW>
             end

@@ -111,6 +111,7 @@ for rk = 1:numel(radarList)
         warning('aggregate_winds_annual:NoFilesForRadar', 'No daily files found for %s in %s', rc, yearDir);
         continue;
     end
+    radarFiles = 0;
     for li = 1:numel(listing)
         fn = fullfile(listing(li).folder, listing(li).name);
         fprintf('  [%s] %s\n', rc, fn);
@@ -147,12 +148,15 @@ for rk = 1:numel(radarList)
         site.geolon = attributeValue(ncinfo(fn).Attributes, 'radar_longitude', NaN);
         annualMap = updateAnnual(annualMap, results, site, dayNum, fn);
         filesSeen = filesSeen + 1;
+        radarFiles = radarFiles + 1;
     end
+    fprintf('  [%s] files processed: %d\n', rc, radarFiles);
 end
 
-if filesSeen == 0
+if filesSeen == 0 || isempty(annualMap.keys)
     fprintf('[aggregate_winds_annual] No daily files found; nothing to write.\n');
 else
+    fprintf('[aggregate_winds_annual] Total files processed: %d\n', filesSeen);
     flushAnnual(annualMap, yr, annualRoot);
 end
 end

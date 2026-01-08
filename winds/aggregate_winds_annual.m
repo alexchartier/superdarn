@@ -49,9 +49,7 @@ radarList = string(radarCode);
 if strlength(radarCode) == 0
     % Discover all radars present under the input directory for this year.
     samplePath = expandPath(filename(inputPattern, datenum(yr, 1, 1), 'tmp'));
-    baseDir = fileparts(samplePath);
-    baseDir = strrep(baseDir, 'tmp', '');
-    yearDir = fileparts(baseDir);
+    yearDir = fileparts(fileparts(samplePath)); % strip /mm/filename
     listing = dir(fullfile(yearDir, '**', '*.winds.nc'));  % recursive search
     if isempty(listing)
         % Fallback: explicit month subdirs in case '**' is unsupported

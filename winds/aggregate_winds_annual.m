@@ -52,7 +52,13 @@ if strlength(radarCode) == 0
     baseDir = fileparts(samplePath);
     baseDir = strrep(baseDir, 'tmp', '');
     yearDir = fileparts(baseDir);
-    listing = dir(fullfile(yearDir, '**', sprintf('%04d*.winds.nc', yr)));
+    listing = dir(fullfile(yearDir, '**', '*.winds.nc'));  % recursive search
+    if isempty(listing)
+        % Fallback: explicit month subdirs in case '**' is unsupported
+        for mm = 1:12
+            listing = [listing; dir(fullfile(yearDir, sprintf('%02d', mm), '*.winds.nc'))]; %#ok<AGROW>
+        end
+    end
     radarList = strings(0, 1);
     for li = 1:numel(listing)
         tok = regexp(listing(li).name, '\\d{8}\\.([A-Za-z]{3})\\.winds', 'tokens', 'once');

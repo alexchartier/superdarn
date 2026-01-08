@@ -115,7 +115,7 @@ for rk = 1:numel(radarList)
     for li = 1:numel(listing)
         fn = fullfile(listing(li).folder, listing(li).name);
         fprintf('  [%s] %s\n', rc, fn);
-        tok = regexp(listing(li).name, '(\\d{4})(\\d{2})(\\d{2})', 'tokens', 'once');
+        tok = regexp(listing(li).name, '(\d{4})(\d{2})(\d{2})', 'tokens', 'once');
         if isempty(tok)
             continue;
         end

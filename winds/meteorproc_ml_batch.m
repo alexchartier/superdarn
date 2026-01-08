@@ -274,21 +274,8 @@ fprintf('[meteorproc_ml_batch] Completed. Files processed: %d\n', totalFiles);
 if ~isempty(supportConst)
     delete(supportConst);
 end
-% Final flush to ensure any remaining years are written and rebuild annuals per radar/year.
+% Rebuild annuals per radar/year from files on disk (single pass).
 if makeAnnual
-    try
-        keys = annualMap.keys;
-        for ki = 1:numel(keys)
-            grp = annualMap(keys{ki});
-            root = annualRoot;
-            if strlength(root) == 0
-                root = fileparts(outFile);
-            end
-            flushAnnual(annualMap, grp.year, root);
-        end
-    catch ME
-        warning('meteorproc_ml_batch:FinalAnnualFlush', 'Final annual flush failed (%s)', ME.message);
-    end
     try
         ryUnique = unique(radarYearsSeen);
         if ~isempty(ryUnique)

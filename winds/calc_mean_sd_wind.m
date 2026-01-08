@@ -2,14 +2,7 @@
 clear
 
 %% Set inputs
-sd_fn_fmt = '~/data/superdarn/meteorwindnc/{yyyy}/{mm}/{yyyymmmdd}.{NAME}.nc';
-sd_mat_fn_fmt = '~/data/meteor_winds/sd_mat/{YYYY}_{NAME}.mat';
-
-SD_sites = {'sye', 'inv', 'ekb', 'gbr', 'tig', 'sze', 'kap', 'szw', 'unw', ...
-    'cvw', 'dce', 'hok', 'cve', 'wal', 'fir', 'jme', 'pyk', 'hkw', 'fhe', ...
-    'hal', 'sch', 'fhw', 'rkn', 'ice', 'kod', 'mcm', 'bpk', 'pgr', 'icw', ...
-    'sys', 'adw', 'sps', 'ade', 'hjw', 'san', 'hje', 'ksr', 'lje', 'sas', ...
-    'ljw', 'dcn', 'han', 'bks', 'tst', 'sto', 'lyr', 'zho', 'cly', 'ker'};
+annual_dir_fmt = '~/data/superdarn/fit_nc_3_winds/annual/%04d/';
 
 yr = 2008;
 days = datenum(yr, 1, 1):datenum(yr, 12, 31);
@@ -17,32 +10,66 @@ months = datenum(yr, 1:12, 15);
 m2 = datenum(yr, 1:13, 1);
 hr = 0:23;
 
-%% Load
-for s = 1:length(SD_sites)
-    sd_fn = filename(sd_mat_fn_fmt, min(days), SD_sites{s});
+%% Load annual SuperDARN winds and compute monthly means (meridional)
+annual_dir = expandPath(sprintf(annual_dir_fmt, yr));
+files = dir(fullfile(annual_dir, sprintf('*_%04d.nc', yr)));
+arr = nan(length(months) + 1, numel(files));
+hem = nan(1, numel(files));
+sitelist = cell(1, numel(files));
+col = 0;
+
+for f = 1:numel(files)
+    sd_fn = fullfile(files(f).folder, files(f).name);
+    parts = regexp(files(f).name, '([a-z0-9]+)_\d{4}\.nc', 'tokens', 'once');
+    radar_code = parts{1};
+
     try
-        sd = loadstruct(sd_fn);
-    catch
-        sd = load_sd(sd_fn_fmt, SD_sites{s}, days, hr);
-        if isstruct(sd)
-            savestruct(sd_fn, sd);
-        end
+        hour = double(ncread(sd_fn, 'hour'));
+        day_of_year = double(ncread(sd_fn, 'day_of_year'));
+        v_sd = ncread(sd_fn, 'v'); % expect day_of_year x hour
+        lon = ncreadatt(sd_fn, '/', 'radar_longitude');
+        lat = ncreadatt(sd_fn, '/', 'radar_latitude');
+    catch ME
+        warning('calc_mean_sd_wind:ReadFail', 'Failed to read %s (%s)', sd_fn, ME.message);
+        continue
     end
 
+    hr_len = numel(hour);
+    day_len = numel(day_of_year);
+    if size(v_sd, 1) == day_len && size(v_sd, 2) == hr_len
+        v_hr_day = permute(v_sd, [2, 1]); % to hours x days
+    elseif size(v_sd, 1) == hr_len && size(v_sd, 2) == day_len
+        v_hr_day = v_sd; % already hours x days
+    else
+        warning('calc_mean_sd_wind:DimMismatch', ...
+            'Unexpected v dimensions %s for %s', mat2str(size(v_sd)), sd_fn);
+        continue
+    end
+
+    v_med = movmedian(v_hr_day, 31, 2, 'omitnan');
+
+    % Convert to local solar time
+    LT_v = UT_to_LT(v_med, hour(:)', 0:23, lon);
+
+    % Map mid-month days and average over hours
+    sd_days = datenum(yr, 1, 1) + day_of_year(:)' - 1;
+    tidx = ismember(sd_days, months);
+    if ~any(tidx)
+        fprintf('No mid-month days for %s\n', radar_code);
+        continue
+    end
+    col = col + 1;
+    arr(1:length(months), col) = nanmean(LT_v(:, tidx), 1)';
+    hem(col) = sign(lat);
+    sitelist{col} = radar_code;
 end
 
-%%
-flist = dir(sprintf('~/data/meteor_winds/sd_mat/%i*', yr));
-arr = zeros([length(months)+1, length(flist)-1]);
-hem = ones([1, length(flist) - 2]);
-sitelist = {};
-tidx = ismember(days, months);
-for i = 3:length(flist)
-    sd = loadstruct([flist(i).folder, '/', flist(i).name]);
-    Vx_LT = UT_to_LT(sd.v_med, hr, 0:23, sd.pos(2))';
-    arr(1:12, i-2) = nanmean(Vx_LT(tidx, :), 2);
-    sitelist = [sitelist, sd.radarcode];
-    hem(i-2) = sign(sd.pos(1));
+% Trim unused columns
+arr = arr(:, 1:col);
+hem = hem(1:col);
+sitelist = sitelist(1:col);
+if col == 0
+    error('calc_mean_sd_wind:NoData', 'No annual SuperDARN files found for %d.', yr);
 end
 
 %%
@@ -95,6 +122,18 @@ cb = colorbar('Position', [0.85, 0.12, 0.02, 0.8]);
 
 ylabel(cb, 'Mean Meridional Wind (m/s)', 'FontSize', 20)
 
-
-
-
+function path = expandPath(rawPath)
+if isempty(rawPath)
+    path = '';
+    return;
+end
+if size(rawPath, 1) > 1
+    rawPath = rawPath(1, :);
+end
+path = strtrim(rawPath);
+if startsWith(path, "~")
+    path = fullfile(getenv('HOME'), path(2:end));
+end
+path = strrep(path, '\', filesep);
+path = strrep(path, '//', '/');
+end

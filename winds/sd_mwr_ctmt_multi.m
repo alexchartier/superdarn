@@ -5,7 +5,7 @@
 clear
 
 %% Case selection
-case_name = 'han_and'; % options: 'fir_rio', 'han_and', 'mcm_mcm'
+case_name = 'mcm_mcm'; % options: 'fir_rio', 'han_and', 'mcm_mcm'
 
 sd_fn_fmt = '~/data/superdarn/fit_nc_3_winds/annual/{yyyy}/{NAME}_{yyyy}.nc';
 ctmt_coeff_fn = '~/data/ctmt/coeffs.mat';
@@ -162,6 +162,42 @@ fprintf('  CTMT zonal:  [%0.1f, %0.1f]\n', minmax(ctmt_ui));
 fprintf('  MWR merid.:  [%0.1f, %0.1f]\n', minmax(LTwinds_mwr_v));
 fprintf('  SD merid.:   [%0.1f, %0.1f]\n', minmax(LTwinds_sd_v));
 fprintf('  CTMT merid.: [%0.1f, %0.1f]\n', minmax(ctmt_vi));
+
+% Linear fits (MWR as reference)
+linfit = @(x, y) deal(polyfit(x, y, 1), numel(x));
+mask = @(a, b) isfinite(a) & isfinite(b);
+
+% Zonal: MWR vs SD and CTMT
+idx = mask(LTwinds_mwr_u, LTwinds_sd_u);
+if any(idx(:))
+    [p, npts] = linfit(LTwinds_mwr_u(idx), LTwinds_sd_u(idx));
+    fprintf('Zonal (MWR vs SD): slope=%0.3f, intercept=%0.3f (%d pts)\n', p(1), p(2), npts);
+else
+    fprintf('Zonal (MWR vs SD): no overlapping finite points\n');
+end
+idx = mask(LTwinds_mwr_u, ctmt_ui);
+if any(idx(:))
+    [p, npts] = linfit(LTwinds_mwr_u(idx), ctmt_ui(idx));
+    fprintf('Zonal (MWR vs CTMT): slope=%0.3f, intercept=%0.3f (%d pts)\n', p(1), p(2), npts);
+else
+    fprintf('Zonal (MWR vs CTMT): no overlapping finite points\n');
+end
+
+% Meridional: MWR vs SD and CTMT
+idx = mask(LTwinds_mwr_v, LTwinds_sd_v);
+if any(idx(:))
+    [p, npts] = linfit(LTwinds_mwr_v(idx), LTwinds_sd_v(idx));
+    fprintf('Meridional (MWR vs SD): slope=%0.3f, intercept=%0.3f (%d pts)\n', p(1), p(2), npts);
+else
+    fprintf('Meridional (MWR vs SD): no overlapping finite points\n');
+end
+idx = mask(LTwinds_mwr_v, ctmt_vi);
+if any(idx(:))
+    [p, npts] = linfit(LTwinds_mwr_v(idx), ctmt_vi(idx));
+    fprintf('Meridional (MWR vs CTMT): slope=%0.3f, intercept=%0.3f (%d pts)\n', p(1), p(2), npts);
+else
+    fprintf('Meridional (MWR vs CTMT): no overlapping finite points\n');
+end
 
 nexttile
 contourf(LTwinds_mwr_u, contour_levels, 'LineStyle', 'none')

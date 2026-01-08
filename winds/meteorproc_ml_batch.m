@@ -293,7 +293,9 @@ if makeAnnual
         ryUnique = unique(radarYearsSeen);
         if ~isempty(ryUnique)
             annualInputPattern = char(opts.OutputPattern);
-            annualInputPattern = regexprep(annualInputPattern, '\\*', '{NAME}*');
+            % Ensure radar token includes a separating dot when expanding the wildcard.
+            % E.g., /path/{yyyymmdd}*.winds.nc -> /path/{yyyymmdd}.{NAME}*.winds.nc
+            annualInputPattern = regexprep(annualInputPattern, '\\*', '.{NAME}*');
             for ri = 1:numel(ryUnique)
                 parts = split(ryUnique(ri), "_");
                 if numel(parts) ~= 2

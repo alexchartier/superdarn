@@ -47,27 +47,26 @@ end
 
 radarList = string(radarCode);
 if strlength(radarCode) == 0
-    % Discover all radars present under the input directory for this year.
-    samplePath = expandPath(filename(inputPattern, datenum(yr, 1, 1), 'tmp'));
-    yearDir = fileparts(fileparts(samplePath)); % strip /mm/filename
-    listing = dir(fullfile(yearDir, '**', '*.winds.nc'));  % recursive search
-    if isempty(listing)
-        % Fallback: explicit month subdirs in case '**' is unsupported
-        for mm = 1:12
-            listing = [listing; dir(fullfile(yearDir, sprintf('%02d', mm), '*.winds.nc'))]; %#ok<AGROW>
-        end
-    end
+    % Discover all radars by scanning daily patterns across the year.
     radarList = strings(0, 1);
-    for li = 1:numel(listing)
-        tok = regexp(listing(li).name, '\\d{8}\\.([A-Za-z]{3})\\.winds', 'tokens', 'once');
-        if ~isempty(tok)
-            radarList(end+1, 1) = lower(string(tok{1})); %#ok<AGROW>
+    for t = datenum(yr, 1, 1):datenum(yr, 12, 31)
+        patternPath = expandPath(filename(inputPattern, t, '*'));
+        listing = dir(patternPath);
+        for li = 1:numel(listing)
+            if listing(li).isdir
+                continue;
+            end
+            tok = regexp(listing(li).name, '\\d{8}\\.([A-Za-z]{3})\\.winds', 'tokens', 'once');
+            if ~isempty(tok)
+                radarList(end+1, 1) = lower(string(tok{1})); %#ok<AGROW>
+            end
         end
     end
     radarList = unique(radarList);
     if isempty(radarList)
+        samplePath = expandPath(filename(inputPattern, datenum(yr, 1, 1), '*'));
         warning('aggregate_winds_annual:NoRadarsFound', ...
-            'No daily winds files found for %d under %s.', yr, yearDir);
+            'No daily winds files found for %d using pattern %s.', yr, samplePath);
         return;
     end
 end

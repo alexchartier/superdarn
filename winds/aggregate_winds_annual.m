@@ -62,7 +62,8 @@ if strlength(radarCode) == 0
     end
     radarList = unique(radarList);
     if isempty(radarList)
-        warning('aggregate_winds_annual:NoRadarsFound', 'No daily winds files found for %d.', yr);
+        warning('aggregate_winds_annual:NoRadarsFound', ...
+            'No daily winds files found for %d under %s.', yr, yearDir);
         return;
     end
 end

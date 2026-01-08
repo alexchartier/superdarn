@@ -51,7 +51,13 @@ if strlength(radarCode) == 0
     radarList = strings(0, 1);
     for t = datenum(yr, 1, 1):datenum(yr, 12, 31)
         patternPath = expandPath(filename(inputPattern, t, '*'));
+        % dir with ** requires separators; fallback to two-step glob
         listing = dir(patternPath);
+        if isempty(listing) && contains(patternPath, '**')
+            % Replace ** with */* to approximate recursive search
+            patternPath2 = strrep(patternPath, '**', fullfile('*', '*'));
+            listing = dir(patternPath2);
+        end
         for li = 1:numel(listing)
             if listing(li).isdir
                 continue;

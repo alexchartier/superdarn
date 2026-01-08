@@ -88,11 +88,21 @@ fprintf('[aggregate_winds_annual] Annual root   : %s\n', char(annualRoot));
 timeVec = datenum(yr, 1, 1):datenum(yr, 12, 31);
 annualMap = containers.Map('KeyType', 'char', 'ValueType', 'any');
 filesSeen = 0;
+warnedMissingDir = false;
 
 for rk = 1:numel(radarList)
     rc = char(radarList(rk));
     for t = timeVec
         patternPath = expandPath(filename(inputPattern, t, rc));
+        baseDir = fileparts(patternPath);
+        if exist(baseDir, 'dir') ~= 7
+            if ~warnedMissingDir
+                warning('aggregate_winds_annual:MissingDailyDir', ...
+                    'Daily directory not found: %s (skipping; set inputPattern if needed)', baseDir);
+                warnedMissingDir = true;
+            end
+            continue;
+        end
         matches = {};
         if contains(patternPath, '*')
             listing = dir(patternPath);

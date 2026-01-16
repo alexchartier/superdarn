@@ -116,7 +116,7 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CARRIER_LP_HZ,
         help="Lowpass cutoff for carrier Doppler estimate (Hz).",
     )
-    p.add_argument("--start-seconds", type=float, default=0.0, help="Skip this many seconds from the start.")
+    p.add_argument("--start-seconds", type=float, default=1.0, help="Skip this many seconds from the start.")
     p.add_argument(
         "--seconds",
         type=float,

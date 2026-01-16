@@ -5,7 +5,7 @@ clear
 
 %% Inputs
 % days = datenum(2008, 1, 1):datenum(2008, 12, 31);
-days = datenum(2020, 1, 1):datenum(2020, 12, 31);
+days = datenum(2010, 1, 1):datenum(2010, 12, 31);
 hr = 0:23;
 sd_fn_fmt = '~/data/superdarn/fit_nc_3_winds/annual/{yyyy}/{NAME}_{yyyy}.nc';
 ctmt_coeff_fn = '~/data/ctmt/coeffs.mat';
@@ -104,7 +104,7 @@ figure;
 tiledlayout(2, 2, 'TileSpacing', 'compact')
 
 nexttile
-contourf(LTwinds_sd_u)
+contourf(LTwinds_sd_u, 30)
 colormap(gca, rgb)
 title(sprintf('%s SD (%1.1f\xB0N, %1.1f\xB0E)', upper(radarcode), sd.pos(1), sd.pos(2)))
 ylabel(['\bf{Zonal}\rm', newline,'LST (hr)'])

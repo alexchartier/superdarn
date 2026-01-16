@@ -28,6 +28,7 @@ DEFAULT_CHANNEL_LP_HZ = 10_000.0
 DEFAULT_CHANNEL_TRANSITION_HZ = 3_000.0
 DEFAULT_AUDIO_LP_HZ = 3800.0
 DEFAULT_AUDIO_TRANSITION_HZ = 1500.0
+DEFAULT_AUDIO_HP_HZ = 20.0
 DEFAULT_GAIN = 4000.0  # matches 800*5 in 10Wideband.grc
 
 
@@ -79,6 +80,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_AUDIO_TRANSITION_HZ,
         help="Audio lowpass transition width (Hz).",
     )
+    p.add_argument(
+        "--audio-hp-hz",
+        type=float,
+        default=DEFAULT_AUDIO_HP_HZ,
+        help="Audio highpass cutoff for DC blocking (Hz).",
+    )
     p.add_argument("--gain", type=float, default=DEFAULT_GAIN, help="Linear audio gain before writing.")
     p.add_argument(
         "--mix-sign",
@@ -87,7 +94,7 @@ def parse_args() -> argparse.Namespace:
         default=-1,
         help="Sign for mixing (+1 or -1). Use -1 to match GNU Radio freq_xlating_fir_filter.",
     )
-    p.add_argument("--start-seconds", type=float, default=0.0, help="Skip this many seconds from the start.")
+    p.add_argument("--start-seconds", type=float, default=2.0, help="Skip this many seconds from the start.")
     p.add_argument(
         "--seconds",
         type=float,
@@ -181,6 +188,10 @@ def main() -> None:
         window="hamming",
     )
     audio_zi = np.zeros(len(audio_taps) - 1, dtype=np.float32)
+    audio_hp_sos = None
+    audio_hp_zi = None
+    if args.audio_hp_hz > 0:
+        audio_hp_sos = signal.butter(2, args.audio_hp_hz, btype="highpass", fs=args.audio_rate, output="sos")
 
     output_wav.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(output_wav), "wb") as wf:
@@ -230,6 +241,10 @@ def main() -> None:
             # Resample to audio rate and apply audio lowpass.
             audio = signal.resample_poly(envelope, audio_up, audio_down).astype(np.float32, copy=False)
             audio, audio_zi = signal.lfilter(audio_taps, [1.0], audio, zi=audio_zi)
+            if audio_hp_sos is not None:
+                if audio_hp_zi is None:
+                    audio_hp_zi = signal.sosfilt_zi(audio_hp_sos) * audio[0]
+                audio, audio_hp_zi = signal.sosfilt(audio_hp_sos, audio, zi=audio_hp_zi)
 
             # Scale and write.
             audio *= float(args.gain)

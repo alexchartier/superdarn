@@ -5,7 +5,7 @@
 clear
 
 %% Case selection
-case_name = 'mcm_mcm'; % options: 'fir_rio', 'han_and', 'mcm_mcm'
+case_name = 'fir_sim'; % options: 'fir_sim', 'fir_rio', 'han_and', 'mcm_mcm'
 
 sd_fn_fmt = '~/data/superdarn/fit_nc_3_winds/annual/{yyyy}/{NAME}_{yyyy}.nc';
 ctmt_coeff_fn = '~/data/ctmt/coeffs.mat';
@@ -17,6 +17,13 @@ switch lower(case_name)
         mwr_cfg.type = 'mat';
         mwr_cfg.mat_fn_fmt = '~/data/meteor_winds/notused_mat/riogrande_{yyyy}.mat';
         mwr_cfg.site_name = 'rio';
+        climit= [-50, 50];
+    case 'fir_sim'
+        yr = 2020;
+        sd_code = 'fir';
+        mwr_cfg.type = 'mat';
+        mwr_cfg.mat_fn_fmt = '~/data/meteor_winds/notused_mat/simone_{yyyy}.mat';
+        mwr_cfg.site_name = 'sim';
         climit= [-50, 50];
     case 'han_and'
         yr = 2008;
@@ -80,8 +87,15 @@ for hri = 1:n_hr_mwr
             continue;
         end
         model_cts = normpdf(mwr.alt, Mod_Peak_mwr(hri, di), Mod_FWHM_mwr(hri, di) / 2);
-        mwr.u_modwt(hri, di) = nansum(u_prof .* model_cts) ./ nansum(model_cts);
-        mwr.v_modwt(hri, di) = nansum(v_prof .* model_cts) ./ nansum(model_cts);
+        % Restrict weighting to valid (non-NaN) bins to avoid diluting with unobserved altitudes
+        valid_u = ~isnan(u_prof);
+        valid_v = ~isnan(v_prof);
+        if any(valid_u)
+            mwr.u_modwt(hri, di) = nansum(u_prof(valid_u) .* model_cts(valid_u)) ./ nansum(model_cts(valid_u));
+        end
+        if any(valid_v)
+            mwr.v_modwt(hri, di) = nansum(v_prof(valid_v) .* model_cts(valid_v)) ./ nansum(model_cts(valid_v));
+        end
     end
 end
 
@@ -166,38 +180,51 @@ fprintf('  CTMT merid.: [%0.1f, %0.1f]\n', minmax(ctmt_vi));
 % Linear fits (MWR as reference)
 linfit = @(x, y) deal(polyfit(x, y, 1), numel(x));
 mask = @(a, b) isfinite(a) & isfinite(b);
+pcorr = @(x, y) corr(x(:), y(:), 'Rows', 'complete');
 
-% Zonal: MWR vs SD and CTMT
+% Zonal/Meridional: MWR vs SD and CTMT
+stats = struct();
 idx = mask(LTwinds_mwr_u, LTwinds_sd_u);
 if any(idx(:))
     [p, npts] = linfit(LTwinds_mwr_u(idx), LTwinds_sd_u(idx));
-    fprintf('Zonal (MWR vs SD): slope=%0.3f, intercept=%0.3f (%d pts)\n', p(1), p(2), npts);
+    stats.sd_zonal = struct('slope', p(1), 'intercept', p(2), 'n', npts, ...
+        'corr', pcorr(LTwinds_mwr_u(idx), LTwinds_sd_u(idx)));
 else
-    fprintf('Zonal (MWR vs SD): no overlapping finite points\n');
+    stats.sd_zonal = struct('slope', NaN, 'intercept', NaN, 'n', 0, 'corr', NaN);
 end
 idx = mask(LTwinds_mwr_u, ctmt_ui);
 if any(idx(:))
     [p, npts] = linfit(LTwinds_mwr_u(idx), ctmt_ui(idx));
-    fprintf('Zonal (MWR vs CTMT): slope=%0.3f, intercept=%0.3f (%d pts)\n', p(1), p(2), npts);
+    stats.ctmt_zonal = struct('slope', p(1), 'intercept', p(2), 'n', npts, ...
+        'corr', pcorr(LTwinds_mwr_u(idx), ctmt_ui(idx)));
 else
-    fprintf('Zonal (MWR vs CTMT): no overlapping finite points\n');
+    stats.ctmt_zonal = struct('slope', NaN, 'intercept', NaN, 'n', 0, 'corr', NaN);
 end
-
-% Meridional: MWR vs SD and CTMT
 idx = mask(LTwinds_mwr_v, LTwinds_sd_v);
 if any(idx(:))
     [p, npts] = linfit(LTwinds_mwr_v(idx), LTwinds_sd_v(idx));
-    fprintf('Meridional (MWR vs SD): slope=%0.3f, intercept=%0.3f (%d pts)\n', p(1), p(2), npts);
+    stats.sd_merid = struct('slope', p(1), 'intercept', p(2), 'n', npts, ...
+        'corr', pcorr(LTwinds_mwr_v(idx), LTwinds_sd_v(idx)));
 else
-    fprintf('Meridional (MWR vs SD): no overlapping finite points\n');
+    stats.sd_merid = struct('slope', NaN, 'intercept', NaN, 'n', 0, 'corr', NaN);
 end
 idx = mask(LTwinds_mwr_v, ctmt_vi);
 if any(idx(:))
     [p, npts] = linfit(LTwinds_mwr_v(idx), ctmt_vi(idx));
-    fprintf('Meridional (MWR vs CTMT): slope=%0.3f, intercept=%0.3f (%d pts)\n', p(1), p(2), npts);
+    stats.ctmt_merid = struct('slope', p(1), 'intercept', p(2), 'n', npts, ...
+        'corr', pcorr(LTwinds_mwr_v(idx), ctmt_vi(idx)));
 else
-    fprintf('Meridional (MWR vs CTMT): no overlapping finite points\n');
+    stats.ctmt_merid = struct('slope', NaN, 'intercept', NaN, 'n', 0, 'corr', NaN);
 end
+
+fprintf('Linear stats (MWR reference):\n');
+fprintf('                    SD zonal        SD meridional   CTMT zonal       CTMT meridional\n');
+fprintf('  slope        %10.3f        %10.3f        %10.3f        %10.3f\n', ...
+    stats.sd_zonal.slope, stats.sd_merid.slope, stats.ctmt_zonal.slope, stats.ctmt_merid.slope);
+fprintf('  intercept    %10.3f        %10.3f        %10.3f        %10.3f\n', ...
+    stats.sd_zonal.intercept, stats.sd_merid.intercept, stats.ctmt_zonal.intercept, stats.ctmt_merid.intercept);
+fprintf('  corr         %10.3f        %10.3f        %10.3f        %10.3f\n', ...
+    stats.sd_zonal.corr, stats.sd_merid.corr, stats.ctmt_zonal.corr, stats.ctmt_merid.corr);
 
 nexttile
 contourf(LTwinds_mwr_u, contour_levels, 'LineStyle', 'none')

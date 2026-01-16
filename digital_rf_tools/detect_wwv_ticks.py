@@ -1,0 +1,563 @@
+#!/usr/bin/env python3
+"""
+Detect WWV 1 kHz tick leading edges and estimate tone frequency from DigitalRF.
+
+Pipeline (matches the working audio demod path):
+1) Mix raw IQ to 10 MHz.
+2) Decimate 25 MS/s -> 500 kS/s (stage1), lowpass to 10 kHz.
+3) Decimate 500 kS/s -> 50 kS/s (stage2).
+4) Envelope detect, bandpass 600-1400 Hz.
+5) Matched filter 5-cycle 1 kHz tick to find leading edges.
+6) Estimate tone frequency per tick via phase slope on the bandpassed segment.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import math
+import os
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Iterable, List, Optional, Tuple
+
+import digital_rf as drf
+import numpy as np
+from scipy import signal
+
+
+os.environ.setdefault("MPLBACKEND", "Agg")
+
+DEFAULT_INPUT_ROOT = Path("/Users/chartat1/data/hf_data/itsi/rooftop_20260114/M10124")
+DEFAULT_CHANNEL = "cha"
+DEFAULT_TARGET_HZ = 10_000_000.0
+DEFAULT_BLOCK_SECONDS = 1.0
+DEFAULT_CHANNEL_RATE = 50_000.0
+DEFAULT_CHANNEL_LP_HZ = 10_000.0
+DEFAULT_CHANNEL_TRANSITION_HZ = 3_000.0
+DEFAULT_BP_LOW_HZ = 600.0
+DEFAULT_BP_HIGH_HZ = 1400.0
+DEFAULT_BP_TRANSITION_HZ = 200.0
+DEFAULT_TONE_HZ = 1000.0
+DEFAULT_TONE_CYCLES = 5
+DEFAULT_SIGMA_THRESHOLD = 6.0
+DEFAULT_RANGE_PLOT = Path("wwv_range_time.png")
+DEFAULT_RANGE_MAX_KM = 5000.0
+DEFAULT_CARRIER_LP_HZ = 200.0
+
+C_KM_PER_S = 299_792.458
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Detect WWV 1 kHz ticks from DigitalRF.")
+    p.add_argument("--dataset-root", type=Path, default=DEFAULT_INPUT_ROOT, help="DigitalRF dataset root.")
+    p.add_argument("--channel", default=DEFAULT_CHANNEL, help="Channel name.")
+    p.add_argument(
+        "--raw-center-hz",
+        type=float,
+        default=None,
+        help="Recorded center frequency (Hz). If omitted, uses drf_properties.",
+    )
+    p.add_argument("--target-hz", type=float, default=DEFAULT_TARGET_HZ, help="Target carrier to demodulate (Hz).")
+    p.add_argument(
+        "--block-seconds",
+        type=float,
+        default=DEFAULT_BLOCK_SECONDS,
+        help="Seconds of RF to process per block.",
+    )
+    p.add_argument(
+        "--channel-rate",
+        type=float,
+        default=DEFAULT_CHANNEL_RATE,
+        help="Intermediate rate after decimation (Hz).",
+    )
+    p.add_argument(
+        "--channel-lp-hz",
+        type=float,
+        default=DEFAULT_CHANNEL_LP_HZ,
+        help="Channel lowpass cutoff before envelope detection (Hz).",
+    )
+    p.add_argument(
+        "--channel-transition-hz",
+        type=float,
+        default=DEFAULT_CHANNEL_TRANSITION_HZ,
+        help="Transition width for the channel lowpass (Hz).",
+    )
+    p.add_argument(
+        "--bp-low-hz",
+        type=float,
+        default=DEFAULT_BP_LOW_HZ,
+        help="Bandpass low cutoff for the 1 kHz tone (Hz).",
+    )
+    p.add_argument(
+        "--bp-high-hz",
+        type=float,
+        default=DEFAULT_BP_HIGH_HZ,
+        help="Bandpass high cutoff for the 1 kHz tone (Hz).",
+    )
+    p.add_argument(
+        "--bp-transition-hz",
+        type=float,
+        default=DEFAULT_BP_TRANSITION_HZ,
+        help="Transition width for the tone bandpass (Hz).",
+    )
+    p.add_argument("--tone-hz", type=float, default=DEFAULT_TONE_HZ, help="Tick tone frequency (Hz).")
+    p.add_argument("--tone-cycles", type=int, default=DEFAULT_TONE_CYCLES, help="Cycles per tick (default: 5).")
+    p.add_argument(
+        "--sigma-threshold",
+        type=float,
+        default=DEFAULT_SIGMA_THRESHOLD,
+        help="Peak threshold = sigma_threshold * robust_sigma.",
+    )
+    p.add_argument(
+        "--carrier-lp-hz",
+        type=float,
+        default=DEFAULT_CARRIER_LP_HZ,
+        help="Lowpass cutoff for carrier Doppler estimate (Hz).",
+    )
+    p.add_argument("--start-seconds", type=float, default=0.0, help="Skip this many seconds from the start.")
+    p.add_argument(
+        "--seconds",
+        type=float,
+        default=None,
+        help="Process only this many seconds (default: to end).",
+    )
+    p.add_argument(
+        "--time-offset-seconds",
+        type=float,
+        default=0.0,
+        help="Optional constant offset applied to reported UTC times.",
+    )
+    p.add_argument(
+        "--output-csv",
+        type=Path,
+        default=Path("wwv_tick_times.csv"),
+        help="Output CSV path (default: wwv_tick_times.csv in cwd).",
+    )
+    p.add_argument(
+        "--range-plot-file",
+        type=Path,
+        default=DEFAULT_RANGE_PLOT,
+        help="Range-time-intensity plot path (default: wwv_range_time.png).",
+    )
+    p.add_argument(
+        "--range-max-km",
+        type=float,
+        default=DEFAULT_RANGE_MAX_KM,
+        help="Max virtual range to plot (km). Default: 5000.",
+    )
+    p.add_argument("--no-range-plot", action="store_true", help="Skip range-time-intensity plotting.")
+    p.add_argument(
+        "--plot-file",
+        type=Path,
+        default=Path("wwv_tick_times.png"),
+        help="Output plot path (default: wwv_tick_times.png in cwd).",
+    )
+    p.add_argument("--no-plot", action="store_true", help="Skip plotting detections.")
+    return p.parse_args()
+
+
+def epoch_to_datetime(epoch_str: str) -> datetime:
+    if epoch_str.endswith("Z"):
+        epoch_str = epoch_str.replace("Z", "+00:00")
+    return datetime.fromisoformat(epoch_str).astimezone(timezone.utc)
+
+
+def _odd_len(value: float) -> int:
+    taps = int(math.ceil(value))
+    if taps % 2 == 0:
+        taps += 1
+    return max(taps, 3)
+
+
+def _hamming_taps_for_transition(fs: float, transition_hz: float) -> int:
+    # Hamming rule-of-thumb: transition width ~= 3.3 * fs / N.
+    if transition_hz <= 0:
+        raise ValueError("transition_hz must be positive")
+    return _odd_len(3.3 * fs / transition_hz)
+
+
+def make_templates(fs: float, tone_hz: float, cycles: int) -> Tuple[np.ndarray, np.ndarray]:
+    samples = int(round(cycles * fs / tone_hz))
+    t = np.arange(samples, dtype=np.float64) / fs
+    window = signal.windows.hann(samples)
+    tone_sin = np.sin(2.0 * math.pi * tone_hz * t) * window
+    tone_cos = np.cos(2.0 * math.pi * tone_hz * t) * window
+
+    def _norm(x: np.ndarray) -> np.ndarray:
+        x = x - np.mean(x)
+        denom = float(np.sqrt(np.sum(x**2)))
+        if denom > 0:
+            x = x / denom
+        return x.astype(np.float32)
+
+    return _norm(tone_sin), _norm(tone_cos)
+
+
+def robust_sigma(x: np.ndarray) -> float:
+    return float(np.median(np.abs(x)) / 0.6745 + 1e-12)
+
+
+def estimate_freq_hz(x: np.ndarray, fs: float) -> Optional[float]:
+    if x.size < 4:
+        return None
+    analytic = signal.hilbert(x)
+    phase = np.unwrap(np.angle(analytic))
+    t = np.arange(x.size, dtype=np.float64) / fs
+    slope, _ = np.polyfit(t, phase, 1)
+    return float(slope / (2.0 * math.pi))
+
+
+@dataclass
+class TickHit:
+    score: float
+    sample_chan: int
+    time_utc: datetime
+    freq_hz: Optional[float]
+    range_km: Optional[float]
+
+
+def plot_hits(hits: List[TickHit], path: Path) -> Optional[Path]:
+    try:
+        import matplotlib.pyplot as plt  # type: ignore
+        import matplotlib.dates as mdates  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional
+        print(f"Plotting skipped (matplotlib not available: {exc})")
+        return None
+
+    if not hits:
+        print("Plotting skipped (no hits).")
+        return None
+
+    times = [h.time_utc for h in hits]
+    scores = [h.score for h in hits]
+
+    fig, ax = plt.subplots(figsize=(11, 4))
+    ax.plot(times, scores, linestyle="none", marker="o", markersize=3, alpha=0.7)
+    ax.set_title("WWV 1 kHz tick detections")
+    ax.set_xlabel("UTC time")
+    ax.set_ylabel("Matched filter score")
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path)
+    plt.close(fig)
+    print(f"Wrote {path}")
+    return path
+
+
+def plot_range_time(
+    range_rows: List[np.ndarray],
+    block_times: List[datetime],
+    fs: float,
+    path: Path,
+    range_max_km: float,
+    hits: Optional[List[TickHit]] = None,
+    doppler_times: Optional[List[datetime]] = None,
+    doppler_hz: Optional[List[float]] = None,
+) -> Optional[Path]:
+    try:
+        import matplotlib.pyplot as plt  # type: ignore
+        import matplotlib.dates as mdates  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional
+        print(f"Range-time plot skipped (matplotlib not available: {exc})")
+        return None
+
+    if not range_rows:
+        print("Range-time plot skipped (no data captured).")
+        return None
+
+    data = np.vstack(range_rows).T  # shape: (range_bins, time_bins)
+    y_seconds = np.arange(data.shape[0], dtype=np.float64) / fs
+    virtual_range_km = y_seconds * C_KM_PER_S
+    x_nums = mdates.date2num(block_times)
+
+    font_size = 20
+    title_size = 24
+    fig = plt.figure(figsize=(10, 8))
+    gs = fig.add_gridspec(
+        2,
+        2,
+        width_ratios=[20, 1],
+        height_ratios=[3, 1],
+        wspace=0.05,
+    )
+    ax0 = fig.add_subplot(gs[0, 0])
+    ax1 = fig.add_subplot(gs[1, 0], sharex=ax0)
+    cax = fig.add_subplot(gs[0, 1])
+    cf = ax0.pcolormesh(
+        x_nums,
+        virtual_range_km,
+        data,
+        shading="nearest",
+        cmap="viridis",
+        antialiased=False,
+        linewidth=0.0,
+    )
+    ax0.set_title(
+        "Matched filter output vs. virtual range",
+        fontsize=title_size,
+        fontweight="bold",
+    )
+    ax0.set_ylabel("Virtual range (km)", fontsize=font_size)
+    ax0.xaxis_date()
+    ax0.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+    ax0.set_ylim(0.0, range_max_km)
+    if hits:
+        times = [h.time_utc for h in hits if h.range_km is not None]
+        ranges = [h.range_km for h in hits if h.range_km is not None]
+        if times:
+            ax0.scatter(times, ranges, s=14, c="red", alpha=0.8, linewidths=0.0)
+    cbar = fig.colorbar(cf, cax=cax, label="Matched filter score (sigma units)")
+    cbar.ax.tick_params(labelsize=font_size)
+    cbar.set_label("Matched filter score (sigma units)", fontsize=font_size)
+
+    if doppler_times and doppler_hz:
+        ax1.plot(doppler_times, doppler_hz, color="black", linewidth=1.0)
+        ax1.scatter(doppler_times, doppler_hz, s=10, c="black", alpha=0.7, linewidths=0.0)
+    ax1.axhline(0.0, color="gray", linewidth=0.8, alpha=0.6)
+    ax1.set_ylabel("Doppler (Hz)", fontsize=font_size)
+    ax1.set_xlabel("UTC time", fontsize=font_size)
+    ax1.xaxis_date()
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+    ax1.grid(True, which="both", alpha=0.3)
+
+    ax0.tick_params(labelsize=font_size)
+    ax1.tick_params(labelsize=font_size)
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path)
+    plt.close(fig)
+    print(f"Wrote {path}")
+    return path
+
+
+def iter_blocks(
+    reader: drf.DigitalRFReader,
+    channel: str,
+    start: int,
+    end: int,
+    block_samples: int,
+) -> Iterable[Tuple[int, np.ndarray]]:
+    cursor = start
+    while cursor <= end:
+        count = min(block_samples, end - cursor + 1)
+        try:
+            data = reader.read_vector_1d(cursor, int(count), channel)
+        except OSError:
+            data = np.zeros(int(count), dtype=np.complex64)
+        if data is None:
+            data = np.zeros(int(count), dtype=np.complex64)
+        yield cursor, data.astype(np.complex64, copy=False)
+        cursor += count
+
+
+def main() -> None:
+    args = parse_args()
+    input_root = args.dataset_root.expanduser()
+    reader = drf.DigitalRFReader(str(input_root))
+    props = reader.get_properties(args.channel)
+    fs_in = float(props["samples_per_second"])
+    raw_center = float(props["center_frequency_hz"]) if args.raw_center_hz is None else float(args.raw_center_hz)
+
+    start, end = reader.get_bounds(args.channel)
+    if args.start_seconds > 0:
+        start += int(round(args.start_seconds * fs_in))
+    if args.seconds is not None:
+        end = min(end, start + int(round(args.seconds * fs_in)) - 1)
+    if start > end:
+        raise ValueError("Requested time span is empty.")
+
+    epoch = epoch_to_datetime(props["epoch"])
+    base_time = epoch + timedelta(seconds=start / fs_in) + timedelta(seconds=args.time_offset_seconds)
+
+    block_samples = int(round(args.block_seconds * fs_in))
+    if block_samples < 1:
+        raise ValueError("block_seconds too small for the input rate.")
+
+    decim = int(round(fs_in / args.channel_rate))
+    if decim < 1 or abs(fs_in / decim - args.channel_rate) > 1e-3:
+        raise ValueError(f"Cannot reach channel_rate={args.channel_rate} from fs_in={fs_in}.")
+    channel_rate = fs_in / decim
+
+    decim1 = 50 if decim % 50 == 0 else 1
+    decim2 = decim // decim1
+    if decim2 < 1:
+        raise ValueError("Invalid decimation stages.")
+
+    stage1_rate = fs_in / decim1
+    channel_taps = signal.firwin(
+        _hamming_taps_for_transition(stage1_rate, args.channel_transition_hz),
+        args.channel_lp_hz,
+        fs=stage1_rate,
+        window="hamming",
+    )
+    channel_zi = np.zeros(len(channel_taps) - 1, dtype=np.complex64)
+
+    carrier_sos = signal.butter(4, args.carrier_lp_hz, btype="low", fs=channel_rate, output="sos")
+    carrier_zi: Optional[np.ndarray] = None
+
+    bp_taps = signal.firwin(
+        _hamming_taps_for_transition(channel_rate, args.bp_transition_hz),
+        [args.bp_low_hz, args.bp_high_hz],
+        pass_zero=False,
+        fs=channel_rate,
+        window="hamming",
+    )
+    bp_zi = np.zeros(len(bp_taps) - 1, dtype=np.float32)
+    bp_delay = (len(bp_taps) - 1) // 2
+
+    tpl_sin, tpl_cos = make_templates(channel_rate, args.tone_hz, args.tone_cycles)
+    tpl_len = tpl_sin.shape[0]
+    overlap = tpl_len - 1
+    prev_tail = np.zeros(overlap, dtype=np.float32)
+
+    mix_hz = raw_center - args.target_hz
+    phase_step = -2.0 * math.pi * mix_hz / fs_in
+    phase = 0.0
+
+    chan_cursor = 0
+    hits: List[TickHit] = []
+    range_rows_raw: List[np.ndarray] = []
+    range_row_times: List[datetime] = []
+    doppler_times: List[datetime] = []
+    doppler_values: List[float] = []
+
+    for cursor, block in iter_blocks(reader, args.channel, start, end, block_samples):
+        if block.size == 0:
+            continue
+        if block.size < block_samples:
+            pad = np.zeros(block_samples - block.size, dtype=np.complex64)
+            block = np.concatenate([block, pad])
+
+        block *= np.float32(1.0 / 32768.0)
+
+        if mix_hz != 0.0:
+            n = np.arange(block.shape[0], dtype=np.float64)
+            block *= np.exp(1j * (phase + phase_step * n)).astype(np.complex64)
+            phase = (phase + phase_step * block.shape[0]) % (2.0 * math.pi)
+
+        stage1 = signal.resample_poly(block, 1, decim1).astype(np.complex64, copy=False)
+        stage1, channel_zi = signal.lfilter(channel_taps, [1.0], stage1, zi=channel_zi)
+        stage2 = signal.resample_poly(stage1, 1, decim2).astype(np.complex64, copy=False)
+
+        if carrier_zi is None:
+            carrier_zi = signal.sosfilt_zi(carrier_sos) * stage2[0]
+        carrier_filt, carrier_zi = signal.sosfilt(carrier_sos, stage2, zi=carrier_zi)
+        if carrier_filt.size > 1:
+            phasor = np.conj(carrier_filt[:-1]) * carrier_filt[1:]
+            phasor_sum = np.sum(phasor)
+            if np.abs(phasor_sum) > 0:
+                doppler = float(np.angle(phasor_sum) * channel_rate / (2.0 * math.pi))
+                mid_time = epoch + timedelta(seconds=(cursor / fs_in) + args.block_seconds / 2.0)
+                doppler_times.append(mid_time + timedelta(seconds=args.time_offset_seconds))
+                doppler_values.append(doppler)
+
+        env = np.abs(stage2).astype(np.float32, copy=False)
+        env_bp, bp_zi = signal.lfilter(bp_taps, [1.0], env, zi=bp_zi)
+
+        corr_sin = signal.correlate(env_bp, tpl_sin, mode="valid")
+        corr_cos = signal.correlate(env_bp, tpl_cos, mode="valid")
+        corr_block = np.sqrt(corr_sin**2 + corr_cos**2)
+        if bp_delay > 0 and corr_block.size > bp_delay:
+            corr_block = corr_block[bp_delay:]
+        range_rows_raw.append(corr_block.astype(np.float32, copy=False))
+        block_time = epoch + timedelta(seconds=cursor / fs_in) + timedelta(seconds=args.time_offset_seconds)
+        range_row_times.append(block_time)
+
+        search = np.concatenate([prev_tail, env_bp])
+        corr_sin = signal.correlate(search, tpl_sin, mode="valid")
+        corr_cos = signal.correlate(search, tpl_cos, mode="valid")
+        corr_mag = np.sqrt(corr_sin**2 + corr_cos**2)
+        corr_centered = corr_mag - np.median(corr_mag)
+        sigma = robust_sigma(corr_centered)
+        thresh = args.sigma_threshold * sigma
+        above = corr_centered >= thresh
+        if above.size:
+            prev = np.concatenate(([False], above[:-1]))
+            starts = np.flatnonzero(above & ~prev)
+            nextv = np.concatenate((above[1:], [False]))
+            stops = np.flatnonzero(above & ~nextv)
+        else:
+            starts = np.array([], dtype=int)
+            stops = np.array([], dtype=int)
+
+        for s, e in zip(starts, stops):
+            if s < prev_tail.size:
+                continue
+            seg = corr_centered[s : e + 1]
+            if seg.size == 0:
+                continue
+            p = s + int(np.argmax(seg))
+            sample_chan = chan_cursor - prev_tail.size + p
+            leading_sample = sample_chan - bp_delay
+            if leading_sample < 0:
+                continue
+            lag_in_block = p - prev_tail.size
+            lag_index = lag_in_block - bp_delay
+            range_km = (lag_index / channel_rate) * C_KM_PER_S if lag_index >= 0 else None
+
+            seg_start = int(p)
+            seg_stop = seg_start + tpl_len
+            if seg_stop <= search.size:
+                tone_seg = search[seg_start:seg_stop]
+                freq_hz = estimate_freq_hz(tone_seg, channel_rate)
+            else:
+                freq_hz = None
+
+            tick_time = base_time + timedelta(seconds=leading_sample / channel_rate)
+            hits.append(
+                TickHit(
+                    score=float(corr_centered[p]),
+                    sample_chan=leading_sample,
+                    time_utc=tick_time,
+                    freq_hz=freq_hz,
+                    range_km=range_km,
+                )
+            )
+
+        prev_tail = search[-overlap:] if overlap > 0 else np.zeros(0, dtype=np.float32)
+        chan_cursor += env_bp.size
+
+    if not hits:
+        print("No ticks detected.")
+        return
+
+    args.output_csv.parent.mkdir(parents=True, exist_ok=True)
+    with open(args.output_csv, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["utc_time", "sample_index", "freq_hz", "range_km", "score"])
+        for hit in hits:
+            writer.writerow(
+                [
+                    hit.time_utc.isoformat(),
+                    hit.sample_chan,
+                    "" if hit.freq_hz is None else f"{hit.freq_hz:.3f}",
+                    "" if hit.range_km is None else f"{hit.range_km:.3f}",
+                    f"{hit.score:.3f}",
+                ]
+            )
+
+    print(f"Wrote {args.output_csv} ({len(hits)} ticks)")
+    if not args.no_plot:
+        plot_hits(hits, args.plot_file)
+    if not args.no_range_plot and range_rows_raw:
+        global_sigma = robust_sigma(np.concatenate(range_rows_raw))
+        range_rows = [row / (global_sigma + 1e-12) for row in range_rows_raw]
+        plot_range_time(
+            range_rows,
+            range_row_times,
+            channel_rate,
+            args.range_plot_file,
+            args.range_max_km,
+            hits,
+            doppler_times,
+            doppler_values,
+        )
+
+
+if __name__ == "__main__":
+    main()

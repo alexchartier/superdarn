@@ -17,6 +17,7 @@ import argparse
 import csv
 import math
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -45,6 +46,7 @@ DEFAULT_SIGMA_THRESHOLD = 6.0
 DEFAULT_RANGE_PLOT = Path("wwv_range_time.png")
 DEFAULT_RANGE_MAX_KM = 5000.0
 DEFAULT_CARRIER_LP_HZ = 200.0
+DEFAULT_END_SECONDS = 1.0
 
 C_KM_PER_S = 299_792.458
 
@@ -59,7 +61,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Recorded center frequency (Hz). If omitted, uses drf_properties.",
     )
-    p.add_argument("--target-hz", type=float, default=DEFAULT_TARGET_HZ, help="Target carrier to demodulate (Hz).")
+    p.add_argument(
+        "--target-hz",
+        type=float,
+        default=DEFAULT_TARGET_HZ,
+        help=f"Target carrier to demodulate (Hz). Default: {DEFAULT_TARGET_HZ:g}.",
+    )
     p.add_argument(
         "--block-seconds",
         type=float,
@@ -118,6 +125,12 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--start-seconds", type=float, default=1.0, help="Skip this many seconds from the start.")
     p.add_argument(
+        "--end-seconds",
+        type=float,
+        default=DEFAULT_END_SECONDS,
+        help="Skip this many seconds from the end (after --seconds).",
+    )
+    p.add_argument(
         "--seconds",
         type=float,
         default=None,
@@ -148,13 +161,6 @@ def parse_args() -> argparse.Namespace:
         help="Max virtual range to plot (km). Default: 5000.",
     )
     p.add_argument("--no-range-plot", action="store_true", help="Skip range-time-intensity plotting.")
-    p.add_argument(
-        "--plot-file",
-        type=Path,
-        default=Path("wwv_tick_times.png"),
-        help="Output plot path (default: wwv_tick_times.png in cwd).",
-    )
-    p.add_argument("--no-plot", action="store_true", help="Skip plotting detections.")
     return p.parse_args()
 
 
@@ -216,36 +222,6 @@ class TickHit:
     time_utc: datetime
     freq_hz: Optional[float]
     range_km: Optional[float]
-
-
-def plot_hits(hits: List[TickHit], path: Path) -> Optional[Path]:
-    try:
-        import matplotlib.pyplot as plt  # type: ignore
-        import matplotlib.dates as mdates  # type: ignore
-    except Exception as exc:  # pragma: no cover - optional
-        print(f"Plotting skipped (matplotlib not available: {exc})")
-        return None
-
-    if not hits:
-        print("Plotting skipped (no hits).")
-        return None
-
-    times = [h.time_utc for h in hits]
-    scores = [h.score for h in hits]
-
-    fig, ax = plt.subplots(figsize=(11, 4))
-    ax.plot(times, scores, linestyle="none", marker="o", markersize=3, alpha=0.7)
-    ax.set_title("WWV 1 kHz tick detections")
-    ax.set_xlabel("UTC time")
-    ax.set_ylabel("Matched filter score")
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-    fig.autofmt_xdate()
-    fig.tight_layout()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path)
-    plt.close(fig)
-    print(f"Wrote {path}")
-    return path
 
 
 def plot_range_time(
@@ -368,6 +344,8 @@ def main() -> None:
         start += int(round(args.start_seconds * fs_in))
     if args.seconds is not None:
         end = min(end, start + int(round(args.seconds * fs_in)) - 1)
+    if args.end_seconds > 0:
+        end -= int(round(args.end_seconds * fs_in))
     if start > end:
         raise ValueError("Requested time span is empty.")
 
@@ -377,6 +355,15 @@ def main() -> None:
     block_samples = int(round(args.block_seconds * fs_in))
     if block_samples < 1:
         raise ValueError("block_seconds too small for the input rate.")
+
+    total_samples = end - start + 1
+    total_seconds = total_samples / fs_in
+    total_blocks = int(math.ceil(total_samples / block_samples))
+    start_wall = time.monotonic()
+    print(
+        f"Processing {total_seconds:.1f} s in {total_blocks} blocks from {input_root}.",
+        flush=True,
+    )
 
     decim = int(round(fs_in / args.channel_rate))
     if decim < 1 or abs(fs_in / decim - args.channel_rate) > 1e-3:
@@ -426,7 +413,9 @@ def main() -> None:
     doppler_times: List[datetime] = []
     doppler_values: List[float] = []
 
+    blocks_done = 0
     for cursor, block in iter_blocks(reader, args.channel, start, end, block_samples):
+        block_count = block.size
         if block.size == 0:
             continue
         if block.size < block_samples:
@@ -522,6 +511,21 @@ def main() -> None:
         prev_tail = search[-overlap:] if overlap > 0 else np.zeros(0, dtype=np.float32)
         chan_cursor += env_bp.size
 
+        blocks_done += 1
+        processed_samples = (cursor - start) + block_count
+        processed_samples = min(processed_samples, total_samples)
+        processed_seconds = processed_samples / fs_in
+        pct = 100.0 * processed_samples / total_samples
+        elapsed = time.monotonic() - start_wall
+        print(
+            (
+                f"Processed {processed_seconds:.1f}/{total_seconds:.1f} s "
+                f"({pct:.1f}%), {blocks_done}/{total_blocks} blocks, "
+                f"elapsed {elapsed:.1f} s."
+            ),
+            flush=True,
+        )
+
     if not hits:
         print("No ticks detected.")
         return
@@ -542,8 +546,6 @@ def main() -> None:
             )
 
     print(f"Wrote {args.output_csv} ({len(hits)} ticks)")
-    if not args.no_plot:
-        plot_hits(hits, args.plot_file)
     if not args.no_range_plot and range_rows_raw:
         global_sigma = robust_sigma(np.concatenate(range_rows_raw))
         range_rows = [row / (global_sigma + 1e-12) for row in range_rows_raw]

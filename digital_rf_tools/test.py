@@ -68,8 +68,8 @@ class test(gr.top_block, Qt.QWidget):
         self.rf_center = rf_center = 17500000.0
         self.freq_tune = freq_tune = 10e6
         self.tunedChannel = tunedChannel = rf_center-freq_tune
-        self.samp_rate = samp_rate = 25000000.0
-        self.dec = dec = 500
+        self.samp_rate = samp_rate = 100000.0
+        self.dec = dec = 1
         self.variable_qtgui_label_0 = variable_qtgui_label_0 = tunedChannel
         self.channel_rate = channel_rate = samp_rate/dec
         self.audio_rate = audio_rate = 48000

@@ -1,10 +1,15 @@
-function aggregate_winds_annual(yearIn, radarCode, inputPattern, annualRoot)
+function aggregate_winds_annual(yearIn, radarCode, inputPattern, annualRoot, varargin)
 %AGGREGATE_WINDS_ANNUAL Build annual winds NetCDF(s) from daily .winds.nc files.
 %   AGGREGATE_WINDS_ANNUAL(YEAR, RADARCODE, INPUTPATTERN, ANNUALROOT) scans the
 %   daily SuperDARN winds files for the specified YEAR/RADARCODE and writes an
 %   annual grid NetCDF under ANNUALROOT. Defaults mirror meteorproc_ml_batch
 %   outputs and work on macOS or Linux paths without extra arguments:
 %       aggregate_winds_annual(2019, 'mcm')
+%
+%   Optional arguments:
+%       NoClobber (default: true) - When true, skip writing annual files that
+%       already exist. Can be passed as a 5th positional argument or as a
+%       name/value pair.
 %
 %   If RADARCODE is empty or omitted, the function discovers all radar codes
 %   present under the input directory for that year and processes each one.
@@ -40,6 +45,22 @@ if nargin < 4 || isempty(annualRoot)
     annualRoot = defaultAnnualRoot;
 end
 
+% Default to no-clobber for safety. Allow positional or name/value override.
+noClobber = true;
+if ~isempty(varargin)
+    if isscalar(varargin{1}) && (islogical(varargin{1}) || isnumeric(varargin{1}))
+        noClobber = logical(varargin{1});
+        varargin = varargin(2:end);
+    end
+    if ~isempty(varargin)
+        parser = inputParser;
+        parser.FunctionName = 'aggregate_winds_annual';
+        parser.addParameter('NoClobber', noClobber, @(x) islogical(x) || isnumeric(x));
+        parser.parse(varargin{:});
+        noClobber = logical(parser.Results.NoClobber);
+    end
+end
+
 yr = yearSafe(yearIn);
 if ~isscalar(yr) || isnan(yr)
     error('aggregate_winds_annual:BadYear', 'YEAR must be a scalar year.');
@@ -66,7 +87,7 @@ if strlength(radarCode) == 0
             if listing(li).isdir
                 continue;
             end
-            tok = regexp(listing(li).name, '\d{8}\.([A-Za-z]{3})\.winds', 'tokens', 'once');
+            tok = regexp(listing(li).name, '\d{8}\.([A-Za-z]{3})(?:\.[^.]+)?\.winds', 'tokens', 'once');
             if ~isempty(tok)
                 radarList(end+1, 1) = lower(string(tok{1})); %#ok<AGROW>
             end
@@ -101,10 +122,10 @@ for rk = 1:numel(radarList)
             'Daily directory not found: %s (skipping radar %s; set inputPattern if needed)', yearDir, rc);
         continue;
     end
-    listing = dir(fullfile(yearDir, '**', sprintf('*%s.winds.nc', rc)));
+    listing = dir(fullfile(yearDir, '**', sprintf('*%s*.winds.nc', rc)));
     if isempty(listing)
         for mm = 1:12
-            listing = [listing; dir(fullfile(yearDir, sprintf('%02d', mm), sprintf('*%s.winds.nc', rc)))]; %#ok<AGROW>
+            listing = [listing; dir(fullfile(yearDir, sprintf('%02d', mm), sprintf('*%s*.winds.nc', rc)))]; %#ok<AGROW>
         end
     end
     if isempty(listing)
@@ -157,7 +178,7 @@ if filesSeen == 0 || isempty(annualMap.keys)
     fprintf('[aggregate_winds_annual] No daily files found; nothing to write.\n');
 else
     fprintf('[aggregate_winds_annual] Total files processed: %d\n', filesSeen);
-    flushAnnual(annualMap, yr, annualRoot);
+    flushAnnual(annualMap, yr, annualRoot, noClobber);
 end
 end
 
@@ -218,7 +239,7 @@ group.sourceFiles{end+1} = sourceFile;
 annualMap(key) = group;
 end
 
-function flushAnnual(annualMap, yearToFlush, annualRoot)
+function flushAnnual(annualMap, yearToFlush, annualRoot, noClobber)
 keys = annualMap.keys;
 for i = 1:numel(keys)
     key = keys{i};
@@ -238,6 +259,10 @@ for i = 1:numel(keys)
         mkdir(dstDir);
     end
     dstFile = fullfile(dstDir, sprintf('%s_%04d.nc', group.radar, group.year));
+    if noClobber && exist(dstFile, 'file') == 2
+        fprintf('Skipping existing annual %s (no-clobber)\n', dstFile);
+        continue;
+    end
     fprintf('Writing annual %s (files: %d)\n', dstFile, group.fileCount);
     write_group_file(group, dstFile);
 end

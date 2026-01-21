@@ -24,6 +24,7 @@ author: A.T. Chartier, 5 February 2020
 """
 import os
 import sys
+import argparse
 from pathlib import Path
 
 UTILS_DIR = Path(__file__).resolve().parent.parent / "utils"
@@ -48,7 +49,8 @@ import helper
 DELETE_PROCESSED_RAWACFS = False
 SAVE_OUTPUT_TO_LOGFILE = False
 MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
-MAKE_FIT_VERSIONS = [2.5, 3.0]
+MAKE_FIT_VERSIONS = [3.0]
+APPLY_FIT_SPECK_REMOVAL = False
 MIN_FITACF_FILE_SIZE = 1E5  # bytes
 
 
@@ -58,16 +60,25 @@ def main(
     in_dir_fmt='/project/superdarn/data/rawacf/%Y/%m/',
     fit_dir_fmt='/project/superdarn/data/fitacf/%Y/%m/',
     log_dir='/homes/superdarn/logs/rawACF_to_netCDF_logs/',
+    run_dir_base='/project/superdarn/run/',
+    make_fit_versions=None,
+    apply_speck_removal=APPLY_FIT_SPECK_REMOVAL,
+    save_output_to_logfile=SAVE_OUTPUT_TO_LOGFILE,
+    delete_processed_rawacfs=DELETE_PROCESSED_RAWACFS,
+    clobber=False,
     step=1,  # month
     skip_existing=True,
     fit_ext='*.fit',
 ):
 
-    run_dir = '/project/superdarn/run/%s' % get_random_string(4)
+    if make_fit_versions is None:
+        make_fit_versions = MAKE_FIT_VERSIONS
+
+    run_dir = os.path.join(run_dir_base, get_random_string(4))
 
     # Send the output to a log file
     original_stdout = sys.stdout
-    if SAVE_OUTPUT_TO_LOGFILE:
+    if save_output_to_logfile:
         f = open(
             '{logDir}/raw_to_fit_to_net_{startDate}-{endDate}.log'.format(
                 logDir=log_dir,
@@ -83,8 +94,17 @@ def main(
 
     # Running raw to fit
     radar_info = get_radar_params(hdw_dat_dir)
-    raw_to_fit(start_time, end_time, run_dir, in_dir_fmt,
-               fit_dir_fmt, MAKE_FIT_VERSIONS)
+    raw_to_fit(
+        start_time,
+        end_time,
+        run_dir,
+        in_dir_fmt,
+        fit_dir_fmt,
+        make_fit_versions,
+        apply_speck_removal=apply_speck_removal,
+        delete_processed_rawacfs=delete_processed_rawacfs,
+        clobber=clobber,
+    )
     sys.stdout = original_stdout
 
 
@@ -94,7 +114,9 @@ def raw_to_fit(
     run_dir='/project/superdarn/run/',
     in_dir='/project/superdarn/data/rawacf/%Y/%m/',
     out_dir='/project/superdarn/alex/fitacf/%Y/%m/',
-    make_fit_versions=[2.5, 3.0],
+    make_fit_versions=[3.0],
+    apply_speck_removal=False,
+    delete_processed_rawacfs=DELETE_PROCESSED_RAWACFS,
     clobber=False,
 ):
 
@@ -132,16 +154,23 @@ def raw_to_fit(
                     else:
                         print('skipping')
                         continue
-                status = proc_radar(in_fname_fmt, fit_fname,
-                                    fit_version, run_dir)
+                status = proc_radar(
+                    in_fname_fmt,
+                    fit_fname,
+                    fit_version,
+                    run_dir,
+                    apply_speck_removal=apply_speck_removal,
+                )
 
                 # Only delete the rawACFs if:
                 #   - The rawACF -> fitACF conversion succeeded
                 #   - The user set the flag to delete rawACFs
                 #   - All fitACF versions have been created
-                if (status == 0 and
-                    DELETE_PROCESSED_RAWACFS and
-                        fit_version == make_fit_versions[-1]):
+                if (
+                    status == 0
+                    and delete_processed_rawacfs
+                    and fit_version == make_fit_versions[-1]
+                ):
                     print('Deleting processed rawACFs: {rawacfs}'.format(
                         rawacfs=glob.glob(in_fname_fmt)))
                     os.system('rm {rawacfs}'.format(rawacfs=in_fname_fmt))
@@ -149,7 +178,13 @@ def raw_to_fit(
             time += dt.timedelta(days=1)
 
 
-def proc_radar(in_fname_fmt, out_fname, fit_version, run_dir):
+def proc_radar(
+    in_fname_fmt,
+    out_fname,
+    fit_version,
+    run_dir,
+    apply_speck_removal=False,
+):
 
     # Clean up the run directory
     os.makedirs(run_dir, exist_ok=True)
@@ -188,12 +223,11 @@ def proc_radar(in_fname_fmt, out_fname, fit_version, run_dir):
         if fit_version == 2.5:
             shutil.move('tmp.fitacf', out_fname)
         elif fit_version == 3.0:
-            # Apply despeckling to v3.0 fitACFs
-            # path = '/'.join(out_fname.split('/')[:-1]) + '/'
-            # fname = '.'.join(out_fname.split('/')[-1].split('.')[:-1]) + '.despeckled.fit'
-            # despeckled_out_fname = path + fname
-            os.system('fit_speck_removal tmp.fitacf > {0}'.format(out_fname))
-            fn_inf = os.stat(out_fname)
+            if apply_speck_removal:
+                os.system('fit_speck_removal tmp.fitacf > {0}'.format(out_fname))
+                fn_inf = os.stat(out_fname)
+            else:
+                shutil.move('tmp.fitacf', out_fname)
         else:
             raise ValueError(
                 'fit version must be 2.5 of 3.0 - {0} fit version specified'.format(fit_version))
@@ -216,18 +250,120 @@ def proc_radar(in_fname_fmt, out_fname, fit_version, run_dir):
 
 
 if __name__ == '__main__':
+    def parse_date_arg(value):
+        for fmt in ("%Y,%m,%d", "%Y-%m-%d", "%Y/%m/%d", "%Y%m%d"):
+            try:
+                return dt.datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+        raise argparse.ArgumentTypeError(
+            f"Invalid date {value!r}. Use YYYY,MM,DD (e.g., 2014,04,23) or YYYY-MM-DD."
+        )
 
-    args = sys.argv
+    def parse_fit_versions(value):
+        parts = [p.strip() for p in value.split(",") if p.strip()]
+        if not parts:
+            raise argparse.ArgumentTypeError("Fit versions must be comma-separated values, e.g. 3.0,2.5.")
+        versions = []
+        for part in parts:
+            try:
+                versions.append(float(part))
+            except ValueError as exc:
+                raise argparse.ArgumentTypeError(
+                    f"Invalid fit version {part!r}. Use numeric versions like 3.0 or 2.5."
+                ) from exc
+        return versions
 
-    assert len(args) >= 5, 'Should have 3x args, e.g.:\n' + \
-        'python3 raw_to_fit.py 2014,4,23 2014,4,24 ' + \
-        '/project/superdarn/data/rawacf/%Y/%m/  ' + \
-        '/project/superdarn/data/fitacf/%Y/%m/  '
+    def format_fit_versions(values):
+        return ",".join(f"{val:.1f}" for val in values)
 
-    stime = dt.datetime.strptime(args[1], '%Y,%m,%d')
-    etime = dt.datetime.strptime(args[2], '%Y,%m,%d')
-    if len(args) == 5:
-        in_dir = args[3]
-        fit_dir = args[4]
+    parser = argparse.ArgumentParser(
+        description="Convert SuperDARN rawACF files to fitACF files.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--start",
+        dest="start_time",
+        type=parse_date_arg,
+        required=True,
+        help="Start date (inclusive). Formats: YYYY,MM,DD or YYYY-MM-DD.",
+    )
+    parser.add_argument(
+        "--end",
+        dest="end_time",
+        type=parse_date_arg,
+        required=True,
+        help="End date (inclusive). Formats: YYYY,MM,DD or YYYY-MM-DD.",
+    )
+    parser.add_argument(
+        "-i",
+        "--input-dir",
+        dest="in_dir_fmt",
+        default="/project/superdarn/data/rawacf/%Y/%m/",
+        help="Path template to rawACF files (strftime-friendly).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        dest="fit_dir_fmt",
+        default="/project/superdarn/data/fitacf/%Y/%m/",
+        help="Output directory template for fitACF files (strftime-friendly).",
+    )
+    parser.add_argument(
+        "--run-dir-base",
+        dest="run_dir_base",
+        default="/project/superdarn/run/",
+        help="Base directory for per-run scratch folders.",
+    )
+    parser.add_argument(
+        "--versions",
+        dest="make_fit_versions",
+        type=parse_fit_versions,
+        default=MAKE_FIT_VERSIONS,
+        help=f"Comma-separated fitACF versions to produce ({format_fit_versions(MAKE_FIT_VERSIONS)} default).",
+    )
+    parser.add_argument(
+        "--speck-removal",
+        dest="apply_speck_removal",
+        action="store_true",
+        help="Enable fit_speck_removal for fitACF v3.0 outputs.",
+    )
+    parser.add_argument(
+        "--delete-rawacfs",
+        dest="delete_processed_rawacfs",
+        action="store_true",
+        help="Delete rawACF inputs after a successful conversion of all versions.",
+    )
+    parser.add_argument(
+        "--save-log",
+        dest="save_output_to_logfile",
+        action="store_true",
+        help="Save stdout to a dated log file in the log directory.",
+    )
+    parser.add_argument(
+        "--log-dir",
+        dest="log_dir",
+        default="/homes/superdarn/logs/rawACF_to_netCDF_logs/",
+        help="Directory for log output when --save-log is set.",
+    )
+    parser.add_argument(
+        "--clobber",
+        dest="clobber",
+        action="store_true",
+        help="Overwrite existing fitACF outputs instead of skipping them.",
+    )
 
-    main(stime, etime, in_dir, fit_dir)
+    args = parser.parse_args()
+    main(
+        args.start_time,
+        args.end_time,
+        args.in_dir_fmt,
+        args.fit_dir_fmt,
+        log_dir=args.log_dir,
+        run_dir_base=args.run_dir_base,
+        make_fit_versions=args.make_fit_versions,
+        apply_speck_removal=args.apply_speck_removal,
+        save_output_to_logfile=args.save_output_to_logfile,
+        delete_processed_rawacfs=args.delete_processed_rawacfs,
+        clobber=args.clobber,
+    )

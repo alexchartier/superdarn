@@ -122,6 +122,17 @@ for rk = 1:numel(radarList)
             'Daily directory not found: %s (skipping radar %s; set inputPattern if needed)', yearDir, rc);
         continue;
     end
+    dstFile = '';
+    if noClobber
+        annualRootExpanded = char(expandPath(annualRoot));
+        dstDir = fullfile(annualRootExpanded, sprintf('%04d', yr));
+        dstFile = fullfile(dstDir, sprintf('%s_%04d.nc', rc, yr));
+        if exist(dstFile, 'file') == 2
+            fprintf('[aggregate_winds_annual] Skipping %s_%04d (no-clobber; %s exists)\n', rc, yr, dstFile);
+            continue;
+        end
+    end
+
     listing = dir(fullfile(yearDir, '**', sprintf('*%s*.winds.nc', rc)));
     if isempty(listing)
         for mm = 1:12

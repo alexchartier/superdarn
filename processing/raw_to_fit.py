@@ -34,17 +34,10 @@ if str(UTILS_DIR) not in sys.path:
 import glob
 # import bz2
 import shutil
-import netCDF4
-import jdutil
 import datetime as dt
 from dateutil.relativedelta import relativedelta
-import calendar
-import numpy as np
 from sd_utils import get_radar_params, id_hdw_params_t, get_random_string, get_radar_list
-import pydarn
-import radFov
 import pickle
-import helper
 
 DELETE_PROCESSED_RAWACFS = False
 SAVE_OUTPUT_TO_LOGFILE = False

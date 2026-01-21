@@ -32,11 +32,10 @@ if str(UTILS_DIR) not in sys.path:
     sys.path.insert(0, str(UTILS_DIR))
 
 import glob
-# import bz2
 import shutil
 import datetime as dt
 from dateutil.relativedelta import relativedelta
-from sd_utils import get_radar_params, id_hdw_params_t, get_random_string, get_radar_list
+from sd_utils import get_radar_params, id_hdw_params_t, get_random_string
 import pickle
 
 DELETE_PROCESSED_RAWACFS = False
@@ -45,6 +44,40 @@ MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 MAKE_FIT_VERSIONS = [3.0]
 APPLY_FIT_SPECK_REMOVAL = False
 MIN_FITACF_FILE_SIZE = 1E5  # bytes
+
+
+def get_make_fit_flag(fit_version):
+    if fit_version == 2.5:
+        return "-fitacf2"
+    if fit_version == 3.0:
+        return "-fitacf3"
+    raise ValueError(
+        'fit version must be 2.5 or 3.0 - {0} fit version specified'.format(fit_version)
+    )
+
+
+def get_rawacf_radar_list(in_dir):
+    print('Calculating list of radars')
+    assert os.path.isdir(in_dir), 'Directory not found: %s' % in_dir
+    flist = glob.glob(os.path.join(in_dir, '*.rawacf'))
+    flist.extend(glob.glob(os.path.join(in_dir, '*.rawacf.bz2')))
+
+    if len(flist) == 0:
+        print('No rawACF files in %s' % in_dir)
+        return []
+
+    radar_list = []
+    for f in flist:
+        items = os.path.basename(f).split('.')
+        if items[-1] == 'bz2':
+            items = items[:-1]
+        if len(items) < 5 or items[-1] != 'rawacf':
+            raise ValueError('filename does not match expectations: %s' % f)
+        radarn = '.'.join(items[3:-1])
+        if radarn and radarn not in radar_list:
+            radar_list.append(radarn)
+            print(radarn)
+    return radar_list
 
 
 def main(
@@ -124,20 +157,32 @@ def raw_to_fit(
 
     run_dir = os.path.abspath(run_dir)
 
+    radar_cache = {}
+    empty_dirs = set()
+
     for fit_version in make_fit_versions:
         # Loop over time
         time = start_time
         while time <= end_time:
             in_dir_t = time.strftime(in_dir)
-            if not os.path.isdir(in_dir_t):
+            if in_dir_t in empty_dirs:
                 time += relativedelta(months=1)
-                print('%s not found - skipping' % in_dir_t)
                 continue
-            radar_list = get_radar_list(in_dir_t)
+            if in_dir_t not in radar_cache:
+                if not os.path.isdir(in_dir_t):
+                    print('%s not found - skipping' % in_dir_t)
+                    empty_dirs.add(in_dir_t)
+                    time += relativedelta(months=1)
+                    continue
+                radar_cache[in_dir_t] = get_rawacf_radar_list(in_dir_t)
+                if len(radar_cache[in_dir_t]) == 0:
+                    empty_dirs.add(in_dir_t)
+                    time += relativedelta(months=1)
+                    continue
+            radar_list = radar_cache[in_dir_t]
             for radar in radar_list:
-                # indirn = os.path.join(in_dir, radar)  # for old setup
                 in_fname_fmt = time.strftime(os.path.join(
-                    in_dir, '%Y%m%d' + '*{radarName}*.rawacf.bz2'.format(radarName=radar)))
+                    in_dir, '%Y%m%d' + '*{radarName}*.rawacf*'.format(radarName=radar)))
                 fit_fname = time.strftime(
                     out_dir + '/%Y%m%d.' + '{radarName}.v{fitVer}.fit'.format(radarName=radar, fitVer=fit_version))
                 if os.path.isfile(fit_fname):
@@ -196,18 +241,21 @@ def proc_radar(
 
     rawacfFileList = []
     for in_fname in in_fnames:
-        # Get just the rawacf filename without the path
         rawacfFile = in_fname.split('/')[-1]
         rawacfFileList.append(rawacfFile)
 
         shutil.copy2(in_fname, run_dir)
         in_fname_t = os.path.join(run_dir, os.path.basename(in_fname))
-        os.system('bzip2 -d %s' % in_fname_t)
+        if in_fname_t.endswith('.bz2'):
+            os.system('bzip2 -d %s' % in_fname_t)
+            rawacf_path = in_fname_t[:-4]
+        else:
+            rawacf_path = in_fname_t
 
-        in_fname_t2 = '.'.join(in_fname_t.split('.')[:-1])
-        tmp_fname = '.'.join(in_fname_t2.split('.')[:-1]) + '.fitacf'
-        os.system('make_fit -fitacf-version %1.1f %s > %s' %
-                  (fit_version, in_fname_t2, tmp_fname))
+        tmp_fname = '.'.join(rawacf_path.split('.')[:-1]) + '.fitacf'
+        fit_flag = get_make_fit_flag(fit_version)
+        os.system('make_fit {0} {1} > {2}'.format(
+            fit_flag, rawacf_path, tmp_fname))
     os.system('cat *.fitacf > tmp.fitacf')
 
     # Create a single fitACF at output location

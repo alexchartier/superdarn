@@ -36,56 +36,60 @@ def parse_args() -> argparse.Namespace:
         "--dataset-root",
         type=Path,
         default=Path("~/data/hf_data/itsi_rooftop/2025_06_04_14_19_14").expanduser(),
-        help="Top-level DigitalRF directory containing the channel (default: provided dataset).",
+        help="Top-level DigitalRF directory containing the channel. Default: ~/data/hf_data/itsi_rooftop/2025_06_04_14_19_14.",
     )
-    p.add_argument("--channel", default="cha", help="Channel name in the DigitalRF dataset (default: cha).")
+    p.add_argument(
+        "--channel",
+        default="cha",
+        help="Channel name in the DigitalRF dataset. Default: cha.",
+    )
     p.add_argument(
         "--center-hz",
         type=float,
         default=None,
-        help="RF center frequency for labeling (Hz). If omitted, uses drf_properties center_frequency_hz if present.",
+        help="RF center frequency for labeling (Hz). Default: DigitalRF metadata center_frequency_hz when present (supersedes the default None).",
     )
     p.add_argument(
         "--band-low-hz",
         type=float,
         default=9.9e6,
-        help="Lower edge of the band to isolate (Hz). Default: 9.9 MHz.",
+        help="Lower edge of the band to isolate (Hz). Default: 9.9e6.",
     )
     p.add_argument(
         "--band-high-hz",
         type=float,
         default=10.3e6,
-        help="Upper edge of the band to isolate (Hz). Default: 10.3 MHz.",
+        help="Upper edge of the band to isolate (Hz). Default: 10.3e6.",
     )
     p.add_argument(
         "--transition-hz",
         type=float,
         default=50e3,
-        help="Transition width for the lowpass after mixing to baseband (Hz).",
+        help="Transition width for the lowpass after mixing to baseband (Hz). Default: 50e3.",
     )
     p.add_argument(
         "--filter-order",
         type=int,
         default=6,
-        help="Butterworth order for the post-mix lowpass filter.",
+        help="Butterworth order for the post-mix lowpass filter. Default: 6.",
     )
     p.add_argument(
         "--decimate",
         type=int,
         default=None,
-        help="Optional integer decimation after filtering. If omitted, auto-selects the largest safe decimation for the band.",
+        help="Optional integer decimation after filtering. Default: auto-select largest safe decimation for the band.",
     )
     p.add_argument(
         "--chunk-seconds",
         type=float,
         default=1.0,
-        help="Seconds per chunk to read and FFT (default: 1 s).",
+        help="Seconds per chunk to read and FFT. Default: 1.0.",
     )
     p.add_argument(
         "--skip-seconds",
         type=float,
         default=1.0,
-        help="Seconds to discard from the start of the capture before plotting (default: 1 s; set 0 to keep all).",
+        help="Seconds to discard from the start of the capture before plotting. Default: 1.0 (set 0 to keep all).",
     )
     p.add_argument(
         "--total-seconds",
@@ -97,9 +101,14 @@ def parse_args() -> argparse.Namespace:
         "--step-seconds",
         type=float,
         default=None,
-        help="Seconds to advance between chunks. Default: match --chunk-seconds (dense). Increase to thin the waterfall.",
+        help="Seconds to advance between chunks. Default: match --chunk-seconds (dense).",
     )
-    p.add_argument("--nfft", type=int, default=4096, help="FFT length for Welch PSD (default: 4096).")
+    p.add_argument(
+        "--nfft",
+        type=int,
+        default=4096,
+        help="FFT length for Welch PSD. Default: 4096.",
+    )
     p.add_argument(
         "--plot-span-hz",
         type=float,
@@ -110,31 +119,31 @@ def parse_args() -> argparse.Namespace:
         "--vmin",
         type=float,
         default=None,
-        help="Lower limit for color scale (dB). If omitted, autoscale.",
+        help="Lower limit for color scale (dB). Default: autoscale.",
     )
     p.add_argument(
         "--vmax",
         type=float,
         default=None,
-        help="Upper limit for color scale (dB). If omitted, autoscale.",
+        help="Upper limit for color scale (dB). Default: autoscale.",
     )
     p.add_argument(
         "--max-chunks",
         type=int,
         default=None,
-        help="Limit number of chunks for quicker plots; None = process all in bounds.",
+        help="Limit number of chunks for quicker plots. Default: process all in bounds.",
     )
     p.add_argument(
         "--fill-gaps",
         action="store_true",
         default=True,
-        help="Insert NaN rows into the waterfall where data is missing between DigitalRF blocks.",
+        help="Insert NaN rows into the waterfall where data is missing between DigitalRF blocks. Default: True.",
     )
     p.add_argument(
         "--output",
         type=Path,
         default=None,
-        help="Output PNG path. If omitted, uses bandpass_waterfall_<dataset>_<band>.png.",
+        help="Output PNG path. Default: bandpass_waterfall_<dataset>_<band>.png.",
     )
     return p.parse_args()
 

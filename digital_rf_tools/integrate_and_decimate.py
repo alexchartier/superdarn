@@ -45,45 +45,69 @@ TWO_PI = 2.0 * math.pi
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Mix/integrate/decimate DigitalRF IQ to 100 kS/s at 10 MHz.")
-    parser.add_argument("--input-root", type=Path, default=DEFAULT_INPUT_ROOT, help="Top-level DigitalRF directory.")
+    parser.add_argument(
+        "--input-root",
+        type=Path,
+        default=DEFAULT_INPUT_ROOT,
+        help=f"Top-level DigitalRF directory. Default: {DEFAULT_INPUT_ROOT}.",
+    )
     parser.add_argument(
         "--output-root",
         type=Path,
         default=DEFAULT_OUTPUT_ROOT,
-        help="Destination DigitalRF root (channel subdir is created automatically).",
+        help=f"Destination DigitalRF root (channel subdir is created automatically). Default: {DEFAULT_OUTPUT_ROOT}.",
     )
-    parser.add_argument("--channel", default=DEFAULT_CHANNEL, help="Channel name inside the DigitalRF dataset.")
-    parser.add_argument("--raw-center-hz", type=float, default=DEFAULT_RAW_CENTER_HZ, help="Recorded center frequency.")
-    parser.add_argument("--target-center-hz", type=float, default=DEFAULT_TARGET_CENTER_HZ, help="Desired center freq.")
-    parser.add_argument("--fs-out", type=float, default=DEFAULT_FS_OUT, help="Output sample rate in Hz.")
+    parser.add_argument(
+        "--channel",
+        default=DEFAULT_CHANNEL,
+        help=f"Channel name inside the DigitalRF dataset. Default: {DEFAULT_CHANNEL}.",
+    )
+    parser.add_argument(
+        "--raw-center-hz",
+        type=float,
+        default=DEFAULT_RAW_CENTER_HZ,
+        help=f"Recorded center frequency (Hz). Default: {DEFAULT_RAW_CENTER_HZ:g}.",
+    )
+    parser.add_argument(
+        "--target-center-hz",
+        type=float,
+        default=DEFAULT_TARGET_CENTER_HZ,
+        help=f"Desired center freq (Hz). Default: {DEFAULT_TARGET_CENTER_HZ:g}.",
+    )
+    parser.add_argument(
+        "--fs-out",
+        type=float,
+        default=DEFAULT_FS_OUT,
+        help=f"Output sample rate in Hz. Default: {DEFAULT_FS_OUT:g}.",
+    )
     parser.add_argument(
         "--block-seconds",
         type=float,
         default=DEFAULT_BLOCK_SECONDS,
-        help="Seconds per processing block (1 s matches the file cadence).",
+        help=f"Seconds per processing block (1 s matches the file cadence). Default: {DEFAULT_BLOCK_SECONDS:g}.",
     )
     parser.add_argument(
         "--bandwidth-hz",
         type=float,
         default=DEFAULT_BANDWIDTH_HZ,
-        help="Two-sided bandwidth to keep after decimation (Hz).",
+        help=f"Two-sided bandwidth to keep after decimation (Hz). Default: {DEFAULT_BANDWIDTH_HZ:g}.",
     )
     parser.add_argument(
         "--final-filter-order",
         type=int,
         default=DEFAULT_FINAL_FILTER_ORDER,
-        help="Butterworth order for the post-decimation lowpass.",
+        help=f"Butterworth order for the post-decimation lowpass. Default: {DEFAULT_FINAL_FILTER_ORDER}.",
     )
     parser.add_argument(
         "--no-final-lowpass",
         action="store_true",
-        help="Skip the final lowpass (keeps only the integrate-and-dump response).",
+        help="Skip the final lowpass (keeps only the integrate-and-dump response). Default: False.",
     )
     parser.add_argument(
         "--stop-after",
         type=int,
         default=None,
-        help="Limit number of files for a quick test run.",
+        help="Limit number of files for a quick test run. Default: no limit.",
     )
     return parser.parse_args()
 

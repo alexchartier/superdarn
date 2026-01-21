@@ -32,26 +32,30 @@ def parse_args() -> argparse.Namespace:
         "--dataset-root",
         type=Path,
         default=Path("~/data/hf_data/itsi_rooftop/2025_06_04_14_19_14").expanduser(),
-        help="Top-level DigitalRF directory containing the channel (default: provided dataset).",
+        help="Top-level DigitalRF directory containing the channel. Default: ~/data/hf_data/itsi_rooftop/2025_06_04_14_19_14.",
     )
-    p.add_argument("--channel", default="cha", help="Channel name in the DigitalRF dataset (default: cha).")
+    p.add_argument(
+        "--channel",
+        default="cha",
+        help="Channel name in the DigitalRF dataset. Default: cha.",
+    )
     p.add_argument(
         "--center-hz",
         type=float,
         default=None,
-        help="RF center frequency for labeling (Hz). If omitted, uses drf_properties center_frequency_hz if present.",
+        help="RF center frequency for labeling (Hz). Default: DigitalRF metadata center_frequency_hz when present (supersedes the default None).",
     )
     p.add_argument(
         "--chunk-seconds",
         type=float,
         default=1.0,
-        help="Seconds per chunk to read and FFT (default: 1 s).",
+        help="Seconds per chunk to read and FFT. Default: 1.0.",
     )
     p.add_argument(
         "--skip-seconds",
         type=float,
         default=1.0,
-        help="Seconds to discard from the start of the capture before plotting (default: 1 s; set 0 to keep all).",
+        help="Seconds to discard from the start of the capture before plotting. Default: 1.0 (set 0 to keep all).",
     )
     p.add_argument(
         "--total-seconds",
@@ -63,44 +67,49 @@ def parse_args() -> argparse.Namespace:
         "--step-seconds",
         type=float,
         default=None,
-        help="Seconds to advance between chunks (default: match chunk-seconds; increase to thin the waterfall).",
+        help="Seconds to advance between chunks. Default: match chunk-seconds.",
     )
-    p.add_argument("--nfft", type=int, default=8192, help="FFT length for Welch PSD (default: 8192).")
+    p.add_argument(
+        "--nfft",
+        type=int,
+        default=8192,
+        help="FFT length for Welch PSD. Default: 8192.",
+    )
     p.add_argument(
         "--freq-span-hz",
         type=float,
         default=None,
-        help="Optional two-sided span around center (Hz) to crop (e.g., 200e3 keeps ±100 kHz).",
+        help="Optional two-sided span around center (Hz) to crop (e.g., 200e3 keeps ±100 kHz). Default: full span.",
     )
     p.add_argument(
         "--vmin",
         type=float,
         default=None,
-        help="Lower limit for color scale (dB). If omitted, autoscale.",
+        help="Lower limit for color scale (dB). Default: autoscale.",
     )
     p.add_argument(
         "--vmax",
         type=float,
         default=None,
-        help="Upper limit for color scale (dB). If omitted, autoscale.",
+        help="Upper limit for color scale (dB). Default: autoscale.",
     )
     p.add_argument(
         "--max-chunks",
         type=int,
         default=None,
-        help="Limit number of chunks for quicker plots; None = process all in bounds.",
+        help="Limit number of chunks for quicker plots. Default: process all in bounds.",
     )
     p.add_argument(
         "--fill-gaps",
         action="store_true",
         default=True,
-        help="Insert NaN rows into the waterfall where data is missing between DigitalRF blocks.",
+        help="Insert NaN rows into the waterfall where data is missing between DigitalRF blocks. Default: True.",
     )
     p.add_argument(
         "--output",
         type=Path,
         default=None,
-        help="Output PNG path. If omitted, uses fullband_waterfall_<dataset_basename>.png.",
+        help="Output PNG path. Default: fullband_waterfall_<dataset_basename>.png.",
     )
     return p.parse_args()
 

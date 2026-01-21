@@ -22,32 +22,32 @@ def parse_args() -> argparse.Namespace:
         "--dataset-root",
         type=Path,
         default=Path("~/data/hf_data/itsi_rooftop/2025_06_04_14_19_14").expanduser(),
-        help="Top-level DigitalRF directory.",
+        help="Top-level DigitalRF directory. Default: ~/data/hf_data/itsi_rooftop/2025_06_04_14_19_14.",
     )
-    p.add_argument("--channel", default="cha", help="Channel name (default: cha).")
+    p.add_argument("--channel", default="cha", help="Channel name. Default: cha.")
     p.add_argument(
         "--duration-seconds",
         type=float,
         default=0.01,
-        help="Length of time series to plot (seconds). Default: 10 ms.",
+        help="Length of time series to plot (seconds). Default: 0.01.",
     )
     p.add_argument(
         "--offset-seconds",
         type=float,
         default=0.0,
-        help="Offset from the start of available data (seconds). Default: 0 s.",
+        help="Offset from the start of available data (seconds). Default: 0.0.",
     )
     p.add_argument(
         "--center-hz",
         type=float,
         default=None,
-        help="Override center frequency used in the plot title. If omitted, uses drf_properties center_frequency_hz.",
+        help="Override center frequency used in the plot title. Default: DigitalRF metadata center_frequency_hz when present (supersedes the default None).",
     )
     p.add_argument(
         "--fullscale-bits",
         type=int,
         default=12,
-        help="Assumed ADC bit depth for dBFS conversion (default: 12 bits => FS=2048).",
+        help="Assumed ADC bit depth for dBFS conversion. Default: 12 (FS=2048).",
     )
     p.add_argument(
         "--mode",
@@ -59,7 +59,7 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         default=Path("iq_timeseries.png"),
-        help="Output PNG path. Default: iq_timeseries.png",
+        help="Output PNG path. Default: iq_timeseries.png.",
     )
     return p.parse_args()
 

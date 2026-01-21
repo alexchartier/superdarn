@@ -46,6 +46,7 @@ DEFAULT_SIGMA_THRESHOLD = 6.0
 DEFAULT_RANGE_PLOT = Path("wwv_range_time.png")
 DEFAULT_RANGE_MAX_KM = 5000.0
 DEFAULT_CARRIER_LP_HZ = 200.0
+DEFAULT_START_SECONDS = 1.0
 DEFAULT_END_SECONDS = 1.0
 
 C_KM_PER_S = 299_792.458
@@ -53,13 +54,18 @@ C_KM_PER_S = 299_792.458
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Detect WWV 1 kHz ticks from DigitalRF.")
-    p.add_argument("--dataset-root", type=Path, default=DEFAULT_INPUT_ROOT, help="DigitalRF dataset root.")
-    p.add_argument("--channel", default=DEFAULT_CHANNEL, help="Channel name.")
+    p.add_argument(
+        "--dataset-root",
+        type=Path,
+        default=DEFAULT_INPUT_ROOT,
+        help=f"DigitalRF dataset root. Default: {DEFAULT_INPUT_ROOT}.",
+    )
+    p.add_argument("--channel", default=DEFAULT_CHANNEL, help=f"Channel name. Default: {DEFAULT_CHANNEL}.")
     p.add_argument(
         "--raw-center-hz",
         type=float,
         default=None,
-        help="Recorded center frequency (Hz). If omitted, uses drf_properties.",
+        help="Recorded center frequency (Hz). Default: DigitalRF metadata center_frequency_hz when present (supersedes the default None).",
     )
     p.add_argument(
         "--target-hz",
@@ -71,96 +77,115 @@ def parse_args() -> argparse.Namespace:
         "--block-seconds",
         type=float,
         default=DEFAULT_BLOCK_SECONDS,
-        help="Seconds of RF to process per block.",
+        help=f"Seconds of RF to process per block. Default: {DEFAULT_BLOCK_SECONDS:g}.",
     )
     p.add_argument(
         "--channel-rate",
         type=float,
         default=DEFAULT_CHANNEL_RATE,
-        help="Intermediate rate after decimation (Hz).",
+        help=f"Intermediate rate after decimation (Hz). Default: {DEFAULT_CHANNEL_RATE:g}.",
     )
     p.add_argument(
         "--channel-lp-hz",
         type=float,
         default=DEFAULT_CHANNEL_LP_HZ,
-        help="Channel lowpass cutoff before envelope detection (Hz).",
+        help=f"Channel lowpass cutoff before envelope detection (Hz). Default: {DEFAULT_CHANNEL_LP_HZ:g}.",
     )
     p.add_argument(
         "--channel-transition-hz",
         type=float,
         default=DEFAULT_CHANNEL_TRANSITION_HZ,
-        help="Transition width for the channel lowpass (Hz).",
+        help=f"Transition width for the channel lowpass (Hz). Default: {DEFAULT_CHANNEL_TRANSITION_HZ:g}.",
     )
     p.add_argument(
         "--bp-low-hz",
         type=float,
         default=DEFAULT_BP_LOW_HZ,
-        help="Bandpass low cutoff for the 1 kHz tone (Hz).",
+        help=f"Bandpass low cutoff for the 1 kHz tone (Hz). Default: {DEFAULT_BP_LOW_HZ:g}.",
     )
     p.add_argument(
         "--bp-high-hz",
         type=float,
         default=DEFAULT_BP_HIGH_HZ,
-        help="Bandpass high cutoff for the 1 kHz tone (Hz).",
+        help=f"Bandpass high cutoff for the 1 kHz tone (Hz). Default: {DEFAULT_BP_HIGH_HZ:g}.",
     )
     p.add_argument(
         "--bp-transition-hz",
         type=float,
         default=DEFAULT_BP_TRANSITION_HZ,
-        help="Transition width for the tone bandpass (Hz).",
+        help=f"Transition width for the tone bandpass (Hz). Default: {DEFAULT_BP_TRANSITION_HZ:g}.",
     )
-    p.add_argument("--tone-hz", type=float, default=DEFAULT_TONE_HZ, help="Tick tone frequency (Hz).")
-    p.add_argument("--tone-cycles", type=int, default=DEFAULT_TONE_CYCLES, help="Cycles per tick (default: 5).")
+    p.add_argument(
+        "--tone-hz",
+        type=float,
+        default=DEFAULT_TONE_HZ,
+        help=f"Tick tone frequency (Hz). Default: {DEFAULT_TONE_HZ:g}.",
+    )
+    p.add_argument(
+        "--tone-cycles",
+        type=int,
+        default=DEFAULT_TONE_CYCLES,
+        help=f"Cycles per tick. Default: {DEFAULT_TONE_CYCLES}.",
+    )
     p.add_argument(
         "--sigma-threshold",
         type=float,
         default=DEFAULT_SIGMA_THRESHOLD,
-        help="Peak threshold = sigma_threshold * robust_sigma.",
+        help=f"Peak threshold = sigma_threshold * robust_sigma. Default: {DEFAULT_SIGMA_THRESHOLD:g}.",
     )
     p.add_argument(
         "--carrier-lp-hz",
         type=float,
         default=DEFAULT_CARRIER_LP_HZ,
-        help="Lowpass cutoff for carrier Doppler estimate (Hz).",
+        help=f"Lowpass cutoff for carrier Doppler estimate (Hz). Default: {DEFAULT_CARRIER_LP_HZ:g}.",
     )
-    p.add_argument("--start-seconds", type=float, default=1.0, help="Skip this many seconds from the start.")
+    p.add_argument(
+        "--start-seconds",
+        type=float,
+        default=DEFAULT_START_SECONDS,
+        help=f"Skip this many seconds from the start. Default: {DEFAULT_START_SECONDS:g}.",
+    )
     p.add_argument(
         "--end-seconds",
         type=float,
         default=DEFAULT_END_SECONDS,
-        help="Skip this many seconds from the end (after --seconds).",
+        help=f"Skip this many seconds from the end (after --seconds). Default: {DEFAULT_END_SECONDS:g}.",
     )
     p.add_argument(
         "--seconds",
         type=float,
         default=None,
-        help="Process only this many seconds (default: to end).",
+        help="Process only this many seconds. Default: to end.",
     )
     p.add_argument(
         "--time-offset-seconds",
         type=float,
         default=0.0,
-        help="Optional constant offset applied to reported UTC times.",
+        help="Optional constant offset applied to reported UTC times. Default: 0.",
     )
     p.add_argument(
         "--output-csv",
         type=Path,
         default=Path("wwv_tick_times.csv"),
-        help="Output CSV path (default: wwv_tick_times.csv in cwd).",
+        help="Output CSV path. Default: wwv_tick_times.csv in cwd.",
     )
     p.add_argument(
         "--range-plot-file",
         type=Path,
         default=DEFAULT_RANGE_PLOT,
-        help="Range-time-intensity plot path (default: wwv_range_time.png).",
+        help=f"Range-time-intensity plot path. Default: {DEFAULT_RANGE_PLOT}.",
     )
     p.add_argument(
         "--range-max-km",
         type=float,
         default=DEFAULT_RANGE_MAX_KM,
-        help="Max virtual range to plot (km). Default: 5000.",
+        help=f"Max virtual range to plot (km). Default: {DEFAULT_RANGE_MAX_KM:g}.",
     )
-    p.add_argument("--no-range-plot", action="store_true", help="Skip range-time-intensity plotting.")
+    p.add_argument(
+        "--no-range-plot",
+        action="store_true",
+        help="Skip range-time-intensity plotting. Default: False (plot enabled).",
+    )
     return p.parse_args()
 
 

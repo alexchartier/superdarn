@@ -45,92 +45,106 @@ TWO_PI = 2.0 * math.pi
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Convert WWV 10 MHz channel to audio WAV.")
-    parser.add_argument("--input-root", type=Path, default=DEFAULT_INPUT_ROOT, help="DigitalRF dataset root.")
-    parser.add_argument("--channel", default=DEFAULT_CHANNEL, help="DigitalRF channel name.")
+    parser.add_argument(
+        "--input-root",
+        type=Path,
+        default=DEFAULT_INPUT_ROOT,
+        help=f"DigitalRF dataset root. Default: {DEFAULT_INPUT_ROOT}.",
+    )
+    parser.add_argument(
+        "--channel",
+        default=DEFAULT_CHANNEL,
+        help=f"DigitalRF channel name. Default: {DEFAULT_CHANNEL}.",
+    )
     parser.add_argument(
         "--raw-center-hz",
         type=float,
         default=None,
-        help="Recorded center frequency. If omitted, uses drf_properties center_frequency_hz.",
+        help="Recorded center frequency (Hz). Default: DigitalRF metadata center_frequency_hz when present (supersedes the default None).",
     )
     parser.add_argument(
         "--target-center-hz",
         type=float,
         default=DEFAULT_TARGET_CENTER_HZ,
-        help="Target WWV carrier frequency to demodulate.",
+        help=f"Target WWV carrier frequency to demodulate (Hz). Default: {DEFAULT_TARGET_CENTER_HZ:g}.",
     )
-    parser.add_argument("--audio-rate", type=int, default=DEFAULT_AUDIO_RATE, help="Audio sample rate (Hz).")
+    parser.add_argument(
+        "--audio-rate",
+        type=int,
+        default=DEFAULT_AUDIO_RATE,
+        help=f"Audio sample rate (Hz). Default: {DEFAULT_AUDIO_RATE}.",
+    )
     parser.add_argument(
         "--block-seconds",
         type=float,
         default=DEFAULT_BLOCK_SECONDS,
-        help="Block size in seconds for streaming processing.",
+        help=f"Block size in seconds for streaming processing. Default: {DEFAULT_BLOCK_SECONDS:g}.",
     )
     parser.add_argument(
         "--bandpass-low-hz",
         type=float,
         default=DEFAULT_BANDPASS_LOW_HZ,
-        help="Audio bandpass low cutoff (Hz).",
+        help=f"Audio bandpass low cutoff (Hz). Default: {DEFAULT_BANDPASS_LOW_HZ:g}.",
     )
     parser.add_argument(
         "--bandpass-high-hz",
         type=float,
         default=DEFAULT_BANDPASS_HIGH_HZ,
-        help="Audio bandpass high cutoff (Hz).",
+        help=f"Audio bandpass high cutoff (Hz). Default: {DEFAULT_BANDPASS_HIGH_HZ:g}.",
     )
     parser.add_argument(
         "--decim-filter-order",
         type=int,
         default=DEFAULT_DECIM_FILTER_ORDER,
-        help="Order of per-stage decimation IIR filter.",
+        help=f"Order of per-stage decimation IIR filter. Default: {DEFAULT_DECIM_FILTER_ORDER}.",
     )
     parser.add_argument(
         "--tune-rate-hz",
         type=float,
         default=DEFAULT_TUNE_RATE_HZ,
-        help="Intermediate sample rate after first decimation (Hz).",
+        help=f"Intermediate sample rate after first decimation (Hz). Default: {DEFAULT_TUNE_RATE_HZ:g}.",
     )
     parser.add_argument(
         "--tune-seconds",
         type=float,
         default=DEFAULT_TUNE_SECONDS,
-        help="Seconds of data to estimate fine frequency offset.",
+        help=f"Seconds of data to estimate fine frequency offset. Default: {DEFAULT_TUNE_SECONDS:g}.",
     )
     parser.add_argument(
         "--tune-span-hz",
         type=float,
         default=DEFAULT_TUNE_SPAN_HZ,
-        help="Search span for fine frequency offset (Hz).",
+        help=f"Search span for fine frequency offset (Hz). Default: {DEFAULT_TUNE_SPAN_HZ:g}.",
     )
     parser.add_argument(
         "--fine-tune-hz",
         type=float,
         default=None,
-        help="Override fine frequency offset (Hz). If omitted, auto-tuned.",
+        help="Override fine frequency offset (Hz). Default: auto-tuned.",
     )
     parser.add_argument(
         "--rf-lowpass-hz",
         type=float,
         default=DEFAULT_RF_LOWPASS_HZ,
-        help="Lowpass cutoff (Hz) before AM envelope detection.",
+        help=f"Lowpass cutoff (Hz) before AM envelope detection. Default: {DEFAULT_RF_LOWPASS_HZ:g}.",
     )
     parser.add_argument(
         "--demod",
         choices=("dsb", "envelope"),
         default=DEFAULT_DEMOD,
-        help="Demodulation mode: coherent DSB-AM (dsb) or envelope.",
+        help=f"Demodulation mode: coherent DSB-AM (dsb) or envelope. Default: {DEFAULT_DEMOD}.",
     )
     parser.add_argument(
         "--reference-audio",
         type=Path,
         default=None,
-        help="Optional reference audio (wav/mp4) for fine-tune correlation.",
+        help="Optional reference audio (wav/mp4) for fine-tune correlation. Default: none.",
     )
     parser.add_argument(
         "--output-wav",
         type=Path,
         default=None,
-        help="Output WAV path. Defaults to <input_root>/wwv_10mhz_audio.wav",
+        help="Output WAV path. Default: <input_root>/wwv_10mhz_audio.wav.",
     )
     return parser.parse_args()
 

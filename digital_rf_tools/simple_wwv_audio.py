@@ -41,84 +41,113 @@ DEFAULT_DEGLITCH_KERNEL = 9
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Demodulate WWV 10 MHz AM audio from DigitalRF.")
-    p.add_argument("--dataset-root", type=Path, default=DEFAULT_INPUT_ROOT, help="DigitalRF dataset root.")
-    p.add_argument("--channel", default=DEFAULT_CHANNEL, help="DigitalRF channel name.")
+    p.add_argument(
+        "--dataset-root",
+        type=Path,
+        default=DEFAULT_INPUT_ROOT,
+        help=f"DigitalRF dataset root. Default: {DEFAULT_INPUT_ROOT}.",
+    )
+    p.add_argument(
+        "--channel",
+        default=DEFAULT_CHANNEL,
+        help=f"DigitalRF channel name. Default: {DEFAULT_CHANNEL}.",
+    )
     p.add_argument(
         "--raw-center-hz",
         type=float,
         default=None,
-        help="Recorded center frequency (Hz). If omitted, uses drf_properties.",
+        help="Recorded center frequency (Hz). Default: DigitalRF metadata center_frequency_hz when present (supersedes the default None).",
     )
-    p.add_argument("--target-hz", type=float, default=DEFAULT_TARGET_HZ, help="Target carrier to demodulate (Hz).")
-    p.add_argument("--audio-rate", type=int, default=DEFAULT_AUDIO_RATE, help="Output audio rate (Hz).")
+    p.add_argument(
+        "--target-hz",
+        type=float,
+        default=DEFAULT_TARGET_HZ,
+        help=f"Target carrier to demodulate (Hz). Default: {DEFAULT_TARGET_HZ:g}.",
+    )
+    p.add_argument(
+        "--audio-rate",
+        type=int,
+        default=DEFAULT_AUDIO_RATE,
+        help=f"Output audio rate (Hz). Default: {DEFAULT_AUDIO_RATE}.",
+    )
     p.add_argument(
         "--channel-rate",
         type=float,
         default=DEFAULT_CHANNEL_RATE,
-        help="Intermediate rate after first decimation (Hz).",
+        help=f"Intermediate rate after first decimation (Hz). Default: {DEFAULT_CHANNEL_RATE:g}.",
     )
     p.add_argument(
         "--channel-lp-hz",
         type=float,
         default=DEFAULT_CHANNEL_LP_HZ,
-        help="Lowpass cutoff before envelope detection (Hz).",
+        help=f"Lowpass cutoff before envelope detection (Hz). Default: {DEFAULT_CHANNEL_LP_HZ:g}.",
     )
     p.add_argument(
         "--channel-transition-hz",
         type=float,
         default=DEFAULT_CHANNEL_TRANSITION_HZ,
-        help="Transition width for the channel lowpass (Hz).",
+        help=f"Transition width for the channel lowpass (Hz). Default: {DEFAULT_CHANNEL_TRANSITION_HZ:g}.",
     )
     p.add_argument(
         "--block-seconds",
         type=float,
         default=DEFAULT_BLOCK_SECONDS,
-        help="Seconds of RF to process per block.",
+        help=f"Seconds of RF to process per block. Default: {DEFAULT_BLOCK_SECONDS:g}.",
     )
     p.add_argument(
         "--audio-lp-hz",
         type=float,
         default=DEFAULT_AUDIO_LP_HZ,
-        help="Audio lowpass cutoff (Hz).",
+        help=f"Audio lowpass cutoff (Hz). Default: {DEFAULT_AUDIO_LP_HZ:g}.",
     )
     p.add_argument(
         "--audio-transition-hz",
         type=float,
         default=DEFAULT_AUDIO_TRANSITION_HZ,
-        help="Audio lowpass transition width (Hz).",
+        help=f"Audio lowpass transition width (Hz). Default: {DEFAULT_AUDIO_TRANSITION_HZ:g}.",
     )
     p.add_argument(
         "--audio-hp-hz",
         type=float,
         default=DEFAULT_AUDIO_HP_HZ,
-        help="Audio highpass cutoff for DC blocking (Hz).",
+        help=f"Audio highpass cutoff for DC blocking (Hz). Default: {DEFAULT_AUDIO_HP_HZ:g}.",
     )
-    p.add_argument("--gain", type=float, default=DEFAULT_GAIN, help="Linear audio gain before writing.")
+    p.add_argument(
+        "--gain",
+        type=float,
+        default=DEFAULT_GAIN,
+        help=f"Linear audio gain before writing. Default: {DEFAULT_GAIN:g}.",
+    )
     p.add_argument(
         "--mix-sign",
         type=int,
         choices=(-1, 1),
         default=-1,
-        help="Sign for mixing (+1 or -1). Use -1 to match GNU Radio freq_xlating_fir_filter.",
+        help="Sign for mixing (+1 or -1). Default: -1 (matches GNU Radio freq_xlating_fir_filter).",
     )
-    p.add_argument("--start-seconds", type=float, default=2.0, help="Skip this many seconds from the start.")
+    p.add_argument(
+        "--start-seconds",
+        type=float,
+        default=2.0,
+        help="Skip this many seconds from the start. Default: 2.0.",
+    )
     p.add_argument(
         "--end-seconds",
         type=float,
         default=DEFAULT_END_SECONDS,
-        help="Skip this many seconds from the end (after --seconds).",
+        help=f"Skip this many seconds from the end (after --seconds). Default: {DEFAULT_END_SECONDS:g}.",
     )
     p.add_argument(
         "--seconds",
         type=float,
         default=None,
-        help="Process only this many seconds (default: to end).",
+        help="Process only this many seconds. Default: to end.",
     )
     p.add_argument(
         "--output-wav",
         type=Path,
         default=None,
-        help="Output WAV path (default: <input-root>/wwv_10mhz_audio_simple.wav).",
+        help="Output WAV path. Default: <input-root>/wwv_10mhz_audio_simple.wav.",
     )
     return p.parse_args()
 

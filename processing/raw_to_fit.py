@@ -25,6 +25,7 @@ author: A.T. Chartier, 5 February 2020
 import os
 import sys
 import argparse
+from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
 from pathlib import Path
 
 UTILS_DIR = Path(__file__).resolve().parent.parent / "utils"
@@ -44,6 +45,34 @@ MULTIPLE_BEAM_DEFS_ERROR_CODE = 1
 MAKE_FIT_VERSIONS = [3.0]
 APPLY_FIT_SPECK_REMOVAL = False
 MIN_FITACF_FILE_SIZE = 1E5  # bytes
+
+
+def _make_run_dir(run_dir_base):
+    os.makedirs(run_dir_base, exist_ok=True)
+    run_dir = os.path.join(
+        run_dir_base, "run_{pid}_{suffix}".format(
+            pid=os.getpid(),
+            suffix=get_random_string(6),
+        )
+    )
+    os.makedirs(run_dir, exist_ok=False)
+    return run_dir
+
+
+def _proc_radar_wrapper(args):
+    in_fname_fmt, out_fname, fit_version, run_dir_base, apply_speck_removal = args
+    try:
+        status = proc_radar(
+            in_fname_fmt,
+            out_fname,
+            fit_version,
+            run_dir_base,
+            apply_speck_removal=apply_speck_removal,
+        )
+    except Exception as exc:
+        print("Error processing {0}: {1}".format(in_fname_fmt, exc))
+        return 1, in_fname_fmt, fit_version
+    return status, in_fname_fmt, fit_version
 
 
 def get_make_fit_flag(fit_version):
@@ -92,6 +121,7 @@ def main(
     save_output_to_logfile=SAVE_OUTPUT_TO_LOGFILE,
     delete_processed_rawacfs=DELETE_PROCESSED_RAWACFS,
     clobber=False,
+    workers=1,
     step=1,  # month
     skip_existing=True,
     fit_ext='*.fit',
@@ -130,6 +160,7 @@ def main(
         apply_speck_removal=apply_speck_removal,
         delete_processed_rawacfs=delete_processed_rawacfs,
         clobber=clobber,
+        workers=workers,
     )
     sys.stdout = original_stdout
 
@@ -144,6 +175,7 @@ def raw_to_fit(
     apply_speck_removal=False,
     delete_processed_rawacfs=DELETE_PROCESSED_RAWACFS,
     clobber=False,
+    workers=1,
 ):
 
     print('%s\n%s\n%s\n%s\n%s\n' % (
@@ -159,135 +191,216 @@ def raw_to_fit(
 
     radar_cache = {}
     empty_dirs = set()
+    last_fit_version = make_fit_versions[-1]
 
-    for fit_version in make_fit_versions:
-        # Loop over time
-        time = start_time
-        while time <= end_time:
-            in_dir_t = time.strftime(in_dir)
-            if in_dir_t in empty_dirs:
-                time += relativedelta(months=1)
-                continue
-            if in_dir_t not in radar_cache:
-                if not os.path.isdir(in_dir_t):
-                    print('%s not found - skipping' % in_dir_t)
-                    empty_dirs.add(in_dir_t)
+    if workers < 1:
+        raise ValueError("workers must be >= 1")
+
+    if workers == 1:
+        for fit_version in make_fit_versions:
+            # Loop over time
+            time = start_time
+            while time <= end_time:
+                in_dir_t = time.strftime(in_dir)
+                if in_dir_t in empty_dirs:
                     time += relativedelta(months=1)
                     continue
-                radar_cache[in_dir_t] = get_rawacf_radar_list(in_dir_t)
-                if len(radar_cache[in_dir_t]) == 0:
-                    empty_dirs.add(in_dir_t)
-                    time += relativedelta(months=1)
-                    continue
-            radar_list = radar_cache[in_dir_t]
-            for radar in radar_list:
-                in_fname_fmt = time.strftime(os.path.join(
-                    in_dir, '%Y%m%d' + '*{radarName}*.rawacf*'.format(radarName=radar)))
-                fit_fname = time.strftime(
-                    out_dir + '/%Y%m%d.' + '{radarName}.v{fitVer}.fit'.format(radarName=radar, fitVer=fit_version))
-                if os.path.isfile(fit_fname):
-                    print("File exists: %s" % fit_fname)
-                    if clobber:
-                        print('overwriting')
-                    else:
-                        print('skipping')
+                if in_dir_t not in radar_cache:
+                    if not os.path.isdir(in_dir_t):
+                        print('%s not found - skipping' % in_dir_t)
+                        empty_dirs.add(in_dir_t)
+                        time += relativedelta(months=1)
                         continue
-                status = proc_radar(
-                    in_fname_fmt,
-                    fit_fname,
-                    fit_version,
-                    run_dir,
-                    apply_speck_removal=apply_speck_removal,
-                )
+                    radar_cache[in_dir_t] = get_rawacf_radar_list(in_dir_t)
+                    if len(radar_cache[in_dir_t]) == 0:
+                        empty_dirs.add(in_dir_t)
+                        time += relativedelta(months=1)
+                        continue
+                radar_list = radar_cache[in_dir_t]
+                for radar in radar_list:
+                    in_fname_fmt = time.strftime(os.path.join(
+                        in_dir, '%Y%m%d' + '*{radarName}*.rawacf*'.format(radarName=radar)))
+                    fit_fname = time.strftime(
+                        out_dir + '/%Y%m%d.' + '{radarName}.v{fitVer}.fit'.format(radarName=radar, fitVer=fit_version))
+                    if os.path.isfile(fit_fname):
+                        print("File exists: %s" % fit_fname)
+                        if clobber:
+                            print('overwriting')
+                        else:
+                            print('skipping')
+                            continue
+                    status = proc_radar(
+                        in_fname_fmt,
+                        fit_fname,
+                        fit_version,
+                        run_dir,
+                        apply_speck_removal=apply_speck_removal,
+                    )
 
-                # Only delete the rawACFs if:
-                #   - The rawACF -> fitACF conversion succeeded
-                #   - The user set the flag to delete rawACFs
-                #   - All fitACF versions have been created
-                if (
-                    status == 0
-                    and delete_processed_rawacfs
-                    and fit_version == make_fit_versions[-1]
-                ):
-                    print('Deleting processed rawACFs: {rawacfs}'.format(
-                        rawacfs=glob.glob(in_fname_fmt)))
-                    os.system('rm {rawacfs}'.format(rawacfs=in_fname_fmt))
+                    # Only delete the rawACFs if:
+                    #   - The rawACF -> fitACF conversion succeeded
+                    #   - The user set the flag to delete rawACFs
+                    #   - All fitACF versions have been created
+                    if (
+                        status == 0
+                        and delete_processed_rawacfs
+                        and fit_version == last_fit_version
+                    ):
+                        print('Deleting processed rawACFs: {rawacfs}'.format(
+                            rawacfs=glob.glob(in_fname_fmt)))
+                        os.system('rm {rawacfs}'.format(rawacfs=in_fname_fmt))
 
-            time += dt.timedelta(days=1)
+                time += dt.timedelta(days=1)
+    else:
+        max_queue = workers * 4
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            for fit_version in make_fit_versions:
+                pending = set()
+                time = start_time
+                while time <= end_time:
+                    in_dir_t = time.strftime(in_dir)
+                    if in_dir_t in empty_dirs:
+                        time += relativedelta(months=1)
+                        continue
+                    if in_dir_t not in radar_cache:
+                        if not os.path.isdir(in_dir_t):
+                            print('%s not found - skipping' % in_dir_t)
+                            empty_dirs.add(in_dir_t)
+                            time += relativedelta(months=1)
+                            continue
+                        radar_cache[in_dir_t] = get_rawacf_radar_list(in_dir_t)
+                        if len(radar_cache[in_dir_t]) == 0:
+                            empty_dirs.add(in_dir_t)
+                            time += relativedelta(months=1)
+                            continue
+                    radar_list = radar_cache[in_dir_t]
+                    for radar in radar_list:
+                        in_fname_fmt = time.strftime(os.path.join(
+                            in_dir, '%Y%m%d' + '*{radarName}*.rawacf*'.format(radarName=radar)))
+                        fit_fname = time.strftime(
+                            out_dir + '/%Y%m%d.' + '{radarName}.v{fitVer}.fit'.format(radarName=radar, fitVer=fit_version))
+                        if os.path.isfile(fit_fname):
+                            print("File exists: %s" % fit_fname)
+                            if clobber:
+                                print('overwriting')
+                            else:
+                                print('skipping')
+                                continue
+                        args = (
+                            in_fname_fmt,
+                            fit_fname,
+                            fit_version,
+                            run_dir,
+                            apply_speck_removal,
+                        )
+                        pending.add(executor.submit(_proc_radar_wrapper, args))
+                        if len(pending) >= max_queue:
+                            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                            for future in done:
+                                status, done_fmt, done_version = future.result()
+                                if (
+                                    status == 0
+                                    and delete_processed_rawacfs
+                                    and done_version == last_fit_version
+                                ):
+                                    print('Deleting processed rawACFs: {rawacfs}'.format(
+                                        rawacfs=glob.glob(done_fmt)))
+                                    os.system('rm {rawacfs}'.format(rawacfs=done_fmt))
+
+                    time += dt.timedelta(days=1)
+
+                if pending:
+                    done, pending = wait(pending)
+                    for future in done:
+                        status, done_fmt, done_version = future.result()
+                        if (
+                            status == 0
+                            and delete_processed_rawacfs
+                            and done_version == last_fit_version
+                        ):
+                            print('Deleting processed rawACFs: {rawacfs}'.format(
+                                rawacfs=glob.glob(done_fmt)))
+                            os.system('rm {rawacfs}'.format(rawacfs=done_fmt))
 
 
 def proc_radar(
     in_fname_fmt,
     out_fname,
     fit_version,
-    run_dir,
+    run_dir_base,
     apply_speck_removal=False,
 ):
 
-    # Clean up the run directory
-    os.makedirs(run_dir, exist_ok=True)
-    os.chdir(run_dir)
-    os.system('rm -rf %s/*' % run_dir)
+    run_dir = _make_run_dir(run_dir_base)
+    prev_cwd = os.getcwd()
+    try:
+        os.chdir(run_dir)
 
-    # Set up storage directory
-    out_dir = os.path.dirname(out_fname)
-    os.makedirs(out_dir, exist_ok=True)
+        # Set up storage directory
+        out_dir = os.path.dirname(out_fname)
+        os.makedirs(out_dir, exist_ok=True)
 
-    # Make fitacfs for the day
-    in_fnames = glob.glob(in_fname_fmt)
-    if len(in_fnames) == 0:
-        print('No files in %s' % in_fname_fmt)
-        return 1
+        # Make fitacfs for the day
+        in_fnames = glob.glob(in_fname_fmt)
+        if len(in_fnames) == 0:
+            print('No files in %s' % in_fname_fmt)
+            return 1
 
-    rawacfFileList = []
-    for in_fname in in_fnames:
-        rawacfFile = in_fname.split('/')[-1]
-        rawacfFileList.append(rawacfFile)
+        rawacfFileList = []
+        for in_fname in in_fnames:
+            rawacfFile = in_fname.split('/')[-1]
+            rawacfFileList.append(rawacfFile)
 
-        shutil.copy2(in_fname, run_dir)
-        in_fname_t = os.path.join(run_dir, os.path.basename(in_fname))
-        if in_fname_t.endswith('.bz2'):
-            os.system('bzip2 -d %s' % in_fname_t)
-            rawacf_path = in_fname_t[:-4]
-        else:
-            rawacf_path = in_fname_t
-
-        tmp_fname = '.'.join(rawacf_path.split('.')[:-1]) + '.fitacf'
-        fit_flag = get_make_fit_flag(fit_version)
-        os.system('make_fit {0} {1} > {2}'.format(
-            fit_flag, rawacf_path, tmp_fname))
-    os.system('cat *.fitacf > tmp.fitacf')
-
-    # Create a single fitACF at output location
-    fn_inf = os.stat('tmp.fitacf')
-    if fn_inf.st_size > MIN_FITACF_FILE_SIZE:
-        if fit_version == 2.5:
-            shutil.move('tmp.fitacf', out_fname)
-        elif fit_version == 3.0:
-            if apply_speck_removal:
-                os.system('fit_speck_removal tmp.fitacf > {0}'.format(out_fname))
-                fn_inf = os.stat(out_fname)
+            shutil.copy2(in_fname, run_dir)
+            in_fname_t = os.path.join(run_dir, os.path.basename(in_fname))
+            if in_fname_t.endswith('.bz2'):
+                os.system('bzip2 -d %s' % in_fname_t)
+                rawacf_path = in_fname_t[:-4]
             else:
+                rawacf_path = in_fname_t
+
+            tmp_fname = '.'.join(rawacf_path.split('.')[:-1]) + '.fitacf'
+            fit_flag = get_make_fit_flag(fit_version)
+            os.system('make_fit {0} {1} > {2}'.format(
+                fit_flag, rawacf_path, tmp_fname))
+        os.system('cat *.fitacf > tmp.fitacf')
+
+        # Create a single fitACF at output location
+        fn_inf = os.stat('tmp.fitacf')
+        if fn_inf.st_size > MIN_FITACF_FILE_SIZE:
+            if fit_version == 2.5:
                 shutil.move('tmp.fitacf', out_fname)
+            elif fit_version == 3.0:
+                if apply_speck_removal:
+                    os.system('fit_speck_removal tmp.fitacf > {0}'.format(out_fname))
+                    fn_inf = os.stat(out_fname)
+                else:
+                    shutil.move('tmp.fitacf', out_fname)
+            else:
+                raise ValueError(
+                    'fit version must be 2.5 of 3.0 - {0} fit version specified'.format(fit_version))
+
+            print('file created at %s, size %1.1f MB' %
+                  (out_fname, fn_inf.st_size / 1E6))
+
+            # Use the fitACF output filename to create a similar filename for the
+            # list of rawACFs used to create the fitACF
+            rawacfListFilename = '.'.join(
+                out_fname.split('.')[:-1]) + '.rawacfList.txt'
+
+            # Save the list of rawACFs used to create the fitACF
+            with open(rawacfListFilename, "wb") as fp:
+                pickle.dump(rawacfFileList, fp)
         else:
-            raise ValueError(
-                'fit version must be 2.5 of 3.0 - {0} fit version specified'.format(fit_version))
-
-        print('file created at %s, size %1.1f MB' %
-              (out_fname, fn_inf.st_size / 1E6))
-
-        # Use the fitACF output filename to create a similar filename for the
-        # list of rawACFs used to create the fitACF
-        rawacfListFilename = '.'.join(
-            out_fname.split('.')[:-1]) + '.rawacfList.txt'
-
-        # Save the list of rawACFs used to create the fitACF
-        with open(rawacfListFilename, "wb") as fp:
-            pickle.dump(rawacfFileList, fp)
-    else:
-        print('file %s too small, size %1.1f MB' %
-              (out_fname, fn_inf.st_size / 1E6))
-    return 0
+            print('file %s too small, size %1.1f MB' %
+                  (out_fname, fn_inf.st_size / 1E6))
+        return 0
+    finally:
+        try:
+            os.chdir(prev_cwd)
+        except OSError:
+            pass
+        shutil.rmtree(run_dir, ignore_errors=True)
 
 
 if __name__ == '__main__':
@@ -393,6 +506,13 @@ if __name__ == '__main__':
         action="store_true",
         help="Overwrite existing fitACF outputs instead of skipping them.",
     )
+    parser.add_argument(
+        "--workers",
+        dest="workers",
+        type=int,
+        default=1,
+        help="Number of worker processes for parallel conversion.",
+    )
 
     args = parser.parse_args()
     main(
@@ -407,4 +527,5 @@ if __name__ == '__main__':
         save_output_to_logfile=args.save_output_to_logfile,
         delete_processed_rawacfs=args.delete_processed_rawacfs,
         clobber=args.clobber,
+        workers=args.workers,
     )

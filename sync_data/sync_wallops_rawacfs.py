@@ -42,8 +42,7 @@ destination_path = f"/project/superdarn/data/rawacf/{year}/{month}"
 os.makedirs(destination_path, exist_ok=True)
 
 # Get a list of the files to sync
-files_to_sync = subprocess.check_output(f"ssh {borealis_server} 'ls {
-                                        path}'", shell=True, stderr=subprocess.DEVNULL)
+files_to_sync = subprocess.check_output(f"ssh {borealis_server} 'ls {path}'", shell=True, stderr=subprocess.DEVNULL)
 files_to_sync = files_to_sync.decode().strip().split("\n")
 
 # Iterate over the files to sync and only sync them if they don't already exist at APL

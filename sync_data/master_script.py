@@ -15,11 +15,6 @@ import get_rawacfs
 import convert_rawacf_to_fitacf
 import os
 import helper
-import download_and_process_fitacfs
-import download_and_process_fitacf_to_meteor
-import download_and_process_rawacfs
-import upload_fit_nc_to_zenodo
-import upload_grid_nc_to_zenodo
 
 
 def main(start_date, end_date):

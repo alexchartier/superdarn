@@ -126,7 +126,7 @@ def getZenodoFileList():
                 'https://zenodo.org/api/records',
                 params={
                     'q': f'"SuperDARN data in netCDF format ({month})"',
-                    'access_token': helper.ZENODO_TOKEN,
+                    'access_token': "SUPERDARN_ZENODO_TOKEN_REMOVED", #helper.ZENODO_TOKEN,
                     'all_versions': 1,
                     'size': 1000           # grab as many hits as allowed
                 },

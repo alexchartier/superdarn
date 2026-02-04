@@ -13,7 +13,7 @@ from email.mime.text import MIMEText
 
 def send_email(subject, body):
     # Configure email settings
-    sender = "superdar@tuvalu"
+    sender = "superdarn@tuvalu"
     recipient = "jordan.wiker@jhuapl.edu"
     msg = MIMEText(body)
     msg["Subject"] = subject
@@ -92,6 +92,8 @@ try:
     
     if len(files_to_sync) != 12:
         send_email("Some Wallops Files Synced", f"{len(files_to_sync)} Wallops files successfully synced for {year}-{month}-{day}\n")
+    else:
+        send_email("All Wallops Files Synced", f"{len(files_to_sync)} Wallops files successfully synced for {year}-{month}-{day}\n")
 
 except subprocess.CalledProcessError as e:
     send_email("Sync Script Error", f"Error connecting to {borealis_server} or fetching file list.\n{e}")

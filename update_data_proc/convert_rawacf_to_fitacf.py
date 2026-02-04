@@ -47,12 +47,12 @@ def main(date_string, clobber=False):
         rawacf_filename = os.path.basename(rawacf_file)
 
         # Convert the RAWACF file to FITACF with version 2.5.
-        fitacf_filename_2 = rawacf_filename.replace("rawacf", "fitacf2")
-        fitacf_file_2 = os.path.join(fitacf_dir, fitacf_filename_2)
-        convert_rawacf_to_fitacf(rawacf_file, fitacf_file_2, 2.5, clobber=clobber)
+        # fitacf_filename_2 = rawacf_filename.replace("rawacf", "fitacf2")
+        # fitacf_file_2 = os.path.join(fitacf_dir, fitacf_filename_2)
+        # convert_rawacf_to_fitacf(rawacf_file, fitacf_file_2, 2.5, clobber=clobber)
 
         # Convert the RAWACF file to FITACF with version 3.0.
-        fitacf_filename_3 = rawacf_filename.replace("rawacf", "fitacf3")
+        fitacf_filename_3 = rawacf_filename.replace("rawacf", "fit")
         fitacf_file_3 = os.path.join(fitacf_dir, fitacf_filename_3)
         convert_rawacf_to_fitacf(rawacf_file, fitacf_file_3, 3.0, clobber=clobber)
 
@@ -81,11 +81,11 @@ def main(date_string, clobber=False):
     helper.log_message(f"Combining fitacf2 and fitacf3 into daily files for {date_string}")
     combine_fitacfs(date_string)
     
-    print("Producing despeckled versions of fitacf3 files...")
-    helper.log_message(f"Producing despeckled versions of fitacf3 files for {date_string}")
-    fitacf3_files = [f for f in glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3") if ".despeck." not in f]    
-    for fitacf3_file in fitacf3_files:
-        perform_speck_removal(fitacf3_file)
+    # print("Producing despeckled versions of fitacf3 files...")
+    # helper.log_message(f"Producing despeckled versions of fitacf3 files for {date_string}")
+    # fitacf3_files = [f for f in glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3") if ".despeck." not in f]    
+    # for fitacf3_file in fitacf3_files:
+    #     perform_speck_removal(fitacf3_file)
 
     # with concurrent.futures.ThreadPoolExecutor() as executor:
     #     fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*fitacf3")

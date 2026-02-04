@@ -146,34 +146,37 @@ def combine_fitacfs(date_string):
 
     for radar_site in radar_sites:
         # Get all fitacf2 files for the radar site
-        site_fitacf2_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*{radar_site}.fitacf2")
+        #site_fitacf2_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*{radar_site}.fitacf2")
         
         # Sort files by time
-        site_fitacf2_files.sort()
+        #site_fitacf2_files.sort()
 
         # Concatenate files into a daily file
-        daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fitacf2")
+        #daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fitacf2")
         # TODO: add clobber flag in order to overwrite any existing fitacf files
-        command = f"cat {' '.join(site_fitacf2_files)} > {daily_filename}"
-        try:
-            subprocess.run(command, shell=True, check=True)
-            print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {daily_filename}')
-            helper.log_message(f"Created {daily_filename}")
-        except subprocess.CalledProcessError as e:
-            print(f"Error: {e}")
-            helper.log_message(f"Error: {e} for {radar_site}")
+        #command = f"cat {' '.join(site_fitacf2_files)} > {daily_filename}"
+        #try:
+        #    subprocess.run(command, shell=True, check=True)
+        #    print(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Created {daily_filename}')
+        #    helper.log_message(f"Created {daily_filename}")
+        #except subprocess.CalledProcessError as e:
+        #    print(f"Error: {e}")
+        #    helper.log_message(f"Error: {e} for {radar_site}")
 
-        for source_file in site_fitacf2_files:
-            os.remove(source_file)
+        #for source_file in site_fitacf2_files:
+        #    os.remove(source_file)
 
         # Get all fitacf3 files for the radar site
-        site_fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*{radar_site}.fitacf3")
-        
+        site_fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*{radar_site}.fit")
+       
+        daily_abs = os.path.abspath(daily_filename)
+        site_fitacf3_files = [f for f in site_fitacf3_files if os.path.abspath(f) != daily_abs]
+ 
         # Sort files by time
         site_fitacf3_files.sort()
 
         # Concatenate files into a daily file
-        daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fitacf3")
+        daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fit")
         # TODO: add clobber flag in order to overwrite any existing fitacf files
         command = f"cat {' '.join(site_fitacf3_files)} > {daily_filename}"
         try:

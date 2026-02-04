@@ -26,11 +26,11 @@ HELP_TEXT = """
 Convert SuperDARN fitacf/cfit files to daily netCDF.
 
 Usage:
-  python3 fit_to_nc.py --start YYYY-MM-DD --end YYYY-MM-DD [options]
+  python3 fit_to_nc.py --start YYYYMMDD --end YYYYMMDD [options]
 
 Key options:
-  -i / --input-dir   Path template to fitACF files (strftime-friendly, e.g. /project/superdarn/data/fitacf/%Y/%m/)
-  -o / --output-dir  Output netCDF path template (strftime-friendly)
+  -i / --input-dir   Path template to fitACF files (strftime-friendly, e.g. /project/superdarn/data/fitacf_3/%Y/%m/)
+  -o / --output-dir  Output netCDF path template (strftime-friendly, e.g. /project/superdarn/data/fit_nc_3/%Y/%m/)
   -v / --fit-version FitACF version to process: 3.0 or 2.5
   -r / --radars      Comma-separated radar codes to include (default: all)
   -p / --parallel-jobs  Number of files to convert in parallel
@@ -51,12 +51,14 @@ from pathlib import Path
 
 
 def parse_date(val: str) -> dt.datetime:
-    for fmt in ('%Y,%m,%d', '%Y-%m-%d'):
+    for fmt in ('%Y,%m,%d', '%Y-%m-%d', '%Y%m%d'):
         try:
             return dt.datetime.strptime(val, fmt)
         except ValueError:
             continue
-    raise argparse.ArgumentTypeError(f'invalid date format: {val} (expected YYYY,MM,DD or YYYY-MM-DD)')
+    raise argparse.ArgumentTypeError(
+        f'invalid date format: {val} (expected YYYY,MM,DD, YYYY-MM-DD, or YYYYMMDD)'
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,20 +66,30 @@ def parse_args() -> argparse.Namespace:
         description="Convert SuperDARN fitacf/cfit files to daily netCDF.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument('--start', required=True, type=parse_date, help='Start date (YYYY,MM,DD or YYYY-MM-DD)')
-    parser.add_argument('--end', required=True, type=parse_date, help='End date inclusive (YYYY,MM,DD or YYYY-MM-DD)')
+    parser.add_argument(
+        '--start',
+        required=True,
+        type=parse_date,
+        help='Start date (YYYY,MM,DD, YYYY-MM-DD, or YYYYMMDD)',
+    )
+    parser.add_argument(
+        '--end',
+        required=True,
+        type=parse_date,
+        help='End date inclusive (YYYY,MM,DD, YYYY-MM-DD, or YYYYMMDD)',
+    )
     parser.add_argument(
         '-i',
         '--input-dir',
         dest='input_dir',
-        default='/project/superdarn/data/fitacf/%Y/%m/',
+        default='/project/superdarn/data/fitacf_3/%Y/%m/',
         help='Path template to fitacf files (strftime-friendly)',
     )
     parser.add_argument(
         '-o',
         '--output-dir',
         dest='output_dir',
-        default='/project/superdarn/data/netcdf/%Y/%m/',
+        default='/project/superdarn/data/fit_nc_3/%Y/%m/',
         help='Output netCDF path template (strftime-friendly)',
     )
     parser.add_argument(

@@ -1,76 +1,133 @@
-import nvector as nv
-import numpy as np
-import nc_utils
+# Demonstrate velocity vector bearing calculation using nvector
+# Plots the fitACF-level nc files
+
+import datetime as dt
 import os
 import sys
-import matplotlib.pyplot as plt
-import datetime as dt
-import jdutil
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 import matplotlib
 import matplotlib.pyplot as plt
+import nvector as nv
+import numpy as np
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 import cartopy
 import cartopy.crs as ccrs
 from scipy.interpolate import griddata
 
-font = {'size'   : 18}
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+for path in (
+    repo_root,
+    os.path.join(repo_root, "update_data_proc"),
+    os.path.join(repo_root, "utils"),
+):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
-matplotlib.rc('font', **font)
+import nc_utils
+import jdutil
+import radFov
 
-"""
-Demonstrate velocity vector bearing calculation using nvector
-Plots the fitACF-level nc files
-"""
+font = {"size": 18}
+
+matplotlib.rc("font", **font)
 
 wgs84 = nv.FrameE(name='WGS84')
 depth = 0  # nvector uses depths in m
 
 
 def main(
-    in_fn_fmt='~/data/superdarn/netcdf/%Y/%m/%Y%m%d.wal.a.despeck.fitacf3.nc',
-    map_plt_fn_fmt = 'plots/%Y%m%d/maps/{radarcode}/%Y%m%d-%H%M.png',
-    beam_plt_fn_fmt = 'plots/%Y%m%d/beam_rtis/{radarcode}/beam_{bmnum}_%Y%m%d.png',
-    stime = dt.datetime(2023, 11, 18, 12, 0),
-    etime = dt.datetime(2023, 11, 18, 16, 0),
-    tstep = dt.timedelta(minutes=1),
-
-    clim = [-100, 100],
-
-    map_extent = [-80, -67.5, 37, 50,],
-    #map_extent = [-100, -67.5, 37, 50,],
-
-    rangelim = [0, 2000],
-    maxpwr = 15,
-    plot_gs = True,
+    in_fn_fmt="/Users/chartat1/data/superdarn/fit_nc_3/%Y/%m/%Y%m%d.wal.a.nc",
+    map_plt_fn_fmt="plots/maps/%Y%m%d/{radarcode}/%Y%m%d-%H%M.png",
+    beam_plt_fn_fmt="plots/beam_rtis/%Y%m/{radarcode}/beam_{bmnum}_%Y%m%d.png",
+    stime=dt.datetime(2023, 7, 28, 0, 0),
+    etime=dt.datetime(2023, 8, 1, 0, 0),
+    tstep=dt.timedelta(minutes=10),
+    clim=None,
+    map_extent=None,
+    rangelim=None,
+    maxpwr=15,
+    plot_gs=True,
+    plot_fov=True,
+    fov_alt_km=300,
 ):
+    if clim is None:
+        clim = [-100, 100]
+    if map_extent is None:
+        map_extent = [-80, -67.5, 37, 50]
+    # map_extent = [-100, -67.5, 37, 50]
+    if rangelim is None:
+        rangelim = [0, 2000]
 
-    in_fn = stime.strftime(in_fn_fmt)
     radarcode = os.path.basename(in_fn_fmt).split('.')[1]
     map_plt_fn_fmt = map_plt_fn_fmt.format(radarcode=radarcode)
 
-    os.makedirs(os.path.dirname(stime.strftime(map_plt_fn_fmt)), exist_ok=True)
-    os.makedirs(stime.strftime(os.path.dirname(beam_plt_fn_fmt).format(radarcode=radarcode)), exist_ok=True)
+    day = stime.date()
+    end_day = etime.date()
+    day_starts = []
+    while day <= end_day:
+        day_starts.append(dt.datetime.combine(day, dt.time()))
+        day += dt.timedelta(days=1)
 
-    sd_data, sdrad = nc_utils.ncread_vars(in_fn), nc_utils.load_nc(in_fn)
-    utlim = [stime.hour + stime.minute / 60, etime.hour + etime.minute / 60]
-    for bmnum in range(sdrad.beams.max() + 1):
-        plot_rti(sd_data, sdrad, bmnum, clim, rangelim, utlim, maxpwr)
-        plt_fn = stime.strftime(beam_plt_fn_fmt.format(radarcode=radarcode, bmnum=bmnum))
-        plt.savefig(f'{plt_fn}')
-        print(f'Saved to {plt_fn}')
-        plt.close()
+    utlim = [0, 24]
+    for day_start in day_starts:
+        in_fn = day_start.strftime(in_fn_fmt)
+        if not os.path.exists(in_fn):
+            print(f"Missing file: {in_fn}")
+            continue
+        sd_data, sdrad = nc_utils.ncread_vars(in_fn), nc_utils.load_nc(in_fn)
+        for bmnum in range(sdrad.beams.max() + 1):
+            plot_rti(sd_data, sdrad, bmnum, clim, rangelim, utlim, maxpwr)
+            plt_fn = day_start.strftime(beam_plt_fn_fmt.format(radarcode=radarcode, bmnum=bmnum))
+            os.makedirs(os.path.dirname(plt_fn), exist_ok=True)
+            plt.savefig(f"{plt_fn}")
+            print(f"Saved to {plt_fn}")
+            plt.close()
 
-    plot_on_map(map_plt_fn_fmt, stime, etime, tstep, sd_data, sdrad, clim, map_extent, maxpwr, plot_gs)
-    """
-    rlat, rlon, lats, lons, vels = load_example_data(in_fn)
-    brng_deg = calc_bearings(rlat, rlon, lats, lons)
-    plot_quiver(rlat, rlon, lats, lons, vels, brng_deg, fname)
-    """
+    for day_start in day_starts:
+        in_fn = day_start.strftime(in_fn_fmt)
+        if not os.path.exists(in_fn):
+            print(f"Missing file: {in_fn}")
+            continue
+        sd_data, sdrad = nc_utils.ncread_vars(in_fn), nc_utils.load_nc(in_fn)
+        day_end = day_start + dt.timedelta(days=1) - dt.timedelta(seconds=1)
+        day_stime = max(stime, day_start)
+        day_etime = min(etime, day_end)
+        if day_stime <= day_etime:
+            plot_on_map(
+                map_plt_fn_fmt,
+                day_stime,
+                day_etime,
+                tstep,
+                sd_data,
+                sdrad,
+                clim,
+                map_extent,
+                maxpwr,
+                plot_gs,
+                plot_fov,
+                fov_alt_km,
+            )
+    # rlat, rlon, lats, lons, vels = load_example_data(in_fn)
+    # brng_deg = calc_bearings(rlat, rlon, lats, lons)
+    # plot_quiver(rlat, rlon, lats, lons, vels, brng_deg, fname)
+
 
 def plot_on_map(
-        plt_fn_fmt, stime, etime, tstep, sd_data, sdrad, clim, map_extent, maxpwr, plot_gs, 
+    plt_fn_fmt,
+    stime,
+    etime,
+    tstep,
+    sd_data,
+    sdrad,
+    clim,
+    map_extent,
+    maxpwr,
+    plot_gs,
+    plot_fov,
+    fov_alt_km,
 ):
-    """ Plot LOS velocities on map with alpha=power) """
+    # Plot LOS velocities on map with alpha=power.
     time = stime
     td_mjd = tstep.total_seconds() / 86400 / 2
     pwr = sd_data['p_l']
@@ -82,6 +139,10 @@ def plot_on_map(
     lons = np.arange(min(sd_data['lon']), max(sd_data['lon']), 0.1)
     grid_lat, grid_lon = np.meshgrid(lats, lons)
 
+    fov_poly = None
+    if plot_fov:
+        fov_poly = build_fov_polygon(sdrad, fov_alt_km=fov_alt_km)
+
     while time <= etime:
         time_mjd = dt_to_mjd(time)
         tidx = np.abs(sd_data['mjd'] - time_mjd) < td_mjd
@@ -92,7 +153,8 @@ def plot_on_map(
         ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
         ax.set_extent(map_extent)
         plt.title(time.strftime("%Y-%m-%d %H:%M"))
-        plt.set_cmap('Spectral')
+        cmap = plt.get_cmap("Spectral")
+        norm = matplotlib.colors.Normalize(vmin=clim[0], vmax=clim[1])
 
         ax.patch.set_facecolor(color='black')
         ax.add_feature(cartopy.feature.LAND, color='black')
@@ -102,17 +164,30 @@ def plot_on_map(
                           linewidth=1, color='white', linestyle='--')
         gl.top_labels = False
         gl.right_labels = False
+
+        if fov_poly is not None:
+            fov_lats, fov_lons = fov_poly
+            ax.fill(
+                fov_lons,
+                fov_lats,
+                transform=ccrs.PlateCarree(),
+                facecolor='white',
+                edgecolor='white',
+                linewidth=1.0,
+                alpha=0.15,
+                zorder=3,
+            )
         
         idx = tidx & is_idx
 
-        im = ax.scatter([0, 0.1, 0.2], [0, 0.1, 0.2], c=(clim + [0.]), alpha=0, vmin=clim[0], vmax=clim[1], edgecolors='none')
         #grid_v = griddata((sd_data['lat'][idx], sd_data['lon'][idx]), sd_data['v'][idx], (grid_lat.ravel(), grid_lon.ravel()))
         if np.sum(idx) > 0:
-            im = ax.scatter(
+            ax.scatter(
                 sd_data['lon'][idx], sd_data['lat'][idx], 
                 c=sd_data['v'][idx],
                 alpha=pwr_norm[idx],
-                vmin=clim[0], vmax=clim[1],
+                cmap=cmap,
+                norm=norm,
                 edgecolors='none',
             )
             
@@ -123,12 +198,16 @@ def plot_on_map(
                     alpha=pwr_norm[tidx & gs_idx],
                 )
 
-        cbar = fig.colorbar(im, ax=ax, orientation='vertical')
+        sm = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=ax, orientation='vertical')
         cbar.set_label('Vel. towards radar (m/s)')
 
         ax.plot(sdrad.lon, sdrad.lat, '.r', markersize=10)
-        plt.savefig(time.strftime(plt_fn_fmt))
-        print(f'saved to {time.strftime(plt_fn_fmt)}')
+        out_fn = time.strftime(plt_fn_fmt)
+        os.makedirs(os.path.dirname(out_fn), exist_ok=True)
+        plt.savefig(out_fn)
+        print(f"saved to {out_fn}")
         plt.close()
 
         time += tstep
@@ -140,15 +219,41 @@ def plot_rti(sd_data, sdrad, bmnum, clim, rangelim, utlim, maxpwr):
     bmidx = sd_data['beam'] == bmnum
     idx = bmidx 
 
-    ranges = np.linspace(0, int(sdrad.rsep_km * sdrad.maxrangegate), int(sdrad.maxrangegate) + 1)
+    ranges = np.arange(int(sdrad.maxrangegate) + 1) * sdrad.rsep_km
     times = np.arange(0, 60 * 24) 
-    sdtime = np.round( (sd_data['mjd'] - np.floor(sd_data['mjd'])) * 60 * 24)
+    sdtime = np.floor((sd_data['mjd'] - np.floor(sd_data['mjd'])) * 60 * 24).astype(int)
 
     pwr = np.zeros((len(times), len(ranges))) * np.nan
     vel = np.zeros((len(times), len(ranges))) * np.nan
-    for ind, val in enumerate(sd_data['p_l'][idx]):
-        pwr[times == sdtime[idx][ind], ranges == sd_data['range'][idx][ind]] = val 
-        vel[times == sdtime[idx][ind], ranges == sd_data['range'][idx][ind]] = sd_data['v'][idx][ind]
+    if np.any(idx):
+        range_vals = sd_data["range"][idx]
+        if (
+            np.nanmax(range_vals) <= sdrad.maxrangegate + 1
+            and np.allclose(range_vals, np.round(range_vals), equal_nan=True)
+        ):
+            range_idx = np.round(range_vals).astype(int)
+        else:
+            range_idx = np.round(range_vals / sdrad.rsep_km).astype(int)
+
+        time_idx = sdtime[idx]
+        valid = (
+            (time_idx >= 0)
+            & (time_idx < len(times))
+            & (range_idx >= 0)
+            & (range_idx < len(ranges))
+        )
+        pwr[time_idx[valid], range_idx[valid]] = sd_data["p_l"][idx][valid]
+        vel[time_idx[valid], range_idx[valid]] = sd_data["v"][idx][valid]
+
+    if utlim is None or utlim[0] == utlim[1]:
+        if np.any(idx):
+            tmin = int(np.min(sdtime[idx]))
+            tmax = int(np.max(sdtime[idx]))
+            utlim = [tmin / 60, min(24, (tmax + 1) / 60)]
+            if utlim[0] == utlim[1]:
+                utlim = [max(0, utlim[0] - 0.5), min(24, utlim[1] + 0.5)]
+        else:
+            utlim = [0, 24]
 
     fig, ax = plt.subplots()
     fig.set_figheight(6)
@@ -225,6 +330,41 @@ def plot_quiver(rlat, rlon, lats, lons, vels, brng_deg, fname):
     plt.title('ExB drift components from %s' % fname)
     plt.grid()
     plt.show()
+
+
+def build_fov_polygon(sdrad, fov_alt_km=300, hop=2):
+    try:
+        brngs = np.asarray(sdrad.brng_at_15deg_el)
+        max_range_km = float(sdrad.maxrangegate) * float(sdrad.rsep_km)
+        radar_alt_km = float(sdrad.alt)
+        if radar_alt_km > 10:
+            radar_alt_km /= 1000.0
+        lats = []
+        lons = []
+        for brng in brngs:
+            beam_off = brng - sdrad.boresight
+            lat, lon = radFov.calcFieldPnt(
+                sdrad.lat,
+                sdrad.lon,
+                radar_alt_km,
+                sdrad.boresight,
+                beam_off,
+                max_range_km,
+                hop=hop,
+                adjusted_sr=False,
+                altitude=fov_alt_km,
+            )
+            lon = ((lon + 180) % 360) - 180
+            lats.append(lat)
+            lons.append(lon)
+        if not lats:
+            return None
+        poly_lats = [sdrad.lat] + lats + [sdrad.lat]
+        poly_lons = [sdrad.lon] + lons + [sdrad.lon]
+        return poly_lats, poly_lons
+    except Exception as exc:
+        print(f"Unable to compute FOV polygon: {exc}")
+        return None
 
 
 def dt_to_mjd(dt):

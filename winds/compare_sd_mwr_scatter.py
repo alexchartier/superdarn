@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Tuple
+import sys
 
 import numpy as np
 from netCDF4 import Dataset
@@ -244,7 +245,10 @@ def load_mwr_mat(mwr_fn: Path) -> Dict[str, np.ndarray]:
     }
 
 
-def compute_mwr_modwt(mwr: Dict[str, np.ndarray], sd: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
+def compute_mwr_modwt(
+    mwr: Dict[str, np.ndarray],
+    sd: Dict[str, np.ndarray],
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     alt = mwr["alt"]
     hour_mwr = mwr["hour"]
     day_doy = mwr["day_doy"]
@@ -279,6 +283,8 @@ def compute_mwr_modwt(mwr: Dict[str, np.ndarray], sd: Dict[str, np.ndarray]) -> 
 
     u_modwt = np.full((n_hr, n_days), np.nan, dtype=float)
     v_modwt = np.full((n_hr, n_days), np.nan, dtype=float)
+    u_modwt_sigma = np.full((n_hr, n_days), np.nan, dtype=float)
+    v_modwt_sigma = np.full((n_hr, n_days), np.nan, dtype=float)
     for hri in range(n_hr):
         for di in range(n_days):
             mean = mod_peak[hri, di]
@@ -292,14 +298,28 @@ def compute_mwr_modwt(mwr: Dict[str, np.ndarray], sd: Dict[str, np.ndarray]) -> 
             valid_u = np.isfinite(u_prof)
             valid_v = np.isfinite(v_prof)
             if np.any(valid_u):
-                denom = np.nansum(model_cts[valid_u])
+                weights = model_cts[valid_u]
+                denom = np.nansum(weights)
                 if denom > 0:
-                    u_modwt[hri, di] = np.nansum(u_prof[valid_u] * model_cts[valid_u]) / denom
+                    u_mean = np.nansum(u_prof[valid_u] * weights) / denom
+                    u_modwt[hri, di] = u_mean
+                    if valid_u.sum() > 1:
+                        u_var = np.nansum(weights * (u_prof[valid_u] - u_mean) ** 2) / denom
+                        u_modwt_sigma[hri, di] = np.sqrt(u_var)
+                    else:
+                        u_modwt_sigma[hri, di] = 0.0
             if np.any(valid_v):
-                denom = np.nansum(model_cts[valid_v])
+                weights = model_cts[valid_v]
+                denom = np.nansum(weights)
                 if denom > 0:
-                    v_modwt[hri, di] = np.nansum(v_prof[valid_v] * model_cts[valid_v]) / denom
-    return u_modwt, v_modwt
+                    v_mean = np.nansum(v_prof[valid_v] * weights) / denom
+                    v_modwt[hri, di] = v_mean
+                    if valid_v.sum() > 1:
+                        v_var = np.nansum(weights * (v_prof[valid_v] - v_mean) ** 2) / denom
+                        v_modwt_sigma[hri, di] = np.sqrt(v_var)
+                    else:
+                        v_modwt_sigma[hri, di] = 0.0
+    return u_modwt, v_modwt, u_modwt_sigma, v_modwt_sigma
 
 
 def align_sd_to_mwr(sd: Dict[str, np.ndarray], day_doy: np.ndarray) -> Dict[str, np.ndarray]:
@@ -368,33 +388,36 @@ def plot_scatter(
     out_path: Path,
     case_name: str,
     x_u: np.ndarray,
+    xerr_u: np.ndarray,
     y_u: np.ndarray,
     yerr_u: np.ndarray,
     x_v: np.ndarray,
+    xerr_v: np.ndarray,
     y_v: np.ndarray,
     yerr_v: np.ndarray,
 ) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
     comps = [
-        ("Zonal", x_u, y_u, yerr_u),
-        ("Meridional", x_v, y_v, yerr_v),
+        ("Zonal", x_u, xerr_u, y_u, yerr_u),
+        ("Meridional", x_v, xerr_v, y_v, yerr_v),
     ]
-    for ax, (label, x, y, yerr) in zip(axes, comps):
-        mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(yerr)
+    for ax, (label, x, xerr, y, yerr) in zip(axes, comps):
+        mask = np.isfinite(x) & np.isfinite(y)
         x = x[mask]
         y = y[mask]
-        yerr = yerr[mask]
+        xerr = np.where(np.isfinite(xerr), np.abs(xerr), 0.0)[mask]
+        yerr = np.where(np.isfinite(yerr), np.abs(yerr), 0.0)[mask]
         ax.errorbar(
             x,
             y,
-            xerr=np.zeros_like(yerr),
+            xerr=xerr,
             yerr=yerr,
             fmt="o",
             markersize=2,
-            alpha=0.25,
+            alpha=0.35,
             ecolor="0.4",
-            elinewidth=0.3,
-            capsize=0,
+            elinewidth=0.4,
+            capsize=1,
         )
         if x.size > 0:
             lim_min = float(np.nanmin([x.min(), y.min()]))
@@ -411,6 +434,20 @@ def plot_scatter(
     fig.suptitle(f"MWR vs SuperDARN (MWR reference, SD uncertainties)")
     fig.savefig(out_path, dpi=200)
     plt.close(fig)
+
+
+def format_table_value(key: str, value: object) -> str:
+    if key in {"case", "component"}:
+        return str(value)
+    if value is None:
+        return ""
+    if isinstance(value, (float, np.floating)) and not np.isfinite(value):
+        return ""
+    if key == "n":
+        return f"{float(value):.0f}"
+    if key == "p_value":
+        return f"{float(value):.3g}"
+    return f"{float(value):.3f}"
 
 
 def main() -> None:
@@ -432,11 +469,13 @@ def main() -> None:
         sd = load_sd_annual(sd_fn, cfg.sd_code)
         mwr = load_mwr_mat(mwr_fn)
 
-        u_modwt, v_modwt = compute_mwr_modwt(mwr, sd)
+        u_modwt, v_modwt, u_modwt_sigma, v_modwt_sigma = compute_mwr_modwt(mwr, sd)
         sd_sub = align_sd_to_mwr(sd, mwr["day_doy"])
 
         lt_mwr_u = ut_to_lt(u_modwt, mwr["hour"], lthri, mwr["lon"])
         lt_mwr_v = ut_to_lt(v_modwt, mwr["hour"], lthri, mwr["lon"])
+        lt_mwr_uerr = ut_to_lt(u_modwt_sigma, mwr["hour"], lthri, mwr["lon"])
+        lt_mwr_verr = ut_to_lt(v_modwt_sigma, mwr["hour"], lthri, mwr["lon"])
 
         lt_sd_u = ut_to_lt(sd_sub["u"], sd["hour"], lthri, sd["lon"])
         lt_sd_v = ut_to_lt(sd_sub["v"], sd["hour"], lthri, sd["lon"])
@@ -444,9 +483,11 @@ def main() -> None:
         lt_sd_verr = ut_to_lt(sd_sub["sdev_v"], sd["hour"], lthri, sd["lon"])
 
         x_u = lt_mwr_u.ravel()
+        xerr_u = lt_mwr_uerr.ravel()
         y_u = lt_sd_u.ravel()
         err_u = lt_sd_uerr.ravel()
         x_v = lt_mwr_v.ravel()
+        xerr_v = lt_mwr_verr.ravel()
         y_v = lt_sd_v.ravel()
         err_v = lt_sd_verr.ravel()
 
@@ -458,7 +499,7 @@ def main() -> None:
         stats_rows.extend([stats_u, stats_v])
 
         fig_path = out_dir / f"sd_mwr_scatter_{cfg.name}.png"
-        plot_scatter(fig_path, cfg.name, x_u, y_u, err_u, x_v, y_v, err_v)
+        plot_scatter(fig_path, cfg.name, x_u, xerr_u, y_u, err_u, x_v, xerr_v, y_v, err_v)
 
     # Save stats table.
     if stats_rows:
@@ -473,14 +514,19 @@ def main() -> None:
             for row in stats_rows:
                 f.write(",".join(str(row.get(k, "")) for k in keys) + "\n")
 
-        print(f"Wrote stats: {out_csv}")
-    for row in stats_rows:
-        print(
-            f"{row['case']} {row['component']}: n={row['n']:.0f}, "
-            f"bias={row['bias']:.2f} m/s, rmse={row['rmse']:.2f} m/s, "
-            f"chi2_red={row['chi2_red']:.2f}, p={row['p_value']:.3g}, "
-            f"within_1sigma={row['within_1sigma']:.2f}, within_2sigma={row['within_2sigma']:.2f}"
-        )
+        out_tsv = out_dir / "sd_mwr_stats.tsv"
+        with out_tsv.open("w", encoding="utf-8") as f:
+            f.write("\t".join(keys) + "\n")
+            for row in stats_rows:
+                f.write("\t".join(format_table_value(k, row.get(k)) for k in keys) + "\n")
+
+        print(f"Wrote stats: {out_csv}", file=sys.stderr)
+        print(f"Wrote stats: {out_tsv}", file=sys.stderr)
+
+    if stats_rows:
+        print("\t".join(keys))
+        for row in stats_rows:
+            print("\t".join(format_table_value(k, row.get(k)) for k in keys))
 
 
 if __name__ == "__main__":

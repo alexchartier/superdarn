@@ -64,6 +64,22 @@ Plotter requirements:
 - `backscatter` when using offline `rawacf`
 - `pyzmq` only when using `--socket`
 
+## Antennas IQ Polar Plotter
+
+`plot_antennas_iq_fov.py` renders the same polar power/Doppler format directly from Borealis `antennas_iq` files using the scheduled receive weights for standard beamforming. It supports optional rectangular or Barker-13 matched filtering before beamforming.
+
+Example offline Barker replay:
+
+```bash
+./plot_antennas_iq_fov.py \
+  --input /data/borealis_data_dev_wal/20260311/20260311.1832.22.wal.0.antennas_iq.h5 \
+  --matched-filter barker13 \
+  --output plots/wal_fullfov_barker13_sched_bf_polar.png
+```
+
+Requirements:
+- `python3` with `h5py`, `matplotlib`, and `numpy`
+
 ## Limitations
 - The script expects IQ samples as one of:
   - complex64 (CF32)

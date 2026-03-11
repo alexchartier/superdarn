@@ -21,6 +21,11 @@ import numpy as np
 import pydarnio
 
 try:
+    from backscatter import fitacf as backscatter_fitacf
+except ImportError:  # pragma: no cover - optional for rawacf replay
+    backscatter_fitacf = None
+
+try:
     import zmq
 except ImportError:  # pragma: no cover - only exercised for live capture
     zmq = None
@@ -99,6 +104,13 @@ def _load_fitacf_records(path: Path) -> tuple[list[dict], int]:
     return pydarnio.read_fitacf(str(path), mode="strict"), 0
 
 
+def _load_rawacf_records(path: Path) -> tuple[list[dict], int]:
+    if path.suffix == ".bz2":
+        payload = bz2.decompress(path.read_bytes())
+        return pydarnio.read_rawacf(payload, mode="strict"), 0
+    return pydarnio.read_rawacf(str(path), mode="strict"), 0
+
+
 def _capture_fitacf_records(
     socket_addr: str,
     duration_s: float,
@@ -144,6 +156,45 @@ def _most_common_value(records: list[dict], key: str, cast=int) -> int | None:
     if not vals:
         return None
     return Counter(vals).most_common(1)[0][0]
+
+
+def _detect_input_format(path: Path, input_format: str) -> str:
+    if input_format != "auto":
+        return input_format
+
+    lower_name = path.name.lower()
+    if ".fitacf" in lower_name:
+        return "fitacf"
+    if ".rawacf" in lower_name:
+        return "rawacf"
+    raise ValueError("Could not infer input format from path; use --input-format fitacf|rawacf")
+
+
+def _select_last_scans(records: list[dict], scans: int | None, beams_per_scan: int) -> list[dict]:
+    if scans is None:
+        return records
+    keep = max(int(scans), 1) * max(int(beams_per_scan), 1)
+    if len(records) <= keep:
+        return records
+    return records[-keep:]
+
+
+def _fit_rawacf_records(records: list[dict]) -> list[dict]:
+    if backscatter_fitacf is None:
+        raise RuntimeError("rawacf replay requires the backscatter package")
+
+    fitted: list[dict] = []
+    for rec in records:
+        try:
+            fit = backscatter_fitacf._fit(rec)
+        except Exception:
+            continue
+        if not fit:
+            continue
+        if "pwr0" in fit:
+            fit["pwr0"] = np.asarray(fit["pwr0"], dtype=np.float32)
+        fitted.append(fit)
+    return fitted
 
 
 def _beam_azimuth_map(
@@ -295,6 +346,7 @@ def _write_sidecar(
     stop_utc: datetime,
     duration_s: float,
     args: argparse.Namespace,
+    input_format: str,
     messages_received: int,
     cp_records: list[dict],
     all_beams_seen: list[int],
@@ -326,7 +378,9 @@ def _write_sidecar(
     if args.socket:
         payload["socket"] = args.socket
     if args.input:
-        payload["input_fitacf"] = str(Path(args.input).expanduser().resolve())
+        payload[f"input_{input_format}"] = str(Path(args.input).expanduser().resolve())
+    if args.accumulate_scans is not None:
+        payload["accumulate_scans"] = int(args.accumulate_scans)
     json_path.write_text(json.dumps(payload, indent=2) + "\n")
 
 
@@ -334,7 +388,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--socket", default=None, help="Realtime fitacf PUB socket, e.g. tcp://192.168.112.127:9696")
-    src.add_argument("--input", help="Offline .fitacf or .fitacf.bz2 file")
+    src.add_argument("--input", help="Offline .fitacf[.bz2] or .rawacf[.bz2] file")
+    p.add_argument("--input-format", choices=["auto", "fitacf", "rawacf"], default="auto", help="Offline input format")
     p.add_argument("--duration-s", type=float, default=60.0, help="Live capture duration in seconds")
     p.add_argument("--max-messages", type=int, help="Optional live capture cap")
     p.add_argument("--socket-bz2", action="store_true", default=True, help="Live socket payloads are bzip2 compressed")
@@ -347,6 +402,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--beam-az-deg", help="Comma-separated beam azimuth centers in degrees")
     p.add_argument("--output", help="Output PNG path")
     p.add_argument("--json-output", help="Optional JSON sidecar path")
+    p.add_argument("--accumulate-scans", type=int, help="Keep only the last N scans, where one scan is len(--beam-ids) records")
     p.add_argument("--power-min", type=float, help="Power color scale minimum (dB)")
     p.add_argument("--power-max", type=float, help="Power color scale maximum (dB)")
     p.add_argument("--doppler-max-abs", type=float, help="Symmetric Doppler color scale half-width (m/s)")
@@ -369,15 +425,26 @@ def main() -> None:
             max_messages=args.max_messages,
             decompress_bz2=args.socket_bz2,
         )
+        input_format = "fitacf"
+        cp_records = [rec for rec in records if int(rec.get("cp", -1)) == int(args.cp)]
     else:
         input_path = Path(args.input).expanduser().resolve()
-        records, messages_received = _load_fitacf_records(input_path)
+        input_format = _detect_input_format(input_path, args.input_format)
+        if input_format == "fitacf":
+            records, messages_received = _load_fitacf_records(input_path)
+            cp_records = [rec for rec in records if int(rec.get("cp", -1)) == int(args.cp)]
+        else:
+            raw_records, messages_received = _load_rawacf_records(input_path)
+            cp_raw_records = [rec for rec in raw_records if int(rec.get("cp", -1)) == int(args.cp)]
+            cp_raw_records.sort(key=_record_time_utc)
+            cp_raw_records = _select_last_scans(cp_raw_records, args.accumulate_scans, len(beam_ids))
+            cp_records = _fit_rawacf_records(cp_raw_records)
 
-    cp_records = [rec for rec in records if int(rec.get("cp", -1)) == int(args.cp)]
     if not cp_records:
-        raise RuntimeError(f"No fitacf records found for cp={args.cp}")
+        raise RuntimeError(f"No {input_format} records found for cp={args.cp}")
 
     cp_records.sort(key=_record_time_utc)
+    cp_records = _select_last_scans(cp_records, args.accumulate_scans, len(beam_ids))
     start_utc = _record_time_utc(cp_records[0])
     stop_utc = _record_time_utc(cp_records[-1])
     duration_s = max((stop_utc - start_utc).total_seconds(), 0.0)
@@ -470,6 +537,7 @@ def main() -> None:
         stop_utc=stop_utc,
         duration_s=duration_s,
         args=args,
+        input_format=input_format,
         messages_received=messages_received,
         cp_records=cp_records,
         all_beams_seen=all_beams_seen,
@@ -486,6 +554,7 @@ def main() -> None:
         json.dumps(
             {
                 "status": "ok",
+                "input_format": input_format,
                 "records": len(cp_records),
                 "messages_received": messages_received,
                 "output_png": str(output_png),

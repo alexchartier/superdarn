@@ -24,7 +24,7 @@ Notes:
 
 ## Polar FOV Plotter
 
-`plot_fitacf_fov.py` rebuilds the Wallops-style polar power and Doppler plots from either a Borealis realtime fitacf PUB socket or an offline `.fitacf[.bz2]` file.
+`plot_fitacf_fov.py` rebuilds the Wallops-style polar power and Doppler plots from either a Borealis realtime fitacf PUB socket, an offline `.fitacf[.bz2]` file, or an offline `.rawacf[.bz2]` file that it fits on the fly.
 
 Example live capture:
 
@@ -48,8 +48,20 @@ Example offline replay:
   --mode-label normalscan
 ```
 
+Example offline rawacf replay with 12-scan accumulation:
+
+```bash
+./plot_fitacf_fov.py \
+  --input /data/borealis_data_dev_wal/20260310/20260310.2019.47.wal.a.rawacf \
+  --cp 3801 \
+  --radar wal \
+  --mode-label fullfov \
+  --accumulate-scans 12
+```
+
 Plotter requirements:
 - `python3` with `matplotlib`, `numpy`, and `pydarnio`
+- `backscatter` when using offline `rawacf`
 - `pyzmq` only when using `--socket`
 
 ## Limitations

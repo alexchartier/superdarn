@@ -130,9 +130,19 @@ def _apply_matched_filter(data: np.ndarray, kernel: np.ndarray | None) -> np.nda
     return out
 
 
-def _gate_sample_indices(sample_time_us: np.ndarray, gate_numbers: np.ndarray, range_sep_km: float) -> np.ndarray:
-    gate_offset_us = (2.0 * gate_numbers.astype(np.float64) * range_sep_km * 1.0e3 / C_MPS) * 1.0e6
-    return np.asarray([int(np.argmin(np.abs(sample_time_us - t))) for t in gate_offset_us], dtype=np.int32)
+def _rtt_us_to_range_km(rtt_us: np.ndarray) -> np.ndarray:
+    return (np.asarray(rtt_us, dtype=np.float64) * C_MPS / (2.0 * 1.0e9)).astype(np.float32)
+
+
+def _gate_sample_indices(
+    sample_time_us: np.ndarray,
+    gate_numbers: np.ndarray,
+    range_sep_km: float,
+    first_range_rtt_us: float,
+) -> np.ndarray:
+    gate_rtt_us = first_range_rtt_us + (2.0 * gate_numbers.astype(np.float64) * range_sep_km * 1.0e3 / C_MPS) * 1.0e6
+    target_us = gate_rtt_us - first_range_rtt_us
+    return np.asarray([int(np.argmin(np.abs(sample_time_us - t))) for t in target_us], dtype=np.int32)
 
 
 def _estimate_velocity(
@@ -205,6 +215,31 @@ def _range_edges(range_km: np.ndarray) -> np.ndarray:
     ).astype(np.float32)
 
 
+def _range_grid_for_record(
+    rec: h5py.Group,
+    sample_time_us: np.ndarray,
+    matched_filter_mode: str,
+    range_mode: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    first_range_km = float(rec["first_range"][()])
+    first_range_rtt_us = float(rec["first_range_rtt"][()])
+    gate_numbers = rec["range_gates"][...].astype(np.int32)
+    range_sep_km = float(rec["range_sep"][()])
+
+    use_samples = range_mode == "samples" or (range_mode == "auto" and matched_filter_mode != "off")
+    if use_samples:
+        range_km = _rtt_us_to_range_km(first_range_rtt_us + sample_time_us)
+        max_range_km = first_range_km + gate_numbers.size * range_sep_km
+        keep = (range_km >= first_range_km - 1.0e-3) & (range_km <= max_range_km + 1.0e-3)
+        sample_idx = np.nonzero(keep)[0].astype(np.int32)
+        range_km = range_km[keep]
+        return sample_idx, range_km
+
+    sample_idx = _gate_sample_indices(sample_time_us, gate_numbers, range_sep_km, first_range_rtt_us)
+    range_km = (first_range_km + gate_numbers.astype(np.float32) * np.float32(range_sep_km)).astype(np.float32)
+    return sample_idx, range_km
+
+
 def run(args: argparse.Namespace) -> tuple[Path, Path]:
     input_path = Path(args.input).expanduser().resolve()
     if not input_path.exists():
@@ -230,14 +265,10 @@ def run(args: argparse.Namespace) -> tuple[Path, Path]:
                 continue
 
             sample_time_us = rec["sample_time"][...].astype(np.float32)
-            gate_numbers = rec["range_gates"][...].astype(np.int32)
-            first_range_km = float(rec["first_range"][()])
-            range_sep_km = float(rec["range_sep"][()])
-            sample_idx = _gate_sample_indices(sample_time_us, gate_numbers, range_sep_km)
-
             main_data, main_weights, record_main_ids = _extract_main_array_data(rec)
             kernel, mf_applied_mode = _build_mf_kernel(rec, sample_time_us, args.matched_filter)
             mf_modes.append(mf_applied_mode)
+            sample_idx, record_range_km = _range_grid_for_record(rec, sample_time_us, mf_applied_mode, args.range_mode)
             main_data = _apply_matched_filter(main_data, kernel)
 
             beamformed = np.einsum("ba,ast->bst", main_weights, main_data, optimize=True)
@@ -258,7 +289,7 @@ def run(args: argparse.Namespace) -> tuple[Path, Path]:
             if beam_nums is None:
                 beam_nums = rec["beam_nums"][...].astype(np.int32)
                 beam_azms = rec["beam_azms"][...].astype(np.float32)
-                range_km = first_range_km + gate_numbers.astype(np.float32) * np.float32(range_sep_km)
+                range_km = record_range_km
                 main_ids = record_main_ids
 
     if not power_records or beam_nums is None or beam_azms is None or range_km is None:
@@ -362,6 +393,7 @@ def run(args: argparse.Namespace) -> tuple[Path, Path]:
         "num_ranges": int(range_km.size),
         "freq_khz": float(freq_khz),
         "matched_filter_mode": mf_modes[-1],
+        "range_mode": args.range_mode,
         "min_snr_db": float(args.min_snr_db),
         "noise_percentile": float(args.noise_percentile),
         "min_neighbors": int(args.min_neighbors),
@@ -384,6 +416,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--record", help="Specific record group to plot")
     p.add_argument("--records", type=int, default=0, help="Latest N records to use; 0 means all records")
     p.add_argument("--matched-filter", choices=["off", "auto", "rect", "barker13"], default="auto")
+    p.add_argument("--range-mode", choices=["auto", "gates", "samples"], default="auto")
     p.add_argument("--min-snr-db", type=float, default=6.0, help="Minimum per-beam SNR above noise floor")
     p.add_argument("--noise-percentile", type=float, default=25.0, help="Percentile used to estimate noise floor per beam")
     p.add_argument("--min-neighbors", type=int, default=1, help="Minimum neighboring bins required to keep a cell")

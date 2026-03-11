@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
@@ -17,6 +18,13 @@ import numpy as np
 
 C_MPS = 299792458.0
 BARKER13 = np.array([1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1], dtype=np.float32)
+
+
+@dataclass(frozen=True)
+class MatchedFilterSpec:
+    rect_kernel: np.ndarray
+    combine_delays: np.ndarray | None = None
+    combine_weights: np.ndarray | None = None
 
 
 def _db(x: np.ndarray) -> np.ndarray:
@@ -88,7 +96,66 @@ def _contiguous_run_lengths(vals: np.ndarray) -> list[int]:
     return runs
 
 
-def _build_mf_kernel(record_group: h5py.Group, sample_time_us: np.ndarray, mf_mode: str) -> tuple[np.ndarray | None, str]:
+def _first_contiguous_run_start(vals: np.ndarray, min_len: int) -> int | None:
+    if vals.size == 0:
+        return None
+    start = 0
+    run = 1
+    for idx, d in enumerate(np.diff(vals), start=1):
+        if d == 1:
+            run += 1
+            if run >= min_len:
+                return start
+            continue
+        start = idx
+        run = 1
+    if run >= min_len:
+        return start
+    return None
+
+
+def _build_kernel_from_weights(chip_samps: int, weights: np.ndarray) -> np.ndarray:
+    waveform = np.repeat(np.asarray(weights, dtype=np.complex64), max(1, chip_samps)).astype(np.complex64)
+    kernel = np.conj(waveform[::-1])
+    norm = np.sqrt(np.sum(np.abs(kernel) ** 2))
+    if norm > 0.0:
+        kernel = kernel / np.float32(norm)
+    return kernel.astype(np.complex64)
+
+
+def _build_rect_kernel(chip_samps: int) -> np.ndarray:
+    kernel = np.ones(max(1, chip_samps), dtype=np.complex64)
+    norm = np.sqrt(np.sum(np.abs(kernel) ** 2))
+    if norm > 0.0:
+        kernel = kernel / np.float32(norm)
+    return kernel.astype(np.complex64)
+
+
+def _pulse_phase_weights(record_group: h5py.Group, pulses: np.ndarray, mf_mode: str) -> np.ndarray:
+    if "pulse_phase_offset" in record_group:
+        phase_deg = np.asarray(record_group["pulse_phase_offset"][...], dtype=np.float32)
+        if phase_deg.ndim == 2:
+            if phase_deg.shape[1] != pulses.size:
+                raise RuntimeError(
+                    f"pulse_phase_offset shape mismatch: phases={phase_deg.shape} pulses={pulses.size}"
+                )
+            if not np.allclose(phase_deg, phase_deg[:1], atol=1.0e-3):
+                raise RuntimeError("Per-sequence pulse_phase_offset varies within a record")
+            phase_deg = phase_deg[0]
+        elif phase_deg.ndim != 1 or phase_deg.size != pulses.size:
+            raise RuntimeError(f"Unsupported pulse_phase_offset shape: {phase_deg.shape}")
+        return np.exp(1j * np.deg2rad(phase_deg.astype(np.float32))).astype(np.complex64)
+
+    if mf_mode == "barker13":
+        reps = max(1, pulses.size // 13)
+        return np.tile(BARKER13, reps)[: pulses.size].astype(np.complex64)
+
+    return np.ones(pulses.size, dtype=np.complex64)
+
+
+def _build_mf_kernel(
+    record_group: h5py.Group, sample_time_us: np.ndarray, mf_mode: str
+) -> tuple[MatchedFilterSpec | None, str]:
     if mf_mode == "off":
         return None, "off"
 
@@ -104,30 +171,50 @@ def _build_mf_kernel(record_group: h5py.Group, sample_time_us: np.ndarray, mf_mo
         else:
             use_mode = "rect"
 
+    rect_kernel = _build_rect_kernel(chip_samps)
     if use_mode == "rect":
-        waveform = np.ones(chip_samps, dtype=np.complex64)
+        return MatchedFilterSpec(rect_kernel=rect_kernel), use_mode
     elif use_mode == "barker13":
-        reps = max(1, pulses.size // 13)
-        chips = np.tile(BARKER13, reps).astype(np.complex64)
-        waveform = np.repeat(chips, chip_samps).astype(np.complex64)
+        weights = _pulse_phase_weights(record_group, pulses, use_mode)
+        run_start = _first_contiguous_run_start(pulses, 13)
+        if run_start is None:
+            raise RuntimeError("Could not locate contiguous Barker-13 pulse group")
+        code_kernel = _build_kernel_from_weights(chip_samps, weights[run_start : run_start + 13])
+        return MatchedFilterSpec(rect_kernel=code_kernel), use_mode
     else:
         raise ValueError(f"Unsupported matched-filter mode: {mf_mode}")
 
-    kernel = np.conj(waveform[::-1])
-    norm = np.sqrt(np.sum(np.abs(kernel) ** 2))
-    if norm > 0.0:
-        kernel = kernel / np.float32(norm)
-    return kernel.astype(np.complex64), use_mode
 
-
-def _apply_matched_filter(data: np.ndarray, kernel: np.ndarray | None) -> np.ndarray:
-    if kernel is None:
+def _apply_matched_filter(data: np.ndarray, mf_spec: MatchedFilterSpec | None) -> np.ndarray:
+    if mf_spec is None:
         return data
-    out = np.empty_like(data)
+
+    rect_filtered = np.empty_like(data)
     for ai in range(data.shape[0]):
         for si in range(data.shape[1]):
-            out[ai, si, :] = np.convolve(data[ai, si, :], kernel, mode="same")
-    return out
+            rect_filtered[ai, si, :] = np.convolve(data[ai, si, :], mf_spec.rect_kernel, mode="same")
+
+    if mf_spec.combine_delays is None or mf_spec.combine_weights is None:
+        return rect_filtered
+
+    nsamp = rect_filtered.shape[-1]
+    valid_delay = mf_spec.combine_delays < nsamp
+    delays = mf_spec.combine_delays[valid_delay].astype(np.int32, copy=False)
+    weights = mf_spec.combine_weights[valid_delay].astype(np.complex64, copy=False)
+    if delays.size == 0:
+        return np.zeros_like(rect_filtered)
+
+    out = np.zeros_like(rect_filtered)
+    for delay, weight in zip(delays.tolist(), weights.tolist()):
+        if delay == 0:
+            out += np.conj(np.complex64(weight)) * rect_filtered
+        else:
+            out[..., :-delay] += np.conj(np.complex64(weight)) * rect_filtered[..., delay:]
+
+    norm = np.sqrt(np.sum(np.abs(weights) ** 2))
+    if norm > 0.0:
+        out /= np.float32(norm)
+    return out.astype(np.complex64)
 
 
 def _rtt_us_to_range_km(rtt_us: np.ndarray) -> np.ndarray:
@@ -175,6 +262,31 @@ def _estimate_velocity(
     weak = np.abs(acc) <= 1.0e-9
     vel[weak] = np.nan
     return vel.astype(np.float32)
+
+
+def _valid_selected_samples(
+    rec: h5py.Group,
+    sample_idx: np.ndarray,
+    mf_spec: MatchedFilterSpec | None,
+    sample_count: int,
+) -> np.ndarray:
+    valid = np.ones(sample_idx.size, dtype=bool)
+    if sample_idx.size == 0:
+        return valid
+
+    blanked = np.zeros(sample_count, dtype=bool)
+    if "blanked_samples" in rec:
+        blank_idx = rec["blanked_samples"][...].astype(np.int64)
+        blank_idx = blank_idx[(blank_idx >= 0) & (blank_idx < sample_count)]
+        blanked[blank_idx.astype(np.int32)] = True
+
+    valid &= ~blanked[sample_idx]
+    if mf_spec is None or mf_spec.combine_delays is None:
+        return valid
+
+    max_delay = int(np.max(mf_spec.combine_delays.astype(np.int64)))
+    valid &= (sample_idx.astype(np.int64) + np.int64(max_delay)) < np.int64(sample_count)
+    return valid
 
 
 def _spatial_support(mask: np.ndarray, min_neighbors: int) -> np.ndarray:
@@ -226,7 +338,7 @@ def _range_grid_for_record(
     gate_numbers = rec["range_gates"][...].astype(np.int32)
     range_sep_km = float(rec["range_sep"][()])
 
-    use_samples = range_mode == "samples" or (range_mode == "auto" and matched_filter_mode != "off")
+    use_samples = range_mode == "samples"
     if use_samples:
         range_km = _rtt_us_to_range_km(first_range_rtt_us + sample_time_us)
         max_range_km = first_range_km + gate_numbers.size * range_sep_km
@@ -245,12 +357,10 @@ def run(args: argparse.Namespace) -> tuple[Path, Path]:
     if not input_path.exists():
         raise FileNotFoundError(input_path)
 
-    power_records: list[np.ndarray] = []
-    vel_records: list[np.ndarray] = []
+    record_results: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
     mf_modes: list[str] = []
 
-    beam_nums: np.ndarray | None = None
-    beam_azms: np.ndarray | None = None
+    beam_az_by_num: dict[int, float] = {}
     range_km: np.ndarray | None = None
     main_ids: np.ndarray | None = None
     freq_khz = np.nan
@@ -266,10 +376,10 @@ def run(args: argparse.Namespace) -> tuple[Path, Path]:
 
             sample_time_us = rec["sample_time"][...].astype(np.float32)
             main_data, main_weights, record_main_ids = _extract_main_array_data(rec)
-            kernel, mf_applied_mode = _build_mf_kernel(rec, sample_time_us, args.matched_filter)
+            mf_spec, mf_applied_mode = _build_mf_kernel(rec, sample_time_us, args.matched_filter)
             mf_modes.append(mf_applied_mode)
             sample_idx, record_range_km = _range_grid_for_record(rec, sample_time_us, mf_applied_mode, args.range_mode)
-            main_data = _apply_matched_filter(main_data, kernel)
+            main_data = _apply_matched_filter(main_data, mf_spec)
 
             beamformed = np.einsum("ba,ast->bst", main_weights, main_data, optimize=True)
             beam_samples = np.take(beamformed, sample_idx, axis=2)
@@ -282,18 +392,65 @@ def run(args: argparse.Namespace) -> tuple[Path, Path]:
             wavelength_m = C_MPS / (freq_khz * 1.0e3)
             timestamps_s = rec["sqn_timestamps"][...].astype(np.float64)
             vel = _estimate_velocity(beam_samples, timestamps_s, wavelength_m, args.max_gap_factor)
+            valid_ranges = _valid_selected_samples(rec, sample_idx, mf_spec, main_data.shape[-1])
+            power_db[:, ~valid_ranges] = np.nan
+            vel[:, ~valid_ranges] = np.nan
 
-            power_records.append(power_db.T.astype(np.float32))
-            vel_records.append(vel.T.astype(np.float32))
+            record_beam_nums = rec["beam_nums"][...].astype(np.int32).reshape(-1)
+            record_beam_azms = rec["beam_azms"][...].astype(np.float32).reshape(-1)
+            if record_beam_nums.size != power_db.shape[0] or record_beam_azms.size != power_db.shape[0]:
+                raise RuntimeError(
+                    f"Beam metadata mismatch in {rec_name}: "
+                    f"power_beams={power_db.shape[0]} beam_nums={record_beam_nums.size} beam_azms={record_beam_azms.size}"
+                )
 
-            if beam_nums is None:
-                beam_nums = rec["beam_nums"][...].astype(np.int32)
-                beam_azms = rec["beam_azms"][...].astype(np.float32)
-                range_km = record_range_km
+            for beam_num, beam_az in zip(record_beam_nums.tolist(), record_beam_azms.tolist()):
+                prev = beam_az_by_num.get(int(beam_num))
+                if prev is None:
+                    beam_az_by_num[int(beam_num)] = float(beam_az)
+                elif not np.isclose(prev, float(beam_az), atol=1.0e-3):
+                    raise RuntimeError(f"Inconsistent azimuth for beam {beam_num}: {prev} vs {beam_az}")
+
+            if range_km is None:
+                range_km = record_range_km.astype(np.float32, copy=True)
+            elif range_km.shape != record_range_km.shape or not np.allclose(range_km, record_range_km, atol=1.0e-3):
+                raise RuntimeError(f"Range grid mismatch in {rec_name}")
+
+            if main_ids is None:
                 main_ids = record_main_ids
+            elif main_ids.shape != record_main_ids.shape or not np.array_equal(main_ids, record_main_ids):
+                raise RuntimeError(f"Main-array antenna mismatch in {rec_name}")
 
-    if not power_records or beam_nums is None or beam_azms is None or range_km is None:
+            record_results.append(
+                (
+                    record_beam_nums,
+                    record_beam_azms,
+                    power_db.T.astype(np.float32),
+                    vel.T.astype(np.float32),
+                )
+            )
+
+    if not record_results or range_km is None or not beam_az_by_num:
         raise RuntimeError("No usable records found in antennas_iq file")
+
+    beam_meta = sorted(beam_az_by_num.items(), key=lambda item: item[1])
+    beam_nums = np.asarray([beam_num for beam_num, _ in beam_meta], dtype=np.int32)
+    beam_azms = np.asarray([beam_az for _, beam_az in beam_meta], dtype=np.float32)
+    beam_to_col = {int(beam_num): col for col, beam_num in enumerate(beam_nums.tolist())}
+
+    power_records: list[np.ndarray] = []
+    vel_records: list[np.ndarray] = []
+    for record_beam_nums, _record_beam_azms, record_power, record_vel in record_results:
+        power_aligned = np.full((range_km.size, beam_nums.size), np.nan, dtype=np.float32)
+        vel_aligned = np.full((range_km.size, beam_nums.size), np.nan, dtype=np.float32)
+        for src_col, beam_num in enumerate(record_beam_nums.tolist()):
+            dst_col = beam_to_col.get(int(beam_num))
+            if dst_col is None:
+                continue
+            power_aligned[:, dst_col] = record_power[:, src_col]
+            vel_aligned[:, dst_col] = record_vel[:, src_col]
+        power_records.append(power_aligned)
+        vel_records.append(vel_aligned)
 
     power_stack = np.stack(power_records, axis=0)
     vel_stack = np.stack(vel_records, axis=0)
@@ -317,13 +474,6 @@ def run(args: argparse.Namespace) -> tuple[Path, Path]:
 
     power_plot = np.where(mask, power, np.nan)
     vel_plot = np.where(mask, vel, np.nan)
-
-    az_order = np.argsort(beam_azms)
-    beam_nums = beam_nums[az_order]
-    beam_azms = beam_azms[az_order]
-    power_plot = power_plot[:, az_order]
-    vel_plot = vel_plot[:, az_order]
-    snr = snr[:, az_order]
 
     az_edges = _beam_edges(beam_azms)
     range_edges = _range_edges(range_km)

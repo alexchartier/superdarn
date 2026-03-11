@@ -1,0 +1,61 @@
+# HFDL Detection (rawrf)
+
+This folder contains a thin wrapper around `dumphfdl` that streams IQ samples from an HDF5 raw RF file into the decoder.
+
+## Usage
+
+```bash
+./detect_hfdl.py \
+  --input /project/superdarn/data/rawrf/20260212.2005.21.wal.rawrf.h5 \
+  --dataset /path/to/iq_dataset \
+  --sample-rate-hz 48000 \
+  --center-freq-khz 8906.0 \
+  --systable /path/to/dumphfdl/etc/systable.conf
+```
+
+Notes:
+- If `--dataset` is omitted, the script picks the largest numeric dataset.
+- If `--sample-rate-hz` and `--center-freq-khz` are omitted, the script tries to infer them from HDF5 attributes.
+- Provide `--freqs-khz` to pass explicit channel frequencies instead of a systable.
+
+## Requirements
+- `python3` with `h5py` and `numpy`
+- `dumphfdl` installed and in `PATH` (or use `--dumphfdl /path/to/dumphfdl`)
+
+## Polar FOV Plotter
+
+`plot_fitacf_fov.py` rebuilds the Wallops-style polar power and Doppler plots from either a Borealis realtime fitacf PUB socket or an offline `.fitacf[.bz2]` file.
+
+Example live capture:
+
+```bash
+./plot_fitacf_fov.py \
+  --socket tcp://192.168.112.127:9696 \
+  --cp 151 \
+  --duration-s 60 \
+  --radar wal \
+  --mode-label normalscan \
+  --output plots/wal_normalscan_polar_power_doppler.png
+```
+
+Example offline replay:
+
+```bash
+./plot_fitacf_fov.py \
+  --input /path/to/file.fitacf.bz2 \
+  --cp 151 \
+  --radar wal \
+  --mode-label normalscan
+```
+
+Plotter requirements:
+- `python3` with `matplotlib`, `numpy`, and `pydarnio`
+- `pyzmq` only when using `--socket`
+
+## Limitations
+- The script expects IQ samples as one of:
+  - complex64 (CF32)
+  - float32 I/Q interleaved (CF32)
+  - int16 I/Q interleaved (CS16)
+  - uint8 I/Q interleaved (U8)
+- Other formats will require an explicit conversion step.

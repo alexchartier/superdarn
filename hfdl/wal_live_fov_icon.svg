@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" role="img" aria-labelledby="title desc">
+  <title id="title">Wallops Live FOV</title>
+  <desc id="desc">Simple white line icon showing a radar field of view.</desc>
+  <g transform="translate(110 114) scale(1.95) translate(-110 -114)">
+    <g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M110 162 L54 82 Q110 48 166 82 Z" stroke-width="6"/>
+      <path d="M110 162 L77 87" stroke-width="4"/>
+      <path d="M110 162 L93 74" stroke-width="4"/>
+      <path d="M110 162 L110 68" stroke-width="4"/>
+      <path d="M110 162 L127 74" stroke-width="4"/>
+      <path d="M110 162 L143 87" stroke-width="4"/>
+      <path d="M76 116 Q110 98 144 116" stroke-width="3" opacity="0.7"/>
+      <path d="M64 97 Q110 70 156 97" stroke-width="3" opacity="0.55"/>
+    </g>
+    <circle cx="110" cy="162" r="8" fill="#ffffff"/>
+    <circle cx="110" cy="162" r="3.5" fill="#1B3957"/>
+  </g>
+</svg>

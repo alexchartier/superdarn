@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wallops Live FOV</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #10243d;
+      --muted: #5f6f81;
+      --line: #c8d5e4;
+      --panel: #f4f8fb;
+      --accent: #0d6e8a;
+      --accent-soft: #d7eef5;
+      --warn: #8a5d0d;
+      --bg: linear-gradient(180deg, #eef6fb 0%, #f9fcfe 55%, #e6eff7 100%);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Open Sans", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    main {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 24px 20px 40px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-family: "Montserrat", Arial, sans-serif;
+      font-size: clamp(1.8rem, 3vw, 2.8rem);
+      letter-spacing: 0.02em;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .hero {
+      display: grid;
+      gap: 14px;
+      padding: 22px 24px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.78);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 18px 40px rgba(16, 36, 61, 0.08);
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pill {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 18px;
+      margin-top: 22px;
+    }
+
+    .card {
+      display: grid;
+      gap: 14px;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 14px 34px rgba(16, 36, 61, 0.08);
+    }
+
+    .card a {
+      display: block;
+      width: 100%;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-family: "Montserrat", Arial, sans-serif;
+      font-size: 1.25rem;
+    }
+
+    .card-meta {
+      display: grid;
+      gap: 4px;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    img {
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .status {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid #ead9b0;
+      background: #fff8e7;
+      color: var(--warn);
+      white-space: pre-wrap;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    .controls {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 14px 34px rgba(16, 36, 61, 0.06);
+    }
+
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .controls button {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: white;
+      color: var(--ink);
+      padding: 8px 14px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .controls button:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+
+    .controls input[type="range"] {
+      width: min(100%, 560px);
+    }
+
+    .archive-note {
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div>
+        <h1>Wallops Live FOV</h1>
+        <p>Near-real-time Wallops polar power and Doppler plots, published from the latest Borealis rawacf files.</p>
+      </div>
+      <div class="meta">
+        <div class="pill" id="updated-pill">Loading status...</div>
+        <div class="pill" id="mode-pill">Checking mode...</div>
+        <div class="pill" id="selection-pill">Latest snapshot</div>
+      </div>
+    </section>
+
+    <section class="controls">
+      <div class="controls-row">
+        <button id="prev-btn" type="button">Previous</button>
+        <button id="next-btn" type="button">Next</button>
+        <button id="latest-btn" type="button">Latest</button>
+        <input id="archive-slider" type="range" min="0" max="0" value="0" step="1">
+      </div>
+      <div class="archive-note" id="archive-note">Loading archive...</div>
+    </section>
+
+    <section class="grid" id="cards"></section>
+    <section class="status" id="status" hidden></section>
+  </main>
+
+  <script>
+    const statusNode = document.getElementById("status");
+    const updatedPill = document.getElementById("updated-pill");
+    const modePill = document.getElementById("mode-pill");
+    const selectionPill = document.getElementById("selection-pill");
+    const cardsNode = document.getElementById("cards");
+    const archiveNote = document.getElementById("archive-note");
+    const slider = document.getElementById("archive-slider");
+    const prevBtn = document.getElementById("prev-btn");
+    const nextBtn = document.getElementById("next-btn");
+    const latestBtn = document.getElementById("latest-btn");
+
+    const state = {
+      status: null,
+      archive: null,
+      selectedIndex: 0,
+      followLatest: true,
+    };
+
+    function utcText(value) {
+      if (!value) return "unknown";
+      const date = new Date(value);
+      return `${date.toISOString().replace(".000Z", "Z")}`;
+    }
+
+    function parseUtc(value) {
+      return new Date(value).getTime();
+    }
+
+    function showStatus(message) {
+      statusNode.hidden = false;
+      statusNode.textContent = message;
+    }
+
+    function clearStatus() {
+      statusNode.hidden = true;
+      statusNode.textContent = "";
+    }
+
+    function selectedEntry() {
+      const entries = state.archive && state.archive.entries ? state.archive.entries : [];
+      if (!entries.length) {
+        return null;
+      }
+      return entries[Math.max(0, Math.min(state.selectedIndex, entries.length - 1))];
+    }
+
+    function renderCards(entry) {
+      cardsNode.innerHTML = "";
+      if (!entry) {
+        return;
+      }
+      const stamp = encodeURIComponent(entry.generated_at_utc || Date.now());
+      const channels = [...(entry.channels || [])].sort((left, right) =>
+        String(left.channel || "").localeCompare(String(right.channel || ""))
+      );
+      for (const channel of channels) {
+        const card = document.createElement("article");
+        card.className = "card";
+        card.innerHTML = `
+          <div>
+            <h2>Channel ${channel.channel.toUpperCase()}${channel.tfreq_khz ? `, ${Number(channel.tfreq_khz).toLocaleString()} kHz` : ""}</h2>
+          </div>
+          <div class="card-meta">
+            <div>CP: ${channel.cp ?? "unknown"}</div>
+            <div>Data window: ${utcText(channel.start_utc)} to ${utcText(channel.stop_utc)}</div>
+            <div>Source: ${channel.source_rawacf ?? "unknown"}</div>
+          </div>
+          <a href="${channel.output_png}?t=${stamp}" target="_blank" rel="noopener">
+            <img src="${channel.output_png}?t=${stamp}" alt="Wallops live FOV channel ${channel.channel}">
+          </a>
+        `;
+        cardsNode.appendChild(card);
+      }
+    }
+
+    function renderArchiveControls() {
+      const entries = state.archive && state.archive.entries ? state.archive.entries : [];
+      const hasArchive = entries.length > 0;
+      slider.disabled = !hasArchive;
+      prevBtn.disabled = !hasArchive || state.selectedIndex <= 0;
+      nextBtn.disabled = !hasArchive || state.selectedIndex >= entries.length - 1;
+      latestBtn.disabled = !hasArchive || (state.followLatest && state.selectedIndex === entries.length - 1);
+
+      if (!hasArchive) {
+        slider.min = "0";
+        slider.max = "0";
+        slider.value = "0";
+        archiveNote.textContent = "Archive is empty. It will start filling as new live snapshots are published.";
+        selectionPill.textContent = "Latest snapshot";
+        return;
+      }
+
+      slider.min = "0";
+      slider.max = String(entries.length - 1);
+      slider.value = String(state.selectedIndex);
+
+      const firstTime = parseUtc(entries[0].generated_at_utc);
+      const lastTime = parseUtc(entries[entries.length - 1].generated_at_utc);
+      const spanHours = Math.max(0, (lastTime - firstTime) / 36e5);
+      archiveNote.textContent = `${entries.length} archived snapshots spanning ${spanHours.toFixed(1)} hours. The archive grows forward from when publishing started.`;
+
+      const chosen = selectedEntry();
+      selectionPill.textContent = chosen ? `Viewing ${utcText(chosen.generated_at_utc)}` : "Latest snapshot";
+    }
+
+    function renderSelected() {
+      const entry = selectedEntry();
+      renderArchiveControls();
+      renderCards(entry);
+    }
+
+    function syncSelection(previousTimestamp) {
+      const entries = state.archive && state.archive.entries ? state.archive.entries : [];
+      if (!entries.length) {
+        state.selectedIndex = 0;
+        state.followLatest = true;
+        return;
+      }
+      if (state.followLatest || !previousTimestamp) {
+        state.selectedIndex = entries.length - 1;
+        return;
+      }
+      const match = entries.findIndex((entry) => entry.generated_at_utc === previousTimestamp);
+      state.selectedIndex = match >= 0 ? match : entries.length - 1;
+    }
+
+    async function fetchJson(path) {
+      const response = await fetch(`${path}?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} for ${path}`);
+      }
+      return response.json();
+    }
+
+    async function refresh() {
+      const currentEntry = selectedEntry();
+      const previousTimestamp = currentEntry ? currentEntry.generated_at_utc : null;
+      try {
+        const [status, archive] = await Promise.all([
+          fetchJson("wal_live_fov_status.json"),
+          fetchJson("wal_live_fov_archive.json").catch(() => ({ entries: [] })),
+        ]);
+        state.status = status;
+        state.archive = archive;
+        syncSelection(previousTimestamp);
+        updatedPill.textContent = `Published ${utcText(status.generated_at_utc)}`;
+        const modeBits = [status.experiment_name, status.scheduling_mode].filter(Boolean);
+        modePill.textContent = modeBits.length ? modeBits.join(" / ") : "Mode unknown";
+        renderSelected();
+        if ((status.errors || []).length) {
+          showStatus(status.errors.map((entry) => `${entry.channel}: ${entry.error}`).join("\n"));
+        } else {
+          clearStatus();
+        }
+      } catch (error) {
+        showStatus(`Failed to load Wallops live FOV status: ${error.message}`);
+      }
+    }
+
+    prevBtn.addEventListener("click", () => {
+      if (state.selectedIndex > 0) {
+        state.selectedIndex -= 1;
+        state.followLatest = false;
+        renderSelected();
+      }
+    });
+
+    nextBtn.addEventListener("click", () => {
+      const entries = state.archive && state.archive.entries ? state.archive.entries : [];
+      if (state.selectedIndex < entries.length - 1) {
+        state.selectedIndex += 1;
+        state.followLatest = state.selectedIndex === entries.length - 1;
+        renderSelected();
+      }
+    });
+
+    latestBtn.addEventListener("click", () => {
+      const entries = state.archive && state.archive.entries ? state.archive.entries : [];
+      if (entries.length) {
+        state.selectedIndex = entries.length - 1;
+        state.followLatest = true;
+        renderSelected();
+      }
+    });
+
+    slider.addEventListener("input", () => {
+      state.selectedIndex = Number(slider.value);
+      const entries = state.archive && state.archive.entries ? state.archive.entries : [];
+      state.followLatest = state.selectedIndex === entries.length - 1;
+      renderSelected();
+    });
+
+    refresh();
+    setInterval(refresh, 60000);
+  </script>
+</body>
+</html>

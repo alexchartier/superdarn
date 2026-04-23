@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import bz2
+import json
 import os
 import sys
 import calendar
@@ -26,6 +27,7 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 
 # Size for chunked decompression writes
 CHUNK_SIZE = 1024 * 1024
+SUMMARY_MARKER = "BZIP_TO_FIT_SUMMARY "
 
 
 def enable_line_buffering() -> None:
@@ -418,6 +420,112 @@ def process_chunk(
     return processed_files, skipped_existing, ok_groups, fail_groups
 
 
+def concatenate_fitacf_bzips(
+    *,
+    input_dir: Path,
+    output_dir: Path,
+    radar_allow: Sequence[str],
+    start_date: Optional[date],
+    end_date: Optional[date],
+    force: bool,
+    parallel_jobs: int,
+    per_dir: bool,
+) -> dict[str, object]:
+    """Concatenate fitacf bz2 chunks and return a structured summary."""
+    if not input_dir.is_dir():
+        raise FileNotFoundError(f"Input directory not found: {input_dir}")
+    if parallel_jobs < 1:
+        raise ValueError(f"Parallel jobs must be a positive integer: {parallel_jobs}")
+
+    print("Starting concat_fitacf_daily")
+    print(f"  Input directory: {input_dir}")
+    print(f"  Output directory: {output_dir}")
+    print(f"  Radar filter: {','.join(radar_allow) if radar_allow else 'all'}")
+    start_label = start_date.isoformat() if start_date else "unbounded"
+    end_label = end_date.isoformat() if end_date else "unbounded"
+    print(f"  Date range: {start_label} to {end_label}")
+    print(f"  Force overwrite: {int(force)}")
+    print(f"  Parallel jobs: {parallel_jobs}")
+
+    print("Scanning input directory for .fitacf.bz2 files (progress every 500 files)...")
+    print("  This step sorts the full list first, so a large tree can take a while before concatenation starts.")
+
+    print("Quick visibility check (first match, maxdepth 3)...")
+    sample = quick_visibility_sample(input_dir, radar_allow, start_date, end_date)
+    if sample:
+        print(f"  Found: {sample}")
+    else:
+        print("  No files seen in the quick sample; continuing to full scan...", file=sys.stderr)
+
+    removed_empty = remove_empty_outputs(
+        output_dir,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if removed_empty:
+        print(f"Removed {removed_empty} empty .fit/.fitacf output files before processing.")
+
+    total_processed = 0
+    total_skipped = 0
+    total_ok = 0
+    total_fail = 0
+
+    if per_dir:
+        subdirs = sorted([p for p in input_dir.iterdir() if p.is_dir()])
+        if not subdirs:
+            subdirs = [input_dir]
+
+        for subdir in subdirs:
+            if not subdir_overlaps_date_range(subdir, start_date, end_date):
+                print(f"\nSkipping subdirectory outside date range: {subdir}")
+                continue
+            print(f"\nProcessing subdirectory: {subdir}")
+            entries = scan_entries(subdir, radar_allow, start_date, end_date)
+            processed, skipped, ok, fail = process_chunk(
+                entries,
+                output_dir,
+                force=force,
+                parallel_jobs=parallel_jobs,
+                chunk_label=str(subdir),
+            )
+            total_processed += processed
+            total_skipped += skipped
+            total_ok += ok
+            total_fail += fail
+    else:
+        entries = scan_entries(input_dir, radar_allow, start_date, end_date)
+        processed, skipped, ok, fail = process_chunk(
+            entries,
+            output_dir,
+            force=force,
+            parallel_jobs=parallel_jobs,
+        )
+        total_processed += processed
+        total_skipped += skipped
+        total_ok += ok
+        total_fail += fail
+
+    print(
+        f"Summary: queued {total_processed} files into {total_ok} completed groups; "
+        f"{total_fail} groups failed; skipped existing outputs: {total_skipped}"
+    )
+    return {
+        "input_dir": str(input_dir),
+        "output_dir": str(output_dir),
+        "radars": list(radar_allow),
+        "start_date": start_date.isoformat() if start_date else None,
+        "end_date": end_date.isoformat() if end_date else None,
+        "force": force,
+        "parallel_jobs": parallel_jobs,
+        "per_dir": per_dir,
+        "removed_empty_outputs": removed_empty,
+        "processed_files": total_processed,
+        "skipped_existing_outputs": total_skipped,
+        "completed_groups": total_ok,
+        "failed_groups": total_fail,
+    }
+
+
 def main() -> int:
     args = parse_args()
     enable_line_buffering()
@@ -430,86 +538,23 @@ def main() -> int:
         print("Start date must be on or before end date.", file=sys.stderr)
         return 1
 
-    print("Starting concat_fitacf_daily")
-    print(f"  Input directory: {input_dir}")
-    print(f"  Output directory: {output_dir}")
-    print(f"  Radar filter: {args.radars if args.radars else 'all'}")
-    start_label = args.start_date.isoformat() if args.start_date else "unbounded"
-    end_label = args.end_date.isoformat() if args.end_date else "unbounded"
-    print(f"  Date range: {start_label} to {end_label}")
-    print(f"  Force overwrite: {int(args.force)}")
-    print(f"  Parallel jobs: {args.parallel_jobs}")
-
-    if not input_dir.is_dir():
-        print(f"Input directory not found: {input_dir}", file=sys.stderr)
-        return 1
-    if args.parallel_jobs < 1:
-        print(f"Parallel jobs must be a positive integer: {args.parallel_jobs}", file=sys.stderr)
-        return 1
-
-    print("Scanning input directory for .fitacf.bz2 files (progress every 500 files)...")
-    print("  This step sorts the full list first, so a large tree can take a while before concatenation starts.")
-
-    print("Quick visibility check (first match, maxdepth 3)...")
-    sample = quick_visibility_sample(input_dir, radar_allow, args.start_date, args.end_date)
-    if sample:
-        print(f"  Found: {sample}")
-    else:
-        print("  No files seen in the quick sample; continuing to full scan...", file=sys.stderr)
-
-    removed_empty = remove_empty_outputs(
-        output_dir, start_date=args.start_date, end_date=args.end_date
-    )
-    if removed_empty:
-        print(f"Removed {removed_empty} empty .fit/.fitacf output files before processing.")
-
-    # When per-dir is enabled, process each immediate subdirectory independently.
-    if args.per_dir:
-        subdirs = sorted([p for p in input_dir.iterdir() if p.is_dir()])
-        if not subdirs:
-            subdirs = [input_dir]
-        total_processed = 0
-        total_skipped = 0
-        total_ok = 0
-        total_fail = 0
-
-        for subdir in subdirs:
-            if not subdir_overlaps_date_range(subdir, args.start_date, args.end_date):
-                print(f"\nSkipping subdirectory outside date range: {subdir}")
-                continue
-            print(f"\nProcessing subdirectory: {subdir}")
-            entries = scan_entries(subdir, radar_allow, args.start_date, args.end_date)
-            processed, skipped, ok, fail = process_chunk(
-                entries,
-                output_dir,
-                force=args.force,
-                parallel_jobs=args.parallel_jobs,
-                chunk_label=str(subdir),
-            )
-            total_processed += processed
-            total_skipped += skipped
-            total_ok += ok
-            total_fail += fail
-
-        print(
-            f"Summary: queued {total_processed} files into {total_ok} completed groups; "
-            f"{total_fail} groups failed; skipped existing outputs: {total_skipped}"
+    try:
+        summary = concatenate_fitacf_bzips(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            radar_allow=radar_allow,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            force=args.force,
+            parallel_jobs=args.parallel_jobs,
+            per_dir=args.per_dir,
         )
-        return 1 if total_fail > 0 else 0
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
-    # Default: single full-tree pass
-    entries = scan_entries(input_dir, radar_allow, args.start_date, args.end_date)
-    processed, skipped, ok, fail = process_chunk(
-        entries,
-        output_dir,
-        force=args.force,
-        parallel_jobs=args.parallel_jobs,
-    )
-    print(
-        f"Summary: queued {processed} files into {ok} completed groups; "
-        f"{fail} groups failed; skipped existing outputs: {skipped}"
-    )
-    return 1 if fail > 0 else 0
+    print(f"{SUMMARY_MARKER}{json.dumps(summary, sort_keys=True)}")
+    return 1 if int(summary["failed_groups"]) > 0 else 0
 
 
 if __name__ == "__main__":

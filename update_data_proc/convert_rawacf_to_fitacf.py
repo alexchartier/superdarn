@@ -168,7 +168,7 @@ def combine_fitacfs(date_string):
 
         # Get all fitacf3 files for the radar site
         site_fitacf3_files = glob(f"{os.path.join(fitacf_dir, date_string)}.*{radar_site}.fit")
-       
+        daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fit") 
         daily_abs = os.path.abspath(daily_filename)
         site_fitacf3_files = [f for f in site_fitacf3_files if os.path.abspath(f) != daily_abs]
  
@@ -176,7 +176,6 @@ def combine_fitacfs(date_string):
         site_fitacf3_files.sort()
 
         # Concatenate files into a daily file
-        daily_filename = os.path.join(fitacf_dir, f"{date_string}.{radar_site}.fit")
         # TODO: add clobber flag in order to overwrite any existing fitacf files
         command = f"cat {' '.join(site_fitacf3_files)} > {daily_filename}"
         try:

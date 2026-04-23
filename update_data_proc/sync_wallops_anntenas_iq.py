@@ -25,8 +25,8 @@ def send_email(subject, body):
         server.sendmail(sender, [recipient], msg.as_string())
 
 def get_dates():
-    start_date = datetime.date(2025, 1, 23)
-    end_date = datetime.date(2025, 1, 31)
+    start_date = datetime.date(2026, 2, 4)
+    end_date = datetime.date(2026, 2, 6)
     return [(start_date + datetime.timedelta(days=i)).strftime("%Y%m%d") for i in range((end_date - start_date).days + 1)]
 
 # Define the server and source directories
@@ -38,8 +38,8 @@ sources = [
 
 dates_to_sync = get_dates()
 
-year = "2025"
-month = "01"
+year = "2026"
+month = "02"
 
 # Define destination path
 destination_path = f"/project/superdarn/data/antennas_iq/{year}/{month}"

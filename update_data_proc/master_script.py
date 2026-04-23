@@ -109,7 +109,9 @@ def process_day(day: datetime, known_radars: set[str], *, clobber: bool = False)
     log_message(f"=== {day_str}: start ===")
 
     already_done = list_processed_radars(day)
-    pending = sorted(known_radars) if clobber else sorted(known_radars - already_done)
+    
+    #pending = sorted(known_radars) if clobber else sorted(known_radars - already_done)
+    pending = ['bks','fhw','fhe','cve','cvw']
 
     if not pending:
         print(f"{day_str}: all radars already processed - skipping")

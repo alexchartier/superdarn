@@ -427,10 +427,11 @@ Examples:
 
         function_name = inspect.currentframe().f_code.co_name
 
-        # Build the TransferData object — all args after the first three must be keyword-only in SDK 4.x
+        # SDK 4.x expects the transfer client as the first positional argument and the endpoints by keyword.
         transfer_data = globus_sdk.TransferData(
-            source_uuid,
-            dest_uuid,
+            self.transfer_client,
+            source_endpoint=source_uuid,
+            destination_endpoint=dest_uuid,
             label=function_name,
             sync_level="checksum",
             notify_on_succeeded=False,
@@ -489,4 +490,3 @@ if __name__ == '__main__':
         helper.GLOBUS_PATH, sync.sync_local_dir), shell=True)
 
 """
-

@@ -15,8 +15,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from processing.augment_grid_nc_with_dirn import compute_correct_dirn
-
 
 def main(
     fn='~/Downloads/20130117.sto.v3.0.grid.nc',
@@ -36,8 +34,7 @@ def main(
     rlon = df.lon
     lats = data['vector.glat']
     lons = data['vector.glon']
-    dirn = compute_correct_dirn(df)
-    vels = data['vector.vel.median'] * dirn[tidx]
+    vels = data['vector.vel.median']
     brng_deg = data['vector.g_kvect']
 
     plot_scatter(rlat, rlon, lats, lons, vels, fn)

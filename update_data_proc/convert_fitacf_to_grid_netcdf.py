@@ -7,6 +7,7 @@ import jdutil
 import helper
 from datetime import datetime
 import aacgmv2
+import dmap
 import os
 import sys
 from pathlib import Path
@@ -22,6 +23,7 @@ if str(REPO_ROOT) not in sys.path:
 from processing.augment_grid_nc_with_dirn import (
     DIRN_VAR_LONG_NAME,
     DIRN_VAR_UNITS,
+    convert_aacgm_to_geo_by_time,
     compute_correct_dirn_values,
 )
 
@@ -30,6 +32,14 @@ wgs84 = nv.FrameE(name='WGS84')
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
 
 clobber = False
+
+
+def load_grid_records(grid_fname):
+    reader = getattr(dmap, 'read_grid_lax', None) or getattr(dmap, 'read_grid')
+    records = reader(str(grid_fname))
+    if isinstance(records, tuple) and len(records) == 2 and isinstance(records[0], list):
+        records = records[0]
+    return records
 
 def main(date_string):
     print(f'\n{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} - Starting to convert {date_string} fitACFs to GRID netCDF')
@@ -106,8 +116,7 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
         return 1
 
     # load
-    SDarn_read = pydarn.SuperDARNRead(grid_fname)
-    grid_data = SDarn_read.read_grid()
+    grid_data = load_grid_records(grid_fname)
     radar_info = get_radar_params(hdw_dat_dir)
     radar_code = os.path.basename(fit_fname).split('.')[1]
     radar_info_t = id_hdw_params_t(time, radar_info[radar_code])
@@ -155,8 +164,12 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     # AACGM to geo
     mlat = out_vars['vector.mlat']
     mlon = out_vars['vector.mlon']
-    [out_vars['vector.glat'], out_vars['vector.glon'], alt] = \
-        aacgmv2.convert_latlon_arr(mlat, mlon, ref_ht, time, method_code="A2G")
+    out_vars['vector.glat'], out_vars['vector.glon'] = convert_aacgm_to_geo_by_time(
+        mlat,
+        mlon,
+        out_vars['mjd_start'],
+        ref_ht,
+    )
     
     # geographic bearing
     out_vars['vector.g_kvect'] = calc_bearings(
@@ -352,8 +365,7 @@ def plot_grid_nc(grid_nc_fn, time, intvl_min=2):
 
 
 def plot_grid(grid_fn, time):
-    SDarn_read = pydarn.SuperDARNRead(grid_fn)
-    grid_data = SDarn_read.read_grid()
+    grid_data = load_grid_records(grid_fn)
     gridplot = pydarn.Grid.plot_grid(grid_data, start_time=time)
     plt.show()
 

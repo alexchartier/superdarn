@@ -58,6 +58,36 @@ def normalize_radar_altitude_km(radar_alt: float) -> float:
     return radar_alt
 
 
+def convert_aacgm_to_geo_by_time(
+    mlat: np.ndarray,
+    mlon: np.ndarray,
+    mjd_start: np.ndarray,
+    ref_ht: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    mlat = np.asarray(mlat, dtype=float)
+    mlon = np.asarray(mlon, dtype=float)
+    mjd_start = np.asarray(mjd_start, dtype=float)
+
+    glat = np.full(mlat.shape, np.nan, dtype=float)
+    glon = np.full(mlon.shape, np.nan, dtype=float)
+    unique_times, inverse = np.unique(mjd_start, return_inverse=True)
+
+    for time_idx, mjd in enumerate(unique_times):
+        mask = inverse == time_idx
+        dtime = mjd_to_datetime(mjd)
+        glat_t, glon_t, _ = aacgmv2.convert_latlon_arr(
+            mlat[mask],
+            mlon[mask],
+            ref_ht,
+            dtime,
+            method_code="A2G",
+        )
+        glat[mask] = glat_t
+        glon[mask] = glon_t
+
+    return glat, glon
+
+
 def compute_correct_dirn_values(
     mlat: np.ndarray,
     mlon: np.ndarray,

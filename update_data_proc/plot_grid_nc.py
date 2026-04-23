@@ -7,7 +7,15 @@ import numpy as np
 import matplotlib.pyplot as plt 
 import nvector as nv
 import os  
+import sys
+from pathlib import Path
 import nc_utils
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from processing.augment_grid_nc_with_dirn import compute_correct_dirn
 
 
 def main(
@@ -28,7 +36,8 @@ def main(
     rlon = df.lon
     lats = data['vector.glat']
     lons = data['vector.glon']
-    vels = data['vector.vel.median'] * data['vector.vel.dirn']
+    dirn = compute_correct_dirn(df)
+    vels = data['vector.vel.median'] * dirn[tidx]
     brng_deg = data['vector.g_kvect']
 
     plot_scatter(rlat, rlon, lats, lons, vels, fn)

@@ -7,10 +7,23 @@ import jdutil
 import datetime as dt
 import aacgmv2
 import os
+import sys
+from pathlib import Path
 from sd_utils import get_radar_params, id_hdw_params_t, get_random_string, get_radar_list
 import netCDF4
 import nc_utils
 import nvector as nv
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from processing.augment_grid_nc_with_dirn import (
+    DIRN_VAR_LONG_NAME,
+    DIRN_VAR_UNITS,
+    compute_correct_dirn_values,
+)
+
 wgs84 = nv.FrameE(name='WGS84')
 
 MIN_FITACF_FILE_SIZE = 1E5 # bytes
@@ -82,7 +95,7 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     copy_vn = ['vector.mlat', 'vector.mlon', 'vector.kvect', 'vector.vel.median', 
         'vector.vel.sd', 'vector.pwr.median', 'vector.wdt.median',
     ]
-    new_vn = ['mjd_start', 'mjd_end', 'vector.glat', 'vector.glon', 'vector.g_kvect']
+    new_vn = ['mjd_start', 'mjd_end', 'vector.glat', 'vector.glon', 'vector.g_kvect', 'vector.vel.dirn']
     out_vars = {}
     for vn in copy_vn + new_vn:
         out_vars[vn] = []
@@ -129,18 +142,15 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
         radar_info_t['glat'], radar_info_t['glon'], out_vars['vector.glat'], 
         out_vars['vector.glon'], ref_ht,
     )
-
-    # geomagnetic bearing (to determine whether velocity oriented  towards/away array) 
-    [r_mlat, r_mlon, _] = aacgmv2.convert_latlon_arr(
-        radar_info_t['glat'], radar_info_t['glon'], radar_info_t['alt'], 
-        stime, method_code="G2A",
+    out_vars['vector.vel.dirn'] = compute_correct_dirn_values(
+        out_vars['vector.mlat'],
+        out_vars['vector.mlon'],
+        out_vars['vector.kvect'],
+        out_vars['mjd_start'],
+        radar_lat=radar_info_t['glat'],
+        radar_lon=radar_info_t['glon'],
+        radar_alt=radar_info_t['alt'],
     )
-    maz = calc_bearings(r_mlat[0], r_mlon[0], mlat, mlon, ref_ht)
-    delta_maz = angle_between(maz, out_vars['vector.kvect'])
-    dirn = np.ones(maz.shape) 
-    dirn[np.abs(delta_maz) > 90.] *= -1
-    out_vars['vector.vel.dirn'] = dirn
-    out_vars['vector.vel.median'] 
 
     # Write out to netCDF
     var_defs = def_vars()
@@ -152,19 +162,6 @@ def convert_fit_to_grid_nc(time, fit_fname, grid_fname, out_fname, hdw_dat_dir,
     write_nc(out_fname, header_info, dim_defs, var_defs, out_vars)
 
     print('Wrote to %s' % out_fname)
-
-
-def angle_between(x, y, deg=True):
-    if deg:
-        x = np.deg2rad(x) 
-        y = np.deg2rad(y) 
-    angle_rad = np.arctan2(np.sin(x-y), np.cos(x-y))
-
-    if deg:
-        return np.rad2deg(angle_rad)
-    else:
-        return angle_rad
-
 
 def write_nc(out_fname, header_info, dim_defs, var_defs, out_vars):
     # Write out the netCDF 
@@ -211,7 +208,6 @@ def def_vars():
      # netCDF writer expects a series of variable definitions - here they are
     stdin_flt = {'type': 'f4', 'dims': 'npts'} 
     stdin_dbl = {'type': 'f8', 'dims': 'npts'} 
-    stdin_int = {'type': 'i1', 'dims': 'npts'} 
     var_defs = { 
         'mjd_start': dict({'units': 'days', 'long_name': 'Modified Julian Date (start of window)'}, **stdin_dbl),
         'mjd_end': dict({'units': 'days', 'long_name': 'Modified Julian Date (end of window)'}, **stdin_dbl),
@@ -221,9 +217,9 @@ def def_vars():
         'vector.mlat': dict({'units': 'deg.', 'long_name': 'AACGM Latitude'}, **stdin_flt),
         'vector.mlon': dict({'units': 'deg.', 'long_name': 'AACGM Longitude'}, **stdin_flt),
         'vector.kvect': dict({'units': 'deg.', 'long_name': 'AACGM Azimuth angle'}, **stdin_flt),
+        'vector.vel.dirn': {'type': 'i1', 'dims': 'npts', 'units': DIRN_VAR_UNITS, 'long_name': DIRN_VAR_LONG_NAME},
         'vector.vel.median': dict({'units': 'm/s', 'long_name': 'Weighted mean velocity magnitude'}, **stdin_flt),
         'vector.vel.sd': dict({'units': 'm/s', 'long_name': 'Velocity standard deviation'}, **stdin_flt),
-        'vector.vel.dirn': dict({'units': 'None', 'long_name': 'Velocity direction (+1 away from radar, -1 towards)'}, **stdin_int),
         'vector.pwr.median': dict({'units': 'dB', 'long_name': 'Weighted mean power'}, **stdin_flt),
         'vector.wdt.median': dict({'units': 'm/s', 'long_name': 'Weighted mean spectral width'}, **stdin_flt),
     }
@@ -394,8 +390,6 @@ if __name__ == '__main__':
     plot_grid(grid_fname, time)
 
     """
-
-
 
 
 

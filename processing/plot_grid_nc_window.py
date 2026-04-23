@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import pydarn
 
 
+DEFAULT_PYMIX_DIR = Path("~/data/ampere/pymix/misc_pipeline_import_localf107").expanduser()
 VECTOR_KEYS = [
     "vector.mlat",
     "vector.mlon",
@@ -59,6 +60,40 @@ def parse_args() -> argparse.Namespace:
         "--include-radars",
         nargs="+",
         help="Optional list of radar codes to include, e.g. cve cvw hkw",
+    )
+    parser.add_argument(
+        "--pymix-dir",
+        default=str(DEFAULT_PYMIX_DIR) if DEFAULT_PYMIX_DIR.is_dir() else None,
+        help="Optional directory containing mix_robinson_<hemisphere>_YYYYMMDD.nc files",
+    )
+    parser.add_argument(
+        "--pymix-level-step",
+        type=float,
+        default=10.0,
+        help="Potential contour spacing in kV (default: 10)",
+    )
+    parser.add_argument(
+        "--pymix-max-time-delta-min",
+        type=float,
+        default=5.0,
+        help="Maximum allowed time offset from the plot time to the nearest PyMIX slice, in minutes",
+    )
+    parser.add_argument(
+        "--pymix-color",
+        default="k",
+        help="Contour color for the PyMIX potential overlay (default: k)",
+    )
+    parser.add_argument(
+        "--pymix-linewidth",
+        type=float,
+        default=0.6,
+        help="Contour linewidth for the PyMIX potential overlay (default: 0.6)",
+    )
+    parser.add_argument(
+        "--pymix-alpha",
+        type=float,
+        default=0.65,
+        help="Contour alpha for the PyMIX potential overlay (default: 0.65)",
     )
     parser.add_argument("--parameter", default="vel", help="Grid parameter to plot")
     parser.add_argument("--title", default="", help="Optional plot title")
@@ -103,6 +138,82 @@ def radar_id_for_code(code: str) -> int:
 def load_nc_vars(path: Path) -> dict[str, np.ndarray]:
     with netCDF4.Dataset(path) as ds:
         return {name: np.asarray(ds.variables[name][:]) for name in ds.variables}
+
+
+def load_pymix_slice(
+    pymix_dir: Path | None,
+    when: datetime,
+    hemisphere: str,
+    max_time_delta_min: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    if pymix_dir is None:
+        return None
+    if hemisphere not in {"north", "south"}:
+        raise ValueError("PyMIX overlay requires hemisphere north or south")
+
+    path = pymix_dir / f"mix_robinson_{hemisphere}_{when:%Y%m%d}.nc"
+    if not path.is_file():
+        raise FileNotFoundError(f"PyMIX file not found: {path}")
+
+    with netCDF4.Dataset(path) as ds:
+        times = np.asarray(ds.variables["time"][:], dtype=float)
+        deltas = np.array([abs((mjd_to_datetime(mjd) - when).total_seconds()) for mjd in times])
+        time_idx = int(np.argmin(deltas))
+        if deltas[time_idx] > max_time_delta_min * 60.0:
+            raise ValueError(
+                f"nearest PyMIX time {mjd_to_datetime(times[time_idx]).isoformat()} is "
+                f"{deltas[time_idx] / 60.0:.1f} minutes from {when.isoformat()}"
+            )
+
+        mlt_hr = np.asarray(ds.variables["mlt_hr"][:], dtype=float)
+        clat_deg = np.asarray(ds.variables["cLat_deg"][:], dtype=float)
+        pot = np.asarray(ds.variables["Pot"][time_idx], dtype=float)
+
+    theta_deg = np.mod(mlt_hr, 24.0) * 15.0
+    theta_deg = np.concatenate([theta_deg, [theta_deg[0] + 360.0]])
+    theta = np.deg2rad(theta_deg)
+    pot = np.concatenate([pot, pot[:, :1]], axis=1)
+
+    lat = 90.0 - clat_deg
+    if hemisphere == "south":
+        lat = -lat
+
+    return theta, lat, pot
+
+
+def overlay_pymix_potential(
+    ax: plt.Axes,
+    theta: np.ndarray,
+    lat: np.ndarray,
+    pot: np.ndarray,
+    *,
+    level_step: float,
+    color: str,
+    linewidth: float,
+    alpha: float,
+) -> None:
+    max_abs = float(np.nanmax(np.abs(pot)))
+    if not np.isfinite(max_abs) or max_abs == 0.0:
+        return
+
+    level_step = abs(float(level_step))
+    if level_step == 0.0:
+        raise ValueError("pymix contour spacing must be non-zero")
+
+    limit = level_step * np.ceil(max_abs / level_step)
+    levels = np.arange(-limit, limit + 0.5 * level_step, level_step)
+    if levels.size < 2:
+        levels = np.array([-level_step, 0.0, level_step])
+
+    ax.contour(
+        theta,
+        lat,
+        pot,
+        levels=levels,
+        colors=color,
+        linewidths=linewidth,
+        alpha=alpha,
+    )
 
 
 def iter_record_slices(mjd_start: np.ndarray) -> list[slice]:
@@ -212,6 +323,7 @@ def main() -> int:
     grid_nc_dir = Path(args.grid_nc_dir).expanduser().resolve()
     out_path = Path(args.output).expanduser().resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    pymix_dir = Path(args.pymix_dir).expanduser().resolve() if args.pymix_dir else None
 
     files = sorted(grid_nc_dir.glob(args.pattern))
     if not files:
@@ -233,12 +345,46 @@ def main() -> int:
         f"({len(matched_files)} radars, {int(record['nvec'][0])} vectors)"
     )
     pydarn.Grid.plot_grid([record], record=0, parameter=args.parameter, title=title)
+    ax = plt.gca()
+
+    if pymix_dir is not None:
+        if args.hemisphere == "all":
+            raise SystemExit("--pymix-dir requires --hemisphere north or south")
+        plot_time = datetime(
+            record["start.year"],
+            record["start.month"],
+            record["start.day"],
+            record["start.hour"],
+            record["start.minute"],
+            record["start.second"],
+        )
+        pymix = load_pymix_slice(
+            pymix_dir,
+            plot_time,
+            args.hemisphere,
+            args.pymix_max_time_delta_min,
+        )
+        if pymix is not None:
+            theta, lat, pot = pymix
+            overlay_pymix_potential(
+                ax,
+                theta,
+                lat,
+                pot,
+                level_step=args.pymix_level_step,
+                color=args.pymix_color,
+                linewidth=args.pymix_linewidth,
+                alpha=args.pymix_alpha,
+            )
+
     plt.gcf().savefig(out_path, dpi=180, bbox_inches="tight")
 
     print(f"output={out_path}")
     print(f"matched_radars={len(matched_files)}")
     print(f"matched_files={','.join(path.name for path in matched_files)}")
     print(f"nvec={int(record['nvec'][0])}")
+    if pymix_dir is not None:
+        print(f"pymix_dir={pymix_dir}")
     return 0
 
 

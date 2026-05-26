@@ -462,8 +462,7 @@ def main() -> None:
     range_edges_km = (float(frang) - 0.5 * float(rsep)) + np.arange(nrang + 1, dtype=float) * float(rsep)
 
     power, doppler = _aggregate_cells(cp_records, plot_beams, nrang)
-    if not np.isfinite(power).any():
-        raise RuntimeError("No valid fitted cells found after filtering")
+    has_valid_cells = np.isfinite(power).any()
 
     power_min, power_max = _auto_power_limits(power, args.power_min, args.power_max)
     doppler_limit = _auto_doppler_limit(doppler, args.doppler_max_abs)
@@ -504,6 +503,19 @@ def main() -> None:
     cbar_power.set_label("Power (dB)")
     cbar_doppler = fig.colorbar(sm_doppler, ax=axes[1], pad=0.08)
     cbar_doppler.set_label("Doppler (m/s)")
+
+    if not has_valid_cells:
+        for ax in axes:
+            ax.text(
+                0.5,
+                0.5,
+                "No valid fitted cells",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                fontsize=12,
+                bbox={"boxstyle": "round,pad=0.35", "facecolor": "white", "alpha": 0.85, "edgecolor": "0.7"},
+            )
 
     radar = args.radar.upper()
     tfreq_text = f", tfreq={tfreq} kHz" if tfreq is not None else ""

@@ -6,13 +6,15 @@ import argparse
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
 import sys
 
 import pydarnio
+
+DEFAULT_DATA_ROOT = Path("/data/borealis_data")
+DEFAULT_WAL_CONFIG = Path("/home/radar/borealis/config/wal/wal_config.ini")
 
 
 def record_time_utc(rec: dict) -> datetime:
@@ -32,11 +34,28 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Render the latest Wallops live FOV PNGs from rawacf files.")
     p.add_argument("--plot-script", required=True, help="Path to plot_fitacf_fov.py on wal")
     p.add_argument("--output-dir", required=True, help="Directory for PNG/JSON products on wal")
-    p.add_argument("--data-root", default="/data/borealis_data", help="Wallops data root")
+    p.add_argument(
+        "--data-root",
+        default=None,
+        help="Wallops data root; defaults to wal_config.ini data_directory when available",
+    )
     p.add_argument("--channels", default="a,b", help="Comma-separated rawacf channel suffixes")
-    p.add_argument("--lookback-days", type=int, default=1, help="How many previous UTC days to search")
+    p.add_argument("--lookback-days", type=int, default=7, help="How many previous UTC days to search")
     p.add_argument("--accumulate-scans", type=int, default=1, help="Number of scans to keep in the plot")
     return p.parse_args()
+
+
+def configured_data_root(config_path: Path = DEFAULT_WAL_CONFIG) -> Path:
+    try:
+        text = config_path.read_text()
+    except OSError:
+        return DEFAULT_DATA_ROOT
+
+    match = re.search(r'"data_directory"\s*:\s*"([^"]+)"', text)
+    if not match:
+        return DEFAULT_DATA_ROOT
+
+    return Path(match.group(1)).expanduser()
 
 
 def candidate_dirs(data_root: Path, lookback_days: int) -> list[Path]:
@@ -161,7 +180,11 @@ def main() -> int:
     args = parse_args()
     plot_script = Path(args.plot_script).expanduser().resolve()
     output_dir = Path(args.output_dir).expanduser().resolve()
-    data_root = Path(args.data_root).expanduser().resolve()
+    data_root = (
+        Path(args.data_root).expanduser().resolve()
+        if args.data_root
+        else configured_data_root().resolve()
+    )
     channels = [part.strip() for part in args.channels.split(",") if part.strip()]
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -173,7 +196,6 @@ def main() -> int:
         "errors": [],
     }
 
-    exit_code = 0
     for channel in channels:
         try:
             status["channels"].append(
@@ -198,7 +220,7 @@ def main() -> int:
     status_path = output_dir / "wal_live_fov_status.json"
     status_path.write_text(json.dumps(status, indent=2) + "\n")
     print(json.dumps(status, indent=2))
-    return exit_code
+    return 0 if status["channels"] else 1
 
 
 if __name__ == "__main__":

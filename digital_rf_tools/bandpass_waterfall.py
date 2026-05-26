@@ -29,6 +29,11 @@ import digital_rf as drf
 import numpy as np
 from scipy import signal
 
+try:
+    from drf_compat import open_drf_like_reader
+except ImportError:  # pragma: no cover
+    from digital_rf_tools.drf_compat import open_drf_like_reader
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate a band-limited waterfall from DigitalRF data.")
@@ -371,8 +376,11 @@ def make_waterfall(
 
 def main() -> None:
     args = parse_args()
-    reader = drf.DigitalRFReader(str(args.dataset_root))
-    props = reader.get_properties(args.channel)
+    reader, channel, reader_mode = open_drf_like_reader(args.dataset_root, args.channel)
+    if reader_mode != "digital_rf":
+        print(f"Using flat Data/rf@*.h5 reader for channel {channel} under {args.dataset_root}")
+
+    props = reader.get_properties(channel)
     fs_raw = float(props["samples_per_second"])
     center_hz = args.center_hz if args.center_hz is not None else props.get("center_frequency_hz", None)
     if center_hz is None:
@@ -411,7 +419,7 @@ def main() -> None:
             decimate = max_decimate_safe
     nyquist_after = fs_raw / (2.0 * decimate)
 
-    dataset_start_sample, stop_sample = reader.get_bounds(args.channel)
+    dataset_start_sample, stop_sample = reader.get_bounds(channel)
     start_sample = dataset_start_sample
     epoch = epoch_to_datetime(props["epoch"])
 
@@ -438,7 +446,7 @@ def main() -> None:
             print("Requested total_seconds leaves no samples to process.")
             return
 
-    blocks: Dict[int, int] = reader.get_continuous_blocks(start_sample, stop_sample, args.channel)
+    blocks: Dict[int, int] = reader.get_continuous_blocks(start_sample, stop_sample, channel)
     if not blocks:
         print("No data blocks found in the specified range.")
         return
@@ -491,7 +499,7 @@ def main() -> None:
         cursor = block_start
         while cursor + chunk_samples <= block_stop:
             try:
-                data = reader.read_vector_1d(cursor, chunk_samples, args.channel)
+                data = reader.read_vector_1d(cursor, chunk_samples, channel)
             except OSError as exc:
                 print(f"Skipping chunk at sample {cursor} (read error: {exc})")
                 cursor += step_samples

@@ -80,6 +80,33 @@ Example offline Barker replay:
 Requirements:
 - `python3` with `h5py`, `matplotlib`, and `numpy`
 
+## UHD to DigitalRF Recorder
+
+`record_uhd_digitalrf.py` records a single UHD receive stream into a DigitalRF channel using
+`uhd_rx_cfile` for capture and the local `digital_rf` Python package for writing.
+
+Example 1 MHz capture:
+
+```bash
+./record_uhd_digitalrf.py \
+  ~/data/digitalrf/apl_test_12mhz \
+  --uhd-args "addr=192.168.10.2" \
+  --freq-hz 12000000 \
+  --rate-hz 1000000 \
+  --gain-db 25 \
+  --duration-s 60
+```
+
+Notes:
+- This writes a channel directory named `ch0` by default plus a `metadata/` directory.
+- `thor.py` is present on this machine, but it currently fails because GNU Radio is not installed.
+- The recorder timestamps the channel using host wall clock at recorder start unless
+  `--start-epoch-seconds` is supplied explicitly.
+
+Recorder requirements:
+- `python3` with `digital_rf` and `numpy`
+- `uhd_rx_cfile` in `PATH`
+
 ## Limitations
 - The script expects IQ samples as one of:
   - complex64 (CF32)

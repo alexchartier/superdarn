@@ -114,6 +114,25 @@ def _first_contiguous_run_start(vals: np.ndarray, min_len: int) -> int | None:
     return None
 
 
+def _contiguous_runs(vals: np.ndarray, min_len: int = 1) -> list[tuple[int, int]]:
+    if vals.size == 0:
+        return []
+    runs: list[tuple[int, int]] = []
+    start = 0
+    run = 1
+    for idx, d in enumerate(np.diff(vals), start=1):
+        if d == 1:
+            run += 1
+            continue
+        if run >= min_len:
+            runs.append((start, idx))
+        start = idx
+        run = 1
+    if run >= min_len:
+        runs.append((start, vals.size))
+    return runs
+
+
 def _build_kernel_from_weights(chip_samps: int, weights: np.ndarray) -> np.ndarray:
     waveform = np.repeat(np.asarray(weights, dtype=np.complex64), max(1, chip_samps)).astype(np.complex64)
     kernel = np.conj(waveform[::-1])
@@ -176,11 +195,18 @@ def _build_mf_kernel(
         return MatchedFilterSpec(rect_kernel=rect_kernel), use_mode
     elif use_mode == "barker13":
         weights = _pulse_phase_weights(record_group, pulses, use_mode)
-        run_start = _first_contiguous_run_start(pulses, 13)
-        if run_start is None:
+        runs = _contiguous_runs(pulses, min_len=13)
+        if not runs:
             raise RuntimeError("Could not locate contiguous Barker-13 pulse group")
-        code_kernel = _build_kernel_from_weights(chip_samps, weights[run_start : run_start + 13])
-        return MatchedFilterSpec(rect_kernel=code_kernel), use_mode
+        run_start, run_end = runs[0]
+        code_kernel = _build_kernel_from_weights(chip_samps, weights[run_start:run_end])
+        burst_offsets = np.asarray([int(pulses[s]) * chip_samps for s, _ in runs], dtype=np.int32)
+        burst_weights = np.ones(burst_offsets.size, dtype=np.complex64)
+        return MatchedFilterSpec(
+            rect_kernel=code_kernel,
+            combine_delays=burst_offsets,
+            combine_weights=burst_weights,
+        ), use_mode
     else:
         raise ValueError(f"Unsupported matched-filter mode: {mf_mode}")
 
@@ -193,28 +219,7 @@ def _apply_matched_filter(data: np.ndarray, mf_spec: MatchedFilterSpec | None) -
     for ai in range(data.shape[0]):
         for si in range(data.shape[1]):
             rect_filtered[ai, si, :] = np.convolve(data[ai, si, :], mf_spec.rect_kernel, mode="same")
-
-    if mf_spec.combine_delays is None or mf_spec.combine_weights is None:
-        return rect_filtered
-
-    nsamp = rect_filtered.shape[-1]
-    valid_delay = mf_spec.combine_delays < nsamp
-    delays = mf_spec.combine_delays[valid_delay].astype(np.int32, copy=False)
-    weights = mf_spec.combine_weights[valid_delay].astype(np.complex64, copy=False)
-    if delays.size == 0:
-        return np.zeros_like(rect_filtered)
-
-    out = np.zeros_like(rect_filtered)
-    for delay, weight in zip(delays.tolist(), weights.tolist()):
-        if delay == 0:
-            out += np.conj(np.complex64(weight)) * rect_filtered
-        else:
-            out[..., :-delay] += np.conj(np.complex64(weight)) * rect_filtered[..., delay:]
-
-    norm = np.sqrt(np.sum(np.abs(weights) ** 2))
-    if norm > 0.0:
-        out /= np.float32(norm)
-    return out.astype(np.complex64)
+    return rect_filtered
 
 
 def _rtt_us_to_range_km(rtt_us: np.ndarray) -> np.ndarray:
@@ -287,6 +292,59 @@ def _valid_selected_samples(
     max_delay = int(np.max(mf_spec.combine_delays.astype(np.int64)))
     valid &= (sample_idx.astype(np.int64) + np.int64(max_delay)) < np.int64(sample_count)
     return valid
+
+
+def _burst_validity_and_indices(
+    rec: h5py.Group,
+    sample_idx: np.ndarray,
+    burst_offsets: np.ndarray,
+    sample_count: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    burst_offsets = np.asarray(burst_offsets, dtype=np.int64)
+    base_idx = sample_idx.astype(np.int64)[None, :]
+    burst_idx = base_idx + burst_offsets[:, None]
+
+    valid = (burst_idx >= 0) & (burst_idx < np.int64(sample_count))
+    if "blanked_samples" in rec:
+        blanked = np.zeros(sample_count, dtype=bool)
+        blank_idx = rec["blanked_samples"][...].astype(np.int64)
+        blank_idx = blank_idx[(blank_idx >= 0) & (blank_idx < sample_count)]
+        blanked[blank_idx.astype(np.int32)] = True
+        valid &= ~blanked[np.clip(burst_idx, 0, sample_count - 1).astype(np.int32)]
+
+    return burst_idx.astype(np.int32), valid
+
+
+def _estimate_velocity_multi_burst(
+    burst_samples: np.ndarray,
+    timestamps_s: np.ndarray,
+    wavelength_m: float,
+    gap_factor: float,
+) -> np.ndarray:
+    out = np.full((burst_samples.shape[0], burst_samples.shape[3]), np.nan, dtype=np.float32)
+    if burst_samples.shape[1] < 2:
+        return out
+
+    dt = np.diff(timestamps_s.astype(np.float64))
+    dt = dt[np.isfinite(dt) & (dt > 0.0)]
+    if dt.size == 0:
+        return out
+
+    dt_ref = float(np.median(dt))
+    keep = (np.diff(timestamps_s.astype(np.float64)) > 0.0) & (np.diff(timestamps_s.astype(np.float64)) <= gap_factor * dt_ref)
+    if not np.any(keep):
+        return out
+
+    centered = burst_samples - np.nanmean(burst_samples, axis=1, keepdims=True)
+    pair_prod = centered[:, 1:, :, :] * np.conj(centered[:, :-1, :, :])
+    pair_prod[:, ~keep, :, :] = np.nan
+    acc = np.nansum(pair_prod, axis=(1, 2))
+    dphi = np.angle(acc)
+    vel = -(wavelength_m * dphi) / (4.0 * np.pi * dt_ref)
+
+    weak = np.abs(acc) <= 1.0e-9
+    vel[weak] = np.nan
+    return vel.astype(np.float32)
 
 
 def _spatial_support(mask: np.ndarray, min_neighbors: int) -> np.ndarray:
@@ -382,17 +440,36 @@ def run(args: argparse.Namespace) -> tuple[Path, Path]:
             main_data = _apply_matched_filter(main_data, mf_spec)
 
             beamformed = np.einsum("ba,ast->bst", main_weights, main_data, optimize=True)
-            beam_samples = np.take(beamformed, sample_idx, axis=2)
-
-            centered = beam_samples - np.mean(beam_samples, axis=1, keepdims=True)
-            power_lin = np.mean(np.abs(centered) ** 2, axis=1)
-            power_db = _db(power_lin)
 
             freq_khz = float(rec["freq"][()])
             wavelength_m = C_MPS / (freq_khz * 1.0e3)
             timestamps_s = rec["sqn_timestamps"][...].astype(np.float64)
-            vel = _estimate_velocity(beam_samples, timestamps_s, wavelength_m, args.max_gap_factor)
-            valid_ranges = _valid_selected_samples(rec, sample_idx, mf_spec, main_data.shape[-1])
+
+            if mf_spec is not None and mf_spec.combine_delays is not None:
+                burst_idx, burst_valid = _burst_validity_and_indices(rec, sample_idx, mf_spec.combine_delays, main_data.shape[-1])
+                burst_samples = np.full(
+                    (beamformed.shape[0], beamformed.shape[1], burst_idx.shape[0], sample_idx.size),
+                    np.nan + 0j,
+                    dtype=np.complex64,
+                )
+                for burst_num in range(burst_idx.shape[0]):
+                    vals = np.take(beamformed, np.clip(burst_idx[burst_num], 0, main_data.shape[-1] - 1), axis=2)
+                    vals[:, :, ~burst_valid[burst_num]] = np.nan + 0j
+                    burst_samples[:, :, burst_num, :] = vals
+
+                centered = burst_samples - np.nanmean(burst_samples, axis=1, keepdims=True)
+                power_lin = np.nanmean(np.abs(centered) ** 2, axis=(1, 2))
+                power_db = _db(power_lin)
+                vel = _estimate_velocity_multi_burst(burst_samples, timestamps_s, wavelength_m, args.max_gap_factor)
+                valid_ranges = np.any(burst_valid, axis=0)
+            else:
+                beam_samples = np.take(beamformed, sample_idx, axis=2)
+                centered = beam_samples - np.mean(beam_samples, axis=1, keepdims=True)
+                power_lin = np.mean(np.abs(centered) ** 2, axis=1)
+                power_db = _db(power_lin)
+                vel = _estimate_velocity(beam_samples, timestamps_s, wavelength_m, args.max_gap_factor)
+                valid_ranges = _valid_selected_samples(rec, sample_idx, mf_spec, main_data.shape[-1])
+
             power_db[:, ~valid_ranges] = np.nan
             vel[:, ~valid_ranges] = np.nan
 

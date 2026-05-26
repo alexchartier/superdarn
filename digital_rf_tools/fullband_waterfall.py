@@ -25,6 +25,41 @@ import digital_rf as drf
 import numpy as np
 from scipy import signal
 
+try:
+    from drf_compat import open_drf_like_reader
+except ImportError:  # pragma: no cover
+    from digital_rf_tools.drf_compat import open_drf_like_reader
+
+
+class RawCF32Reader:
+    def __init__(self, path: Path, fs: float, epoch: datetime) -> None:
+        self.path = path
+        self.fs = float(fs)
+        self.epoch = epoch
+        self._mmap = np.memmap(self.path, dtype=np.complex64, mode="r")
+
+    def get_properties(self, _channel: str) -> Dict[str, object]:
+        return {
+            "samples_per_second": self.fs,
+            "epoch": self.epoch.isoformat(),
+        }
+
+    def get_bounds(self, _channel: str) -> tuple[int, int]:
+        total = int(self._mmap.size)
+        if total <= 0:
+            return (0, -1)
+        return (0, total - 1)
+
+    def get_continuous_blocks(self, start: int, stop: int, _channel: str) -> Dict[int, int]:
+        if stop < start:
+            return {}
+        return {start: stop - start + 1}
+
+    def read_vector_1d(self, start: int, count: int, _channel: str) -> np.ndarray:
+        if count <= 0:
+            return np.array([], dtype=np.complex64)
+        return np.asarray(self._mmap[start : start + count], dtype=np.complex64)
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate a waterfall from full-band DigitalRF data.")
@@ -44,6 +79,24 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help="RF center frequency for labeling (Hz). Default: DigitalRF metadata center_frequency_hz when present (supersedes the default None).",
+    )
+    p.add_argument(
+        "--raw-cf32",
+        type=Path,
+        default=None,
+        help="Path to a raw complex float32 (cf32) file to plot instead of a DigitalRF dataset.",
+    )
+    p.add_argument(
+        "--raw-sample-rate",
+        type=float,
+        default=None,
+        help="Sample rate for --raw-cf32 input (Hz). Required when using --raw-cf32.",
+    )
+    p.add_argument(
+        "--raw-start-epoch",
+        type=str,
+        default=None,
+        help="UTC start time (ISO-8601) for --raw-cf32 input. Default: file mtime in UTC.",
     )
     p.add_argument(
         "--chunk-seconds",
@@ -328,16 +381,41 @@ def make_waterfall(
 
 def main() -> None:
     args = parse_args()
-    reader = drf.DigitalRFReader(str(args.dataset_root))
-    props = reader.get_properties(args.channel)
-    fs = float(props["samples_per_second"])
-    center_hz = args.center_hz if args.center_hz is not None else props.get("center_frequency_hz", None)
-    if center_hz is not None:
-        center_hz = float(center_hz)
+    if args.raw_cf32 is not None:
+        if args.raw_sample_rate is None:
+            print("--raw-sample-rate is required when using --raw-cf32.")
+            return
+        if args.center_hz is None:
+            print("--center-hz is required when using --raw-cf32.")
+            return
+        raw_path = args.raw_cf32.expanduser()
+        raw_epoch = (
+            epoch_to_datetime(args.raw_start_epoch)
+            if args.raw_start_epoch
+            else datetime.fromtimestamp(raw_path.stat().st_mtime, tz=timezone.utc)
+        )
+        reader = RawCF32Reader(raw_path, fs=args.raw_sample_rate, epoch=raw_epoch)
+        props = reader.get_properties(args.channel)
+        fs = float(props["samples_per_second"])
+        center_hz = float(args.center_hz)
+        dataset_start_sample, stop_sample = reader.get_bounds(args.channel)
+        start_sample = dataset_start_sample
+        epoch = raw_epoch
+        dataset_root = raw_path.parent
+    else:
+        reader, channel, reader_mode = open_drf_like_reader(args.dataset_root, args.channel)
+        if reader_mode != "digital_rf":
+            print(f"Using flat Data/rf@*.h5 reader for channel {channel} under {args.dataset_root}")
+        props = reader.get_properties(channel)
+        fs = float(props["samples_per_second"])
+        center_hz = args.center_hz if args.center_hz is not None else props.get("center_frequency_hz", None)
+        if center_hz is not None:
+            center_hz = float(center_hz)
 
-    dataset_start_sample, stop_sample = reader.get_bounds(args.channel)
-    start_sample = dataset_start_sample
-    epoch = epoch_to_datetime(props["epoch"])
+        dataset_start_sample, stop_sample = reader.get_bounds(channel)
+        start_sample = dataset_start_sample
+        epoch = epoch_to_datetime(props["epoch"])
+        dataset_root = args.dataset_root
 
     chunk_samples = int(round(fs * args.chunk_seconds))
     if chunk_samples <= 0:
@@ -368,7 +446,8 @@ def main() -> None:
             print("Requested total_seconds leaves no samples to process.")
             return
 
-    blocks: Dict[int, int] = reader.get_continuous_blocks(start_sample, stop_sample, args.channel)
+    channel = args.channel if args.raw_cf32 is not None else channel
+    blocks: Dict[int, int] = reader.get_continuous_blocks(start_sample, stop_sample, channel)
     if not blocks:
         print("No data blocks found in the specified range.")
         return
@@ -416,7 +495,7 @@ def main() -> None:
         cursor = block_start
         while cursor + chunk_samples <= block_stop:
             try:
-                data = reader.read_vector_1d(cursor, chunk_samples, args.channel)
+                data = reader.read_vector_1d(cursor, chunk_samples, channel)
             except OSError as exc:
                 print(f"Skipping chunk at sample {cursor} (read error: {exc})")
                 cursor += step_samples
@@ -485,7 +564,7 @@ def main() -> None:
         row_starts=row_starts,
         path=out_path,
         center_hz=center_hz,
-        dataset_root=args.dataset_root,
+        dataset_root=dataset_root,
         vmin=args.vmin,
         vmax=args.vmax,
     )

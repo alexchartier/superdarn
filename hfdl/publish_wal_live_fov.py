@@ -124,27 +124,32 @@ def main() -> int:
             print("publish_wal_live_fov: another run is active", file=sys.stderr)
             return 0
 
-        run(
-            [
-                "ssh",
-                REMOTE_HOST,
-                REMOTE_PYTHON,
-                REMOTE_RENDERER,
-                "--plot-script",
-                f"{Path(REMOTE_RENDERER).parent}/plot_fitacf_fov.py",
-                "--output-dir",
-                REMOTE_OUTPUT_DIR,
-            ]
-        )
+        render_cmd = [
+            "ssh",
+            REMOTE_HOST,
+            REMOTE_PYTHON,
+            REMOTE_RENDERER,
+            "--plot-script",
+            f"{Path(REMOTE_RENDERER).parent}/plot_fitacf_fov.py",
+            "--output-dir",
+            REMOTE_OUTPUT_DIR,
+            "--lookback-days",
+            "7",
+        ]
+        render_proc = subprocess.run(render_cmd, check=False, capture_output=True, text=True)
+        if render_proc.stdout:
+            print(render_proc.stdout.rstrip())
+        if render_proc.stderr:
+            print(render_proc.stderr.rstrip(), file=sys.stderr)
 
-        for name in [
-            "wal_live_fov_a.png",
-            "wal_live_fov_a.json",
-            "wal_live_fov_b.png",
-            "wal_live_fov_b.json",
-            "wal_live_fov_status.json",
-        ]:
-            copy_remote_file(f"{REMOTE_OUTPUT_DIR}/{name}", LOCAL_WEB_DIR / name)
+        copy_remote_file(f"{REMOTE_OUTPUT_DIR}/wal_live_fov_status.json", LOCAL_WEB_DIR / "wal_live_fov_status.json")
+
+        status = json.loads((LOCAL_WEB_DIR / "wal_live_fov_status.json").read_text())
+        for channel in status.get("channels", []):
+            for key in ("output_png", "output_json"):
+                name = channel.get(key)
+                if name:
+                    copy_remote_file(f"{REMOTE_OUTPUT_DIR}/{name}", LOCAL_WEB_DIR / name)
 
         archive_current_status()
 
@@ -152,7 +157,7 @@ def main() -> int:
         target_page = LOCAL_WEB_DIR / "index.html"
         shutil.copy2(source_page, target_page)
         print(f"Published Wallops live FOV page to {target_page}")
-        return 0
+        return render_proc.returncode
 
 
 if __name__ == "__main__":

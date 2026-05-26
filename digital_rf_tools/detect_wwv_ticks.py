@@ -4,8 +4,8 @@ Detect WWV 1 kHz tick leading edges and estimate tone frequency from DigitalRF.
 
 Pipeline (matches the working audio demod path):
 1) Mix raw IQ to 10 MHz.
-2) Decimate 25 MS/s -> 500 kS/s (stage1), lowpass to 10 kHz.
-3) Decimate 500 kS/s -> 50 kS/s (stage2).
+2) Decimate to the requested channel rate, lowpass to 10 kHz.
+3) Apply the same lowpass / envelope / matched-filter steps at that rate.
 4) Envelope detect, bandpass 600-1400 Hz.
 5) Matched filter 5-cycle 1 kHz tick to find leading edges.
 6) Estimate tone frequency per tick via phase slope on the bandpassed segment.
@@ -27,6 +27,8 @@ import digital_rf as drf
 import numpy as np
 from scipy import signal
 
+from stack_superdarn_iss_ephem import geodetic_to_ecef, load_tle, predict_delay_doppler
+
 
 os.environ.setdefault("MPLBACKEND", "Agg")
 
@@ -34,7 +36,7 @@ DEFAULT_INPUT_ROOT = Path("/Users/chartat1/data/hf_data/itsi/rooftop_20260114/M1
 DEFAULT_CHANNEL = "cha"
 DEFAULT_TARGET_HZ = 10_000_000.0
 DEFAULT_BLOCK_SECONDS = 1.0
-DEFAULT_CHANNEL_RATE = 50_000.0
+DEFAULT_CHANNEL_RATE = None
 DEFAULT_CHANNEL_LP_HZ = 10_000.0
 DEFAULT_CHANNEL_TRANSITION_HZ = 3_000.0
 DEFAULT_BP_LOW_HZ = 600.0
@@ -45,9 +47,14 @@ DEFAULT_TONE_CYCLES = 5
 DEFAULT_SIGMA_THRESHOLD = 6.0
 DEFAULT_RANGE_PLOT = Path("wwv_range_time.png")
 DEFAULT_RANGE_MAX_KM = 5000.0
+DEFAULT_RANGE_MIN_KM = 0.0
 DEFAULT_CARRIER_LP_HZ = 200.0
 DEFAULT_START_SECONDS = 1.0
 DEFAULT_END_SECONDS = 1.0
+# WWV 25 MHz antenna coordinates from NIST.
+DEFAULT_TX_LAT_DEG = 40.68069444444444
+DEFAULT_TX_LON_DEG = -105.04072222222223
+DEFAULT_TX_ALT_M = 1525.0
 
 C_KM_PER_S = 299_792.458
 
@@ -83,7 +90,7 @@ def parse_args() -> argparse.Namespace:
         "--channel-rate",
         type=float,
         default=DEFAULT_CHANNEL_RATE,
-        help=f"Intermediate rate after decimation (Hz). Default: {DEFAULT_CHANNEL_RATE:g}.",
+        help="Intermediate rate after decimation (Hz). Default: the DigitalRF sample rate.",
     )
     p.add_argument(
         "--channel-lp-hz",
@@ -176,6 +183,54 @@ def parse_args() -> argparse.Namespace:
         help=f"Range-time-intensity plot path. Default: {DEFAULT_RANGE_PLOT}.",
     )
     p.add_argument(
+        "--tle-file",
+        type=Path,
+        default=None,
+        help="Optional ISS TLE file to overlay predicted range and Doppler.",
+    )
+    p.add_argument(
+        "--tx-lat-deg",
+        type=float,
+        default=DEFAULT_TX_LAT_DEG,
+        help=f"WWV transmitter latitude for prediction overlay. Default: {DEFAULT_TX_LAT_DEG:.6f}.",
+    )
+    p.add_argument(
+        "--tx-lon-deg",
+        type=float,
+        default=DEFAULT_TX_LON_DEG,
+        help=f"WWV transmitter longitude for prediction overlay. Default: {DEFAULT_TX_LON_DEG:.6f}.",
+    )
+    p.add_argument(
+        "--tx-alt-m",
+        type=float,
+        default=DEFAULT_TX_ALT_M,
+        help=f"WWV transmitter altitude for prediction overlay. Default: {DEFAULT_TX_ALT_M:g}.",
+    )
+    p.add_argument(
+        "--prediction-carrier-hz",
+        type=float,
+        default=None,
+        help="Carrier frequency to use for the Doppler prediction. Default: target-hz.",
+    )
+    p.add_argument(
+        "--range-offset-km",
+        type=float,
+        default=None,
+        help="Constant offset added to the predicted range curve. Default: auto-fit from detections.",
+    )
+    p.add_argument(
+        "--doppler-offset-hz",
+        type=float,
+        default=None,
+        help="Constant offset added to the predicted Doppler curve. Default: auto-fit from observed Doppler.",
+    )
+    p.add_argument(
+        "--range-min-km",
+        type=float,
+        default=DEFAULT_RANGE_MIN_KM,
+        help=f"Min virtual range to plot (km). Default: {DEFAULT_RANGE_MIN_KM:g}.",
+    )
+    p.add_argument(
         "--range-max-km",
         type=float,
         default=DEFAULT_RANGE_MAX_KM,
@@ -230,6 +285,18 @@ def robust_sigma(x: np.ndarray) -> float:
     return float(np.median(np.abs(x)) / 0.6745 + 1e-12)
 
 
+def datetime_to_unix_seconds(dt: datetime) -> float:
+    return dt.timestamp()
+
+
+def fit_constant_offset(observed: np.ndarray, predicted: np.ndarray) -> float:
+    if observed.size == 0 or predicted.size == 0:
+        return 0.0
+    if observed.shape != predicted.shape:
+        raise ValueError("Observed and predicted arrays must have the same shape.")
+    return float(np.median(observed - predicted))
+
+
 def estimate_freq_hz(x: np.ndarray, fs: float) -> Optional[float]:
     if x.size < 4:
         return None
@@ -254,10 +321,18 @@ def plot_range_time(
     block_times: List[datetime],
     fs: float,
     path: Path,
+    range_min_km: float,
     range_max_km: float,
     hits: Optional[List[TickHit]] = None,
     doppler_times: Optional[List[datetime]] = None,
     doppler_hz: Optional[List[float]] = None,
+    doppler_yerr: Optional[List[float]] = None,
+    predicted_range_times: Optional[List[datetime]] = None,
+    predicted_range_km: Optional[np.ndarray] = None,
+    predicted_doppler_times: Optional[List[datetime]] = None,
+    predicted_doppler_hz: Optional[np.ndarray] = None,
+    range_offset_km: float = 0.0,
+    doppler_offset_hz: float = 0.0,
 ) -> Optional[Path]:
     try:
         import matplotlib.pyplot as plt  # type: ignore
@@ -275,9 +350,9 @@ def plot_range_time(
     virtual_range_km = y_seconds * C_KM_PER_S
     x_nums = mdates.date2num(block_times)
 
-    font_size = 20
-    title_size = 24
-    fig = plt.figure(figsize=(10, 8))
+    font_size = 18
+    title_size = 22
+    fig = plt.figure(figsize=(13.5, 9.5))
     gs = fig.add_gridspec(
         2,
         2,
@@ -305,19 +380,57 @@ def plot_range_time(
     ax0.set_ylabel("Virtual range (km)", fontsize=font_size)
     ax0.xaxis_date()
     ax0.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-    ax0.set_ylim(0.0, range_max_km)
+    ax0.set_ylim(range_min_km, range_max_km)
     if hits:
-        times = [h.time_utc for h in hits if h.range_km is not None]
-        ranges = [h.range_km for h in hits if h.range_km is not None]
+        times = [h.time_utc for h in hits if h.range_km is not None and range_min_km <= h.range_km <= range_max_km]
+        ranges = [h.range_km for h in hits if h.range_km is not None and range_min_km <= h.range_km <= range_max_km]
         if times:
             ax0.scatter(times, ranges, s=14, c="red", alpha=0.8, linewidths=0.0)
+    if predicted_range_times and predicted_range_km is not None:
+        ax0.plot(
+            predicted_range_times,
+            predicted_range_km + range_offset_km,
+            color="white",
+            linewidth=2.2,
+            alpha=0.95,
+            label=f"Predicted + {range_offset_km:+.1f} km",
+            zorder=6,
+        )
+        ax0.legend(loc="upper right", fontsize=12, framealpha=0.85)
     cbar = fig.colorbar(cf, cax=cax, label="Matched filter score (sigma units)")
     cbar.ax.tick_params(labelsize=font_size)
     cbar.set_label("Matched filter score (sigma units)", fontsize=font_size)
 
     if doppler_times and doppler_hz:
-        ax1.plot(doppler_times, doppler_hz, color="black", linewidth=1.0)
-        ax1.scatter(doppler_times, doppler_hz, s=10, c="black", alpha=0.7, linewidths=0.0)
+        doppler_y = np.ma.masked_invalid(np.asarray(doppler_hz, dtype=np.float64))
+        if doppler_yerr is not None:
+            doppler_err = np.ma.masked_invalid(np.asarray(doppler_yerr, dtype=np.float64))
+            ax1.errorbar(
+                doppler_times,
+                doppler_y,
+                yerr=doppler_err,
+                fmt="-o",
+                color="black",
+                linewidth=1.0,
+                markersize=2.5,
+                alpha=0.8,
+                elinewidth=0.8,
+                capsize=2.0,
+            )
+        else:
+            ax1.plot(doppler_times, doppler_y, color="black", linewidth=1.0)
+            ax1.scatter(doppler_times, doppler_y, s=10, c="black", alpha=0.7, linewidths=0.0)
+    if predicted_doppler_times and predicted_doppler_hz is not None:
+        ax1.plot(
+            predicted_doppler_times,
+            predicted_doppler_hz + doppler_offset_hz,
+            color="tab:orange",
+            linewidth=1.8,
+            alpha=0.95,
+            label=f"Predicted + {doppler_offset_hz:+.1f} Hz",
+            zorder=5,
+        )
+        ax1.legend(loc="best", fontsize=12, framealpha=0.85)
     ax1.axhline(0.0, color="gray", linewidth=0.8, alpha=0.6)
     ax1.set_ylabel("Doppler (Hz)", fontsize=font_size)
     ax1.set_xlabel("UTC time", fontsize=font_size)
@@ -328,9 +441,9 @@ def plot_range_time(
     ax0.tick_params(labelsize=font_size)
     ax1.tick_params(labelsize=font_size)
     fig.autofmt_xdate()
-    fig.tight_layout()
+    fig.subplots_adjust(left=0.08, right=0.92, top=0.92, bottom=0.12, hspace=0.14, wspace=0.18)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path)
+    fig.savefig(path, dpi=160, bbox_inches="tight", pad_inches=0.15)
     plt.close(fig)
     print(f"Wrote {path}")
     return path
@@ -363,7 +476,6 @@ def main() -> None:
     props = reader.get_properties(args.channel)
     fs_in = float(props["samples_per_second"])
     raw_center = float(props["center_frequency_hz"]) if args.raw_center_hz is None else float(args.raw_center_hz)
-
     start, end = reader.get_bounds(args.channel)
     if args.start_seconds > 0:
         start += int(round(args.start_seconds * fs_in))
@@ -375,7 +487,7 @@ def main() -> None:
         raise ValueError("Requested time span is empty.")
 
     epoch = epoch_to_datetime(props["epoch"])
-    base_time = epoch + timedelta(seconds=start / fs_in) + timedelta(seconds=args.time_offset_seconds)
+    start_time = epoch + timedelta(seconds=start / fs_in) + timedelta(seconds=args.time_offset_seconds)
 
     block_samples = int(round(args.block_seconds * fs_in))
     if block_samples < 1:
@@ -390,9 +502,12 @@ def main() -> None:
         flush=True,
     )
 
-    decim = int(round(fs_in / args.channel_rate))
-    if decim < 1 or abs(fs_in / decim - args.channel_rate) > 1e-3:
-        raise ValueError(f"Cannot reach channel_rate={args.channel_rate} from fs_in={fs_in}.")
+    desired_channel_rate = fs_in if args.channel_rate is None else float(args.channel_rate)
+    decim = int(round(fs_in / desired_channel_rate))
+    if decim < 1:
+        decim = 1
+    if decim > 1 and abs(fs_in / decim - desired_channel_rate) > 1e-3:
+        raise ValueError(f"Cannot reach channel_rate={desired_channel_rate} from fs_in={fs_in}.")
     channel_rate = fs_in / decim
 
     decim1 = 50 if decim % 50 == 0 else 1
@@ -466,8 +581,8 @@ def main() -> None:
             phasor_sum = np.sum(phasor)
             if np.abs(phasor_sum) > 0:
                 doppler = float(np.angle(phasor_sum) * channel_rate / (2.0 * math.pi))
-                mid_time = epoch + timedelta(seconds=(cursor / fs_in) + args.block_seconds / 2.0)
-                doppler_times.append(mid_time + timedelta(seconds=args.time_offset_seconds))
+                mid_time = start_time + timedelta(seconds=(cursor - start + (block_count / 2.0)) / fs_in)
+                doppler_times.append(mid_time)
                 doppler_values.append(doppler)
 
         env = np.abs(stage2).astype(np.float32, copy=False)
@@ -479,7 +594,7 @@ def main() -> None:
         if bp_delay > 0 and corr_block.size > bp_delay:
             corr_block = corr_block[bp_delay:]
         range_rows_raw.append(corr_block.astype(np.float32, copy=False))
-        block_time = epoch + timedelta(seconds=cursor / fs_in) + timedelta(seconds=args.time_offset_seconds)
+        block_time = start_time + timedelta(seconds=(cursor - start) / fs_in)
         range_row_times.append(block_time)
 
         search = np.concatenate([prev_tail, env_bp])
@@ -522,7 +637,7 @@ def main() -> None:
             else:
                 freq_hz = None
 
-            tick_time = base_time + timedelta(seconds=leading_sample / channel_rate)
+            tick_time = start_time + timedelta(seconds=leading_sample / channel_rate)
             hits.append(
                 TickHit(
                     score=float(corr_centered[p]),
@@ -555,6 +670,47 @@ def main() -> None:
         print("No ticks detected.")
         return
 
+    predicted_range_times: Optional[List[datetime]] = None
+    predicted_range_km: Optional[np.ndarray] = None
+    predicted_doppler_times: Optional[List[datetime]] = None
+    predicted_doppler_hz: Optional[np.ndarray] = None
+    range_offset_km = 0.0
+    doppler_offset_hz = 0.0
+    if args.tle_file is not None:
+        sat = load_tle(args.tle_file.expanduser())
+        tx_ecef = geodetic_to_ecef(args.tx_lat_deg, args.tx_lon_deg, args.tx_alt_m)
+        carrier_hz = float(args.prediction_carrier_hz) if args.prediction_carrier_hz is not None else float(args.target_hz)
+
+        hit_times = [h.time_utc for h in hits if h.range_km is not None]
+        if hit_times:
+            hit_unix = np.array([datetime_to_unix_seconds(t) for t in hit_times], dtype=np.float64)
+            pred_delay_s, _ = predict_delay_doppler(sat, hit_unix, tx_ecef, carrier_hz)
+            pred_range_km = pred_delay_s * C_KM_PER_S
+            obs_range_km = np.array([h.range_km for h in hits if h.range_km is not None], dtype=np.float64)
+            if args.range_offset_km is None:
+                visible_mask = (obs_range_km >= args.range_min_km) & (obs_range_km <= args.range_max_km)
+                if np.any(visible_mask):
+                    range_offset_km = fit_constant_offset(obs_range_km[visible_mask], pred_range_km[visible_mask])
+                else:
+                    range_offset_km = fit_constant_offset(obs_range_km, pred_range_km)
+            else:
+                range_offset_km = float(args.range_offset_km)
+            predicted_range_times = range_row_times
+            range_row_unix = np.array([datetime_to_unix_seconds(t) for t in range_row_times], dtype=np.float64)
+            row_delay_s, _ = predict_delay_doppler(sat, range_row_unix, tx_ecef, carrier_hz)
+            predicted_range_km = row_delay_s * C_KM_PER_S
+
+        if doppler_times and doppler_values:
+            doppler_unix = np.array([datetime_to_unix_seconds(t) for t in doppler_times], dtype=np.float64)
+            _, pred_doppler_hz = predict_delay_doppler(sat, doppler_unix, tx_ecef, carrier_hz)
+            obs_doppler_hz = np.asarray(doppler_values, dtype=np.float64)
+            if args.doppler_offset_hz is None:
+                doppler_offset_hz = fit_constant_offset(obs_doppler_hz, pred_doppler_hz)
+            else:
+                doppler_offset_hz = float(args.doppler_offset_hz)
+            predicted_doppler_times = doppler_times
+            predicted_doppler_hz = pred_doppler_hz
+
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output_csv, "w", newline="") as f:
         writer = csv.writer(f)
@@ -579,10 +735,17 @@ def main() -> None:
             range_row_times,
             channel_rate,
             args.range_plot_file,
+            args.range_min_km,
             args.range_max_km,
             hits,
             doppler_times,
             doppler_values,
+            predicted_range_times=predicted_range_times,
+            predicted_range_km=predicted_range_km,
+            predicted_doppler_times=predicted_doppler_times,
+            predicted_doppler_hz=predicted_doppler_hz,
+            range_offset_km=range_offset_km,
+            doppler_offset_hz=doppler_offset_hz,
         )
 
 

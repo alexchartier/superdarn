@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""
-Simple WWV 10 MHz AM demod from a DigitalRF dataset.
-
-This mirrors the 10Wideband.grc flowgraph:
-mix -> decimate to the recording's channel rate -> magnitude (AM) -> resample to audio -> lowpass.
-"""
-
+"""AM/SSB demod from raw cf32 using the digital_rf_tools simple_wwv_audio pipeline."""
 from __future__ import annotations
 
 import argparse
@@ -14,141 +8,70 @@ import wave
 from pathlib import Path
 from typing import Iterable, Optional
 
-import digital_rf as drf
 import numpy as np
 from scipy import signal
 
-
-DEFAULT_INPUT_ROOT = Path("/Users/chartat1/data/hf_data/itsi/rooftop_20260114/M10124")
-DEFAULT_CHANNEL = "cha"
 DEFAULT_TARGET_HZ = 10_000_000.0
 DEFAULT_AUDIO_RATE = 48_000
-DEFAULT_CHANNEL_RATE = None
+DEFAULT_CHANNEL_RATE = 50_000.0
 DEFAULT_BLOCK_SECONDS = 1.0
 DEFAULT_CHANNEL_LP_HZ = 10_000.0
 DEFAULT_CHANNEL_TRANSITION_HZ = 3_000.0
 DEFAULT_AUDIO_LP_HZ = 3800.0
 DEFAULT_AUDIO_TRANSITION_HZ = 1500.0
 DEFAULT_AUDIO_HP_HZ = 20.0
-DEFAULT_GAIN = 4000.0  # matches 800*5 in 10Wideband.grc
+DEFAULT_GAIN = 4000.0
 DEFAULT_NORMALIZE_TARGET = 0.98
 DEFAULT_NORMALIZE_PERCENTILE = 99.9
 DEFAULT_NORMALIZE_SAMPLES_PER_BLOCK = 5000
-DEFAULT_END_SECONDS = 1.0
+DEFAULT_END_SECONDS = 0.0
 DEFAULT_DEGLITCH_SIGMA = 8.0
 DEFAULT_DEGLITCH_KERNEL = 9
 
 
+class RawCF32Reader:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._mmap = np.memmap(self.path, dtype=np.complex64, mode="r")
+
+    def read_vector_1d(self, start: int, count: int) -> np.ndarray:
+        if count <= 0:
+            return np.array([], dtype=np.complex64)
+        return np.asarray(self._mmap[start : start + count], dtype=np.complex64)
+
+    def get_bounds(self) -> tuple[int, int]:
+        total = int(self._mmap.size)
+        if total <= 0:
+            return (0, -1)
+        return (0, total - 1)
+
+
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Demodulate WWV 10 MHz AM audio from DigitalRF.")
+    p = argparse.ArgumentParser(description="AM/SSB demod from raw cf32 recordings.")
+    p.add_argument("--raw-cf32", type=Path, required=True, help="Path to raw complex float32 file.")
+    p.add_argument("--sample-rate", type=float, required=True, help="Sample rate (Hz).")
+    p.add_argument("--center-hz", type=float, required=True, help="Recording center frequency (Hz).")
+    p.add_argument("--target-hz", type=float, default=DEFAULT_TARGET_HZ, help="Target carrier to demodulate (Hz).")
     p.add_argument(
-        "--dataset-root",
-        type=Path,
-        default=DEFAULT_INPUT_ROOT,
-        help=f"DigitalRF dataset root. Default: {DEFAULT_INPUT_ROOT}.",
+        "--demod",
+        choices=("am", "usb", "lsb"),
+        default="am",
+        help="Demodulation mode. Default: am (envelope).",
     )
-    p.add_argument(
-        "--channel",
-        default=DEFAULT_CHANNEL,
-        help=f"DigitalRF channel name. Default: {DEFAULT_CHANNEL}.",
-    )
-    p.add_argument(
-        "--raw-center-hz",
-        type=float,
-        default=None,
-        help="Recorded center frequency (Hz). Default: DigitalRF metadata center_frequency_hz when present (supersedes the default None).",
-    )
-    p.add_argument(
-        "--target-hz",
-        type=float,
-        default=DEFAULT_TARGET_HZ,
-        help=f"Target carrier to demodulate (Hz). Default: {DEFAULT_TARGET_HZ:g}.",
-    )
-    p.add_argument(
-        "--audio-rate",
-        type=int,
-        default=DEFAULT_AUDIO_RATE,
-        help=f"Output audio rate (Hz). Default: {DEFAULT_AUDIO_RATE}.",
-    )
-    p.add_argument(
-        "--channel-rate",
-        type=float,
-        default=DEFAULT_CHANNEL_RATE,
-        help="Intermediate rate after first decimation (Hz). Default: the DigitalRF sample rate.",
-    )
-    p.add_argument(
-        "--channel-lp-hz",
-        type=float,
-        default=DEFAULT_CHANNEL_LP_HZ,
-        help=f"Lowpass cutoff before envelope detection (Hz). Default: {DEFAULT_CHANNEL_LP_HZ:g}.",
-    )
-    p.add_argument(
-        "--channel-transition-hz",
-        type=float,
-        default=DEFAULT_CHANNEL_TRANSITION_HZ,
-        help=f"Transition width for the channel lowpass (Hz). Default: {DEFAULT_CHANNEL_TRANSITION_HZ:g}.",
-    )
-    p.add_argument(
-        "--block-seconds",
-        type=float,
-        default=DEFAULT_BLOCK_SECONDS,
-        help=f"Seconds of RF to process per block. Default: {DEFAULT_BLOCK_SECONDS:g}.",
-    )
-    p.add_argument(
-        "--audio-lp-hz",
-        type=float,
-        default=DEFAULT_AUDIO_LP_HZ,
-        help=f"Audio lowpass cutoff (Hz). Default: {DEFAULT_AUDIO_LP_HZ:g}.",
-    )
-    p.add_argument(
-        "--audio-transition-hz",
-        type=float,
-        default=DEFAULT_AUDIO_TRANSITION_HZ,
-        help=f"Audio lowpass transition width (Hz). Default: {DEFAULT_AUDIO_TRANSITION_HZ:g}.",
-    )
-    p.add_argument(
-        "--audio-hp-hz",
-        type=float,
-        default=DEFAULT_AUDIO_HP_HZ,
-        help=f"Audio highpass cutoff for DC blocking (Hz). Default: {DEFAULT_AUDIO_HP_HZ:g}.",
-    )
-    p.add_argument(
-        "--gain",
-        type=float,
-        default=DEFAULT_GAIN,
-        help=f"Linear audio gain before writing. Default: {DEFAULT_GAIN:g}.",
-    )
-    p.add_argument(
-        "--mix-sign",
-        type=int,
-        choices=(-1, 1),
-        default=-1,
-        help="Sign for mixing (+1 or -1). Default: -1 (matches GNU Radio freq_xlating_fir_filter).",
-    )
-    p.add_argument(
-        "--start-seconds",
-        type=float,
-        default=2.0,
-        help="Skip this many seconds from the start. Default: 2.0.",
-    )
-    p.add_argument(
-        "--end-seconds",
-        type=float,
-        default=DEFAULT_END_SECONDS,
-        help=f"Skip this many seconds from the end (after --seconds). Default: {DEFAULT_END_SECONDS:g}.",
-    )
-    p.add_argument(
-        "--seconds",
-        type=float,
-        default=None,
-        help="Process only this many seconds. Default: to end.",
-    )
-    p.add_argument(
-        "--output-wav",
-        type=Path,
-        default=None,
-        help="Output WAV path. Default: <input-root>/wwv_<channel>_audio_simple.wav.",
-    )
+    p.add_argument("--audio-rate", type=int, default=DEFAULT_AUDIO_RATE, help="Output audio rate (Hz).")
+    p.add_argument("--channel-rate", type=float, default=DEFAULT_CHANNEL_RATE, help="Intermediate rate after first decimation (Hz).")
+    p.add_argument("--channel-lp-hz", type=float, default=DEFAULT_CHANNEL_LP_HZ, help="Channel lowpass cutoff (Hz).")
+    p.add_argument("--channel-transition-hz", type=float, default=DEFAULT_CHANNEL_TRANSITION_HZ, help="Channel transition width (Hz).")
+    p.add_argument("--block-seconds", type=float, default=DEFAULT_BLOCK_SECONDS, help="Seconds per block.")
+    p.add_argument("--audio-lp-hz", type=float, default=DEFAULT_AUDIO_LP_HZ, help="Audio lowpass cutoff (Hz).")
+    p.add_argument("--audio-transition-hz", type=float, default=DEFAULT_AUDIO_TRANSITION_HZ, help="Audio transition width (Hz).")
+    p.add_argument("--audio-hp-hz", type=float, default=DEFAULT_AUDIO_HP_HZ, help="Audio highpass cutoff (Hz).")
+    p.add_argument("--gain", type=float, default=DEFAULT_GAIN, help="Linear audio gain before writing.")
+    p.add_argument("--mix-sign", type=int, choices=(-1, 1), default=-1, help="Mixing sign.")
+    p.add_argument("--start-seconds", type=float, default=0.0, help="Skip this many seconds from start.")
+    p.add_argument("--seconds", type=float, default=30.0, help="Process only this many seconds.")
+    p.add_argument("--end-seconds", type=float, default=DEFAULT_END_SECONDS, help="Skip this many seconds from end.")
+    p.add_argument("--output-wav", type=Path, default=None, help="Output WAV path.")
     return p.parse_args()
 
 
@@ -160,7 +83,6 @@ def _odd_len(value: float) -> int:
 
 
 def _hamming_taps_for_transition(fs: float, transition_hz: float) -> int:
-    # Hamming rule-of-thumb: transition width ~= 3.3 * fs / N.
     if transition_hz <= 0:
         raise ValueError("transition_hz must be positive")
     return _odd_len(3.3 * fs / transition_hz)
@@ -226,7 +148,7 @@ def _deglitch_audio(audio: np.ndarray) -> np.ndarray:
 
 
 def _iter_audio_blocks(
-    reader: drf.DigitalRFReader,
+    reader: RawCF32Reader,
     args: argparse.Namespace,
     start: int,
     end: int,
@@ -267,30 +189,21 @@ def _iter_audio_blocks(
         if idx > end:
             break
         count = min(block_samples, end - idx + 1)
-        try:
-            block = reader.read_vector_1d(idx, int(count), args.channel)
-        except OSError:
-            # DigitalRF can raise on gaps. Treat those spans as silence so the
-            # streaming filters keep their internal state and the output stays aligned.
+        block = reader.read_vector_1d(idx, int(count))
+        if block is None:
             block = np.zeros(int(count), dtype=np.complex64)
         else:
-            if block is None:
-                block = np.zeros(int(count), dtype=np.complex64)
-            else:
-                block = block.astype(np.complex64, copy=False)
-                if block.size < count:
-                    pad = np.zeros(int(count) - block.size, dtype=np.complex64)
-                    block = np.concatenate([block, pad])
-
-        # Match the MATLAB cfile scaling (int16 -> float [-1,1]).
-        block *= np.float32(1.0 / 32768.0)
+            # Ensure writable buffer for in-place mixing/filtering.
+            block = block.astype(np.complex64, copy=True)
+            if block.size < count:
+                pad = np.zeros(int(count) - block.size, dtype=np.complex64)
+                block = np.concatenate([block, pad])
 
         if mix_hz != 0.0:
             n = np.arange(block.shape[0], dtype=np.float64)
             block *= np.exp(1j * (phase + phase_step * n)).astype(np.complex64)
             phase = (phase + phase_step * block.shape[0]) % (2.0 * math.pi)
 
-        # Decimate in two stages to keep the channel filter manageable.
         if decim1 > 1:
             stage1, decim1_zi, decim1_offset = _stream_resample(
                 block,
@@ -303,7 +216,6 @@ def _iter_audio_blocks(
         else:
             stage1 = block
 
-        # Channel lowpass before envelope detection.
         stage1, channel_zi = signal.lfilter(channel_taps, [1.0], stage1, zi=channel_zi)
 
         if decim2 > 1:
@@ -318,10 +230,13 @@ def _iter_audio_blocks(
         else:
             decimated = stage1
 
-        # Envelope detect (AM).
-        envelope = np.abs(decimated).astype(np.float32, copy=False)
+        if args.demod == "am":
+            envelope = np.abs(decimated).astype(np.float32, copy=False)
+        elif args.demod == "usb":
+            envelope = np.real(decimated).astype(np.float32, copy=False)
+        else:
+            envelope = np.real(np.conj(decimated)).astype(np.float32, copy=False)
 
-        # Resample to audio rate and apply audio lowpass.
         if audio_rs_taps is None or audio_up == audio_down:
             audio = envelope
         else:
@@ -333,6 +248,7 @@ def _iter_audio_blocks(
                 audio_rs_zi,
                 audio_rs_offset,
             )
+
         audio, audio_zi = signal.lfilter(audio_taps, [1.0], audio, zi=audio_zi)
         if audio_hp_sos is not None:
             if audio_hp_zi is None:
@@ -340,21 +256,17 @@ def _iter_audio_blocks(
             audio, audio_hp_zi = signal.sosfilt(audio_hp_sos, audio, zi=audio_hp_zi)
 
         audio = _deglitch_audio(audio)
-
         yield audio
 
 
 def main() -> None:
     args = parse_args()
-    input_root = args.dataset_root.expanduser()
-    output_wav = args.output_wav or (input_root / f"wwv_{args.channel}_audio_simple.wav")
+    raw = args.raw_cf32.expanduser()
+    reader = RawCF32Reader(raw)
+    start, end = reader.get_bounds()
+    fs_in = float(args.sample_rate)
+    raw_center = float(args.center_hz)
 
-    reader = drf.DigitalRFReader(str(input_root))
-    props = reader.get_properties(args.channel)
-    fs_in = float(props["samples_per_second"])
-    raw_center = float(props["center_frequency_hz"]) if args.raw_center_hz is None else float(args.raw_center_hz)
-
-    start, end = reader.get_bounds(args.channel)
     if args.start_seconds > 0:
         start += int(round(args.start_seconds * fs_in))
     if args.seconds is not None:
@@ -368,19 +280,14 @@ def main() -> None:
     if block_samples < 1:
         raise ValueError("block_seconds too small for the input rate.")
 
-    desired_channel_rate = fs_in if args.channel_rate is None else float(args.channel_rate)
-    decim = int(round(fs_in / desired_channel_rate))
-    if decim < 1:
-        decim = 1
-    if decim > 1 and abs(fs_in / decim - desired_channel_rate) > 1e-3:
-        raise ValueError(f"Cannot reach channel_rate={desired_channel_rate} from fs_in={fs_in}.")
+    decim = int(round(fs_in / args.channel_rate))
+    if decim < 1 or abs(fs_in / decim - args.channel_rate) > 1e-3:
+        raise ValueError(f"Cannot reach channel_rate={args.channel_rate} from fs_in={fs_in}.")
     channel_rate = fs_in / decim
 
-    # Two-stage decimation keeps the channel filter tractable.
     decim1 = 50 if decim % 50 == 0 else 1
     decim2 = decim // decim1
     stage1_rate = fs_in / decim1
-
     if decim2 < 1:
         raise ValueError("Invalid decimation stages.")
 
@@ -467,25 +374,18 @@ def main() -> None:
         norm_ref = 0.0
     ref_after_gain = norm_ref * float(args.gain)
     if ref_after_gain > DEFAULT_NORMALIZE_TARGET and ref_after_gain > 0.0:
-        norm_gain = DEFAULT_NORMALIZE_TARGET / ref_after_gain
+        combined_gain = float(args.gain) * (DEFAULT_NORMALIZE_TARGET / ref_after_gain)
     else:
-        norm_gain = 1.0
-    combined_gain = float(args.gain) * norm_gain
-    peak_after_gain = peak * float(args.gain)
-    print(
-        "Normalization scale: "
-        f"{norm_gain:.4f} (combined gain {combined_gain:.4f}, "
-        f"p{DEFAULT_NORMALIZE_PERCENTILE:.1f} {ref_after_gain:.4f}, "
-        f"peak {peak_after_gain:.4f})"
-    )
+        combined_gain = float(args.gain)
 
-    print("Pass 2/2: writing WAV.")
+    output_wav = args.output_wav or raw.with_suffix("").with_suffix(".wav")
     output_wav.parent.mkdir(parents=True, exist_ok=True)
+
+    print("Pass 2/2: writing audio.")
     with wave.open(str(output_wav), "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(int(args.audio_rate))
-
         for block_idx, audio in enumerate(
             _iter_audio_blocks(
                 reader,
@@ -507,12 +407,13 @@ def main() -> None:
                 audio_down,
             )
         ):
-            audio *= combined_gain
+            if not audio.size:
+                continue
+            audio = audio * combined_gain
             audio_i16 = np.int16(np.clip(audio, -1.0, 1.0) * 32767)
             wf.writeframes(audio_i16.tobytes())
-
             if (block_idx + 1) % 10 == 0 or (block_idx + 1) == total_blocks:
-                print(f"Processed {block_idx + 1}/{total_blocks} blocks")
+                print(f"Wrote {block_idx + 1}/{total_blocks} blocks")
 
     print(f"Wrote {output_wav}")
 

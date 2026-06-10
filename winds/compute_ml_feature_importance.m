@@ -65,7 +65,7 @@ for i = 1:length(flist)
         Tbl.SinDOY = sin(DOY(:) / 365 * pi + pi);
     end
     Tbl.SinLT = sin(LT(:) / 24 * pi);
-    sitename = split(flist(1).name, '_');
+    sitename = split(flist(i).name, '_');
     Tbl.Peak = freq_vs_ht_model(freqs.(sitename{1}), Peak(:), ref_freq);
     Tbl.FWHM = FWHM(:);
     Tbl.lat = mwr.lat * ones(size(DOY(:)));
@@ -88,13 +88,13 @@ Tbl_train_peak = Tbl_train_FWHM;
 %% Peak model importance
 imp_peak = perm_importance(Mdl.Peak, Tbl_train_peak, Tbl_full.Peak);
 imp_peak = sortrows(imp_peak, 'DeltaRMSE', 'descend');
-disp('Peak feature importance (Delta RMSE):');
+disp('Peak feature importance (raw Delta RMSE and normalized share %):');
 disp(imp_peak);
 
 %% FWHM model importance
 imp_fwhm = perm_importance(Mdl.FWHM, Tbl_train_FWHM, Tbl_full.FWHM);
 imp_fwhm = sortrows(imp_fwhm, 'DeltaRMSE', 'descend');
-disp('FWHM feature importance (Delta RMSE):');
+disp('FWHM feature importance (raw Delta RMSE and normalized share %):');
 disp(imp_fwhm);
 
 %% Permutation importance helper (loop to avoid indexing issues)
@@ -106,6 +106,12 @@ function tbl = perm_importance(model, X, y)
     end
     rows = vertcat(rows{:});  % each row is a 1x3 cell
     tbl = cell2table(rows, 'VariableNames', {'Feature','DeltaRMSE','BaselineRMSE'});
+    total_importance = sum(max(tbl.DeltaRMSE, 0), 'omitnan');
+    if total_importance == 0
+        tbl.NormPctTotalImportance = NaN(height(tbl), 1);
+    else
+        tbl.NormPctTotalImportance = 100 * max(tbl.DeltaRMSE, 0) ./ total_importance;
+    end
 end
 
 %% Local function for one feature

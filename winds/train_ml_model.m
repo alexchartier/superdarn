@@ -70,7 +70,7 @@ for i = 1:length(flist)
         Tbl.SinDOY = sin(DOY(:) / 365 * pi + pi);
     end
     Tbl.SinLT = sin(LT(:) / 24 * pi);
-    sitename = split(flist(1).name, '_');
+    sitename = split(flist(i).name, '_');
     Tbl.Peak = freq_vs_ht_model(freqs.(sitename{1}), Peak(:), ref_freq);
 
     Tbl.FWHM = FWHM(:);

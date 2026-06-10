@@ -80,6 +80,7 @@ class CDFHeader:
 
 CASES = [
     CaseConfig(name="han_2008", year=2008, stream=1, target_lat=62.32, target_lon=26.61),
+    CaseConfig(name="han_2008_mwr", year=2008, stream=1, target_lat=69.26908, target_lon=16.039558),
     CaseConfig(name="mcm_2019", year=2019, stream=3, target_lat=-77.88, target_lon=166.73),
 ]
 

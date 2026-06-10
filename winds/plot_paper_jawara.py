@@ -28,7 +28,8 @@ class CaseConfig:
     sd_code: str
     mwr_label: str
     mwr_mat: Path
-    jawara_nc: Path
+    jawara_sd_nc: Path
+    jawara_mwr_nc: Path
     climit: tuple[float, float]
 
 
@@ -39,7 +40,8 @@ CASES = [
         sd_code="han",
         mwr_label="AND",
         mwr_mat=Path("~/data/meteor_winds/mat/And_2008.mat").expanduser(),
-        jawara_nc=Path("~/data/meteor_winds/jawara/han_2008_jawara_hourly_uvz_2x2.nc").expanduser(),
+        jawara_sd_nc=Path("~/data/meteor_winds/jawara/han_2008_jawara_hourly_uvz_2x2.nc").expanduser(),
+        jawara_mwr_nc=Path("~/data/meteor_winds/jawara/han_2008_mwr_jawara_hourly_uvz_2x2.nc").expanduser(),
         climit=(-70.0, 70.0),
     ),
     CaseConfig(
@@ -48,7 +50,8 @@ CASES = [
         sd_code="mcm",
         mwr_label="MCM",
         mwr_mat=Path("~/data/meteor_winds/mat/McMurdo_2019.mat").expanduser(),
-        jawara_nc=Path("~/data/meteor_winds/jawara/mcm_2019_jawara_hourly_uvz_2x2.nc").expanduser(),
+        jawara_sd_nc=Path("~/data/meteor_winds/jawara/mcm_2019_jawara_hourly_uvz_2x2.nc").expanduser(),
+        jawara_mwr_nc=Path("~/data/meteor_winds/jawara/mcm_2019_jawara_hourly_uvz_2x2.nc").expanduser(),
         climit=(-50.0, 50.0),
     ),
 ]
@@ -164,8 +167,8 @@ def load_mwr_full_year(cfg: CaseConfig) -> dict[str, np.ndarray]:
     }
 
 
-def load_jawara_weighted(cfg: CaseConfig, sd: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-    with Dataset(cfg.jawara_nc, "r") as ds:
+def load_jawara_weighted(jawara_nc: Path, year: int, sd: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    with Dataset(jawara_nc, "r") as ds:
         time_var = ds.variables["time"]
         times = num2date(time_var[:], units=time_var.units)
         z = np.asarray(ds.variables["z"][:], dtype=float) / 1000.0
@@ -182,7 +185,7 @@ def load_jawara_weighted(cfg: CaseConfig, sd: dict[str, np.ndarray]) -> dict[str
     v_site = np.tensordot(v, weights_xy, axes=([2, 3], [0, 1]))
     z_site = geopotential_to_geometric_height(z_site)
 
-    n_days = 366 if calendar.isleap(cfg.year) else 365
+    n_days = 366 if calendar.isleap(year) else 365
     u_modwt = np.full((24, n_days), np.nan, dtype=float)
     v_modwt = np.full((24, n_days), np.nan, dtype=float)
     u_sigma = np.full((24, n_days), np.nan, dtype=float)
@@ -325,19 +328,23 @@ def plot_scatter(
     lt_mwr_v: np.ndarray,
     lt_sd_u: np.ndarray,
     lt_sd_v: np.ndarray,
-    lt_jaw_u: np.ndarray,
-    lt_jaw_v: np.ndarray,
+    lt_jaw_sd_u: np.ndarray,
+    lt_jaw_sd_v: np.ndarray,
+    lt_jaw_mwr_u: np.ndarray,
+    lt_jaw_mwr_v: np.ndarray,
 ) -> list[dict[str, float | str]]:
-    fig, axes = plt.subplots(2, 2, figsize=(9.5, 8.2), constrained_layout=True)
+    fig, axes = plt.subplots(2, 3, figsize=(13.2, 8.2), constrained_layout=True)
     panels = [
-        ("Meteor Radar vs SuperDARN", "Zonal", lt_mwr_u, lt_sd_u, axes[0, 0], "mwr"),
-        ("JAWARA vs SuperDARN", "Zonal", lt_jaw_u, lt_sd_u, axes[0, 1], "jawara"),
-        ("Meteor Radar vs SuperDARN", "Meridional", lt_mwr_v, lt_sd_v, axes[1, 0], "mwr"),
-        ("JAWARA vs SuperDARN", "Meridional", lt_jaw_v, lt_sd_v, axes[1, 1], "jawara"),
+        ("Meteor Radar vs SuperDARN", "Zonal", lt_mwr_u, lt_sd_u, axes[0, 0], "mwr", "Meteor radar (m/s)", "SuperDARN (m/s)"),
+        ("JAWARA vs SuperDARN", "Zonal", lt_jaw_sd_u, lt_sd_u, axes[0, 1], "jawara", "JAWARA (m/s)", "SuperDARN (m/s)"),
+        ("Meteor Radar vs JAWARA", "Zonal", lt_mwr_u, lt_jaw_mwr_u, axes[0, 2], "mwr_vs_jawara", "Meteor radar (m/s)", "JAWARA (m/s)"),
+        ("Meteor Radar vs SuperDARN", "Meridional", lt_mwr_v, lt_sd_v, axes[1, 0], "mwr", "Meteor radar (m/s)", "SuperDARN (m/s)"),
+        ("JAWARA vs SuperDARN", "Meridional", lt_jaw_sd_v, lt_sd_v, axes[1, 1], "jawara", "JAWARA (m/s)", "SuperDARN (m/s)"),
+        ("Meteor Radar vs JAWARA", "Meridional", lt_mwr_v, lt_jaw_mwr_v, axes[1, 2], "mwr_vs_jawara", "Meteor radar (m/s)", "JAWARA (m/s)"),
     ]
 
     rows: list[dict[str, float | str]] = []
-    for heading, component, xgrid, ygrid, ax, comparison in panels:
+    for heading, component, xgrid, ygrid, ax, comparison, xlabel, ylabel in panels:
         x = xgrid.ravel()
         y = ygrid.ravel()
         mask = np.isfinite(x) & np.isfinite(y)
@@ -355,11 +362,8 @@ def plot_scatter(
             ax.set_xlim(xx[0], xx[1])
             ax.set_ylim(xx[0], xx[1])
         ax.set_title(f"{heading} {component}", fontsize=11)
-        if comparison == "mwr":
-            ax.set_xlabel("Meteor radar (m/s)")
-        else:
-            ax.set_xlabel("JAWARA (m/s)")
-        ax.set_ylabel("SuperDARN (m/s)")
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
         ax.grid(True, alpha=0.2)
         ax.text(
             0.03,
@@ -380,7 +384,7 @@ def plot_scatter(
             }
         )
 
-    fig.suptitle(f"{cfg.year}: Meteor radar reference comparison for {cfg.name}", fontsize=13)
+    fig.suptitle(f"{cfg.year}: Meteor radar, SuperDARN, and JAWARA comparisons for {cfg.name}", fontsize=13)
     fig.savefig(out_path, dpi=220, bbox_inches="tight")
     plt.close(fig)
     return rows
@@ -414,7 +418,7 @@ def save_case_summary(out_path: Path, rows: list[dict[str, float | str]]) -> Non
 
     with out_path.open("w", encoding="utf-8") as handle:
         handle.write(
-            "case\tstat\tmwr_vs_sd_zonal\tmwr_vs_sd_meridional\tjawara_vs_sd_zonal\tjawara_vs_sd_meridional\n"
+            "case\tstat\tmwr_vs_sd_zonal\tmwr_vs_sd_meridional\tjawara_vs_sd_zonal\tjawara_vs_sd_meridional\tmwr_vs_jawara_zonal\tmwr_vs_jawara_meridional\n"
         )
         for case in cases:
             case_rows = {
@@ -424,7 +428,14 @@ def save_case_summary(out_path: Path, rows: list[dict[str, float | str]]) -> Non
             }
             for stat in ["slope", "intercept", "corr", "p_value", "n"]:
                 vals = [case, stat]
-                for comp, direction in [("mwr", "zonal"), ("mwr", "meridional"), ("jawara", "zonal"), ("jawara", "meridional")]:
+                for comp, direction in [
+                    ("mwr", "zonal"),
+                    ("mwr", "meridional"),
+                    ("jawara", "zonal"),
+                    ("jawara", "meridional"),
+                    ("mwr_vs_jawara", "zonal"),
+                    ("mwr_vs_jawara", "meridional"),
+                ]:
                     value = case_rows[(comp, direction)][stat]
                     if stat == "n":
                         vals.append(f"{float(value):.0f}")
@@ -471,6 +482,20 @@ def build_case_sheet(case: str, rows: list[dict[str, float | str]]) -> pd.DataFr
             case_rows[("jawara", "meridional")]["p_value"],
             case_rows[("jawara", "meridional")]["n"],
         ],
+        "MWR vs JAWARA Zonal": [
+            case_rows[("mwr_vs_jawara", "zonal")]["slope"],
+            case_rows[("mwr_vs_jawara", "zonal")]["intercept"],
+            case_rows[("mwr_vs_jawara", "zonal")]["corr"],
+            case_rows[("mwr_vs_jawara", "zonal")]["p_value"],
+            case_rows[("mwr_vs_jawara", "zonal")]["n"],
+        ],
+        "MWR vs JAWARA Meridional": [
+            case_rows[("mwr_vs_jawara", "meridional")]["slope"],
+            case_rows[("mwr_vs_jawara", "meridional")]["intercept"],
+            case_rows[("mwr_vs_jawara", "meridional")]["corr"],
+            case_rows[("mwr_vs_jawara", "meridional")]["p_value"],
+            case_rows[("mwr_vs_jawara", "meridional")]["n"],
+        ],
     }
     return pd.DataFrame(data, index=index)
 
@@ -499,12 +524,16 @@ def save_excel_tables(out_path: Path, rows: list[dict[str, float | str]]) -> Non
 
         ws.merge_cells("B1:C1")
         ws.merge_cells("D1:E1")
+        ws.merge_cells("F1:G1")
         ws["B1"] = "MWR vs SuperDARN"
         ws["D1"] = "JAWARA vs SuperDARN"
+        ws["F1"] = "MWR vs JAWARA"
         ws["B2"] = "Zonal"
         ws["C2"] = "Meridional"
         ws["D2"] = "Zonal"
         ws["E2"] = "Meridional"
+        ws["F2"] = "Zonal"
+        ws["G2"] = "Meridional"
 
         metrics = [
             ("Slope", "slope"),
@@ -513,7 +542,14 @@ def save_excel_tables(out_path: Path, rows: list[dict[str, float | str]]) -> Non
             ("p-value", "p_value"),
             ("Samples", "n"),
         ]
-        comp_order = [("mwr", "zonal"), ("mwr", "meridional"), ("jawara", "zonal"), ("jawara", "meridional")]
+        comp_order = [
+            ("mwr", "zonal"),
+            ("mwr", "meridional"),
+            ("jawara", "zonal"),
+            ("jawara", "meridional"),
+            ("mwr_vs_jawara", "zonal"),
+            ("mwr_vs_jawara", "meridional"),
+        ]
         for row_idx, (metric_label, stat_key) in enumerate(metrics, start=3):
             ws.cell(row=row_idx, column=1, value=metric_label)
             for col_idx, comp_key in enumerate(comp_order, start=2):
@@ -525,7 +561,7 @@ def save_excel_tables(out_path: Path, rows: list[dict[str, float | str]]) -> Non
         thin = Side(style="thin", color="000000")
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-        for row in ws.iter_rows(min_row=1, max_row=7, min_col=1, max_col=5):
+        for row in ws.iter_rows(min_row=1, max_row=7, min_col=1, max_col=7):
             for cell in row:
                 cell.border = border
                 if cell.row <= 2:
@@ -537,7 +573,7 @@ def save_excel_tables(out_path: Path, rows: list[dict[str, float | str]]) -> Non
                     cell.alignment = center
 
         ws.column_dimensions["A"].width = 20
-        for col in ["B", "C", "D", "E"]:
+        for col in ["B", "C", "D", "E", "F", "G"]:
             ws.column_dimensions[col].width = 18
         ws.freeze_panes = "B3"
 
@@ -586,7 +622,8 @@ def main() -> None:
         sd = load_sd_annual(sd_path, cfg.sd_code)
         good_days = np.sum(np.isfinite(sd["u"]), axis=0) >= LOW_COVERAGE_MIN_HOURS
         mwr = load_mwr_full_year(cfg)
-        jawara = load_jawara_weighted(cfg, sd)
+        jawara_sd = load_jawara_weighted(cfg.jawara_sd_nc, cfg.year, sd)
+        jawara_mwr = load_jawara_weighted(cfg.jawara_mwr_nc, cfg.year, sd)
 
         mwr_for_weight = {
             "u": mwr["u"],
@@ -603,15 +640,19 @@ def main() -> None:
         mwr_v_med = moving_nanmedian(mwr_v, 31)
         sd_u_med = moving_nanmedian(sd["u"], 31)
         sd_v_med = moving_nanmedian(sd["v"], 31)
-        jaw_u_med = moving_nanmedian(jawara["u_modwt"], 31)
-        jaw_v_med = moving_nanmedian(jawara["v_modwt"], 31)
+        jaw_sd_u_med = moving_nanmedian(jawara_sd["u_modwt"], 31)
+        jaw_sd_v_med = moving_nanmedian(jawara_sd["v_modwt"], 31)
+        jaw_mwr_u_med = moving_nanmedian(jawara_mwr["u_modwt"], 31)
+        jaw_mwr_v_med = moving_nanmedian(jawara_mwr["v_modwt"], 31)
 
         lt_mwr_u = ut_to_lt(mwr_u_med, mwr["hour"], lthri, mwr["lon"])
         lt_mwr_v = ut_to_lt(mwr_v_med, mwr["hour"], lthri, mwr["lon"])
         lt_sd_u = ut_to_lt(sd_u_med, sd["hour"], lthri, sd["lon"])
         lt_sd_v = ut_to_lt(sd_v_med, sd["hour"], lthri, sd["lon"])
-        lt_jaw_u = ut_to_lt(jaw_u_med, sd["hour"], lthri, jawara["lon"])
-        lt_jaw_v = ut_to_lt(jaw_v_med, sd["hour"], lthri, jawara["lon"])
+        lt_jaw_sd_u = ut_to_lt(jaw_sd_u_med, sd["hour"], lthri, jawara_sd["lon"])
+        lt_jaw_sd_v = ut_to_lt(jaw_sd_v_med, sd["hour"], lthri, jawara_sd["lon"])
+        lt_jaw_mwr_u = ut_to_lt(jaw_mwr_u_med, mwr["hour"], lthri, jawara_mwr["lon"])
+        lt_jaw_mwr_v = ut_to_lt(jaw_mwr_v_med, mwr["hour"], lthri, jawara_mwr["lon"])
 
         contour_path = out_dir / f"{cfg.name}_sd_mwr_jawara_contours.png"
         plot_contours(
@@ -621,8 +662,8 @@ def main() -> None:
             lt_mwr_v,
             lt_sd_u,
             lt_sd_v,
-            lt_jaw_u,
-            lt_jaw_v,
+            lt_jaw_sd_u,
+            lt_jaw_sd_v,
             mwr["lat"],
             mwr["lon"],
             sd["lat"],
@@ -635,8 +676,10 @@ def main() -> None:
         lt_mwr_v_masked = apply_day_mask(lt_mwr_v, good_days)
         lt_sd_u_masked = apply_day_mask(lt_sd_u, good_days)
         lt_sd_v_masked = apply_day_mask(lt_sd_v, good_days)
-        lt_jaw_u_masked = apply_day_mask(lt_jaw_u, good_days)
-        lt_jaw_v_masked = apply_day_mask(lt_jaw_v, good_days)
+        lt_jaw_sd_u_masked = apply_day_mask(lt_jaw_sd_u, good_days)
+        lt_jaw_sd_v_masked = apply_day_mask(lt_jaw_sd_v, good_days)
+        lt_jaw_mwr_u_masked = apply_day_mask(lt_jaw_mwr_u, good_days)
+        lt_jaw_mwr_v_masked = apply_day_mask(lt_jaw_mwr_v, good_days)
         all_rows.extend(
             plot_scatter(
                 scatter_path,
@@ -645,8 +688,10 @@ def main() -> None:
                 lt_mwr_v_masked,
                 lt_sd_u_masked,
                 lt_sd_v_masked,
-                lt_jaw_u_masked,
-                lt_jaw_v_masked,
+                lt_jaw_sd_u_masked,
+                lt_jaw_sd_v_masked,
+                lt_jaw_mwr_u_masked,
+                lt_jaw_mwr_v_masked,
             )
         )
 

@@ -1,0 +1,19 @@
+# transmitter_coordinates.txt
+# Columns: group, station, freq_mhz, lat_deg, lon_deg, status, note
+SIMONe,Tres-lagos,32.75,-49.600000,-71.400000,web,site
+SIMONe,Jruh,32.55,54.628631,13.374331,web,Juliusruh
+SIMONe,Kborn,32.55,54.150350,11.759939,web,Kuehlungsborn
+SIMONe,Haystack,31.65,42.623220,-71.488210,web,Haystack Observatory
+SIMONe,Andenes,32.55,69.314281,16.119389,web,Andenes
+SIMONe,Jicamarca,32.55,-11.951500,-76.874500,web,Jicamarca Radio Observatory
+SIMONe,UDEP,32.55,-5.194490,-80.632800,web,University of Piura
+Skiymet,Collm,36.20,51.300000,13.000000,web,Collm
+Skiymet,Alta,31.00,69.968869,23.271650,web,Alta
+Skiymet,Sodankyla,36.90,67.366667,26.633333,web,Sodankyla
+Skiymet,Tromso,30.25,69.648900,18.955081,web,Tromso
+Skiymet,Kiruna,32.55,67.855719,20.225131,web,Kiruna
+Skiymet,ALO,35.15,-30.250000,-70.740000,web,site
+Skiymet,Bahir Dar,32.55,11.590000,37.380000,web,Bahir Dar
+Skiymet,Santa Cruz,36.20,10.300000,-85.600000,web,Santa Cruz
+Special,WWV,15.00,40.679167,-105.040139,web,NIST Fort Collins
+Special,CHU,14.67,45.296389,-75.756111,web,Ottawa area

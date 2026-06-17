@@ -193,7 +193,10 @@ def parse_args() -> argparse.Namespace:
         "--tle-file",
         type=Path,
         default=None,
-        help="ISS TLE file used to predict delay/Doppler for residual plots. If provided, ephemeris mode is enabled automatically.",
+        help=(
+            "ISS TLE file used to predict delay/Doppler and subtract the predicted ISS-station range "
+            "from the upper-panel plot. If provided, ephemeris mode is enabled automatically."
+        ),
     )
     p.add_argument(
         "--start-seconds",
@@ -454,6 +457,20 @@ def predict_iss_track(
     tx_ecef = geodetic_to_ecef(tx.lat_deg, tx.lon_deg, tx.height_m)
     row_unix = np.asarray([datetime_to_unix_seconds(t) for t in row_times], dtype=np.float64)
     return predict_delay_doppler(sat, row_unix, tx_ecef, tx.freq_hz)
+
+
+def _centers_to_edges(values: np.ndarray) -> np.ndarray:
+    values = np.asarray(values, dtype=np.float64)
+    if values.size == 0:
+        return np.zeros(0, dtype=np.float64)
+    if values.size == 1:
+        return np.array([values[0], values[0]], dtype=np.float64)
+
+    edges = np.empty(values.size + 1, dtype=np.float64)
+    edges[1:-1] = 0.5 * (values[:-1] + values[1:])
+    edges[0] = float(values[0] - 0.5 * (values[1] - values[0]))
+    edges[-1] = float(values[-1] + 0.5 * (values[-1] - values[-2]))
+    return edges
 
 
 def fold_score_row(row: np.ndarray, fold_samples: int) -> np.ndarray:
@@ -717,7 +734,7 @@ def plot_range_time(
     snr_rows_db: list[np.ndarray],
     row_times: list[datetime],
     residual_times: list[datetime],
-    residual_range_km: list[float],
+    predicted_delay_s: list[float],
     residual_hz: list[float],
     residual_hz_err: list[float],
     cpa_time_utc: Optional[datetime],
@@ -809,17 +826,50 @@ def plot_range_time(
         x_edges[1:-1] = 0.5 * (x_nums[:-1] + x_nums[1:])
         x_edges[0] = float(x_nums[0] - 0.5 * (x_nums[1] - x_nums[0]))
         x_edges[-1] = float(x_nums[-1] + 0.5 * (x_nums[-1] - x_nums[-2]))
-    y_edges = np.linspace(0.0, C_KM_PER_S * (data.shape[0] / fs), data.shape[0] + 1, dtype=np.float64)
+    base_y_edges = np.linspace(0.0, C_KM_PER_S * (data.shape[0] / fs), data.shape[0] + 1, dtype=np.float64)
+    base_y_centers = 0.5 * (base_y_edges[:-1] + base_y_edges[1:]) if base_y_edges.size > 1 else np.zeros(0, dtype=np.float64)
 
-    cf = ax0.pcolormesh(
-        x_edges,
-        y_edges,
-        np.ma.masked_invalid(data),
-        cmap="viridis",
-        shading="auto",
-        vmin=cmap_vmin,
-        vmax=cmap_vmax,
+    predicted_delay_arr = np.asarray(predicted_delay_s, dtype=np.float64)
+    has_ephem_shift = (
+        ephem_detrended
+        and predicted_delay_arr.size == data.shape[1]
+        and data.shape[1] > 0
+        and np.any(np.isfinite(predicted_delay_arr))
     )
+    if has_ephem_shift:
+        predicted_range_centers = predicted_delay_arr * C_KM_PER_S
+        predicted_range_edges = _centers_to_edges(predicted_range_centers)
+        x_edges_2d = np.tile(x_edges, (data.shape[0] + 1, 1))
+        y_edges = base_y_edges[:, None] - predicted_range_edges[None, :]
+        cf = ax0.pcolormesh(
+            x_edges_2d,
+            y_edges,
+            np.ma.masked_invalid(data),
+            cmap="viridis",
+            shading="auto",
+            vmin=cmap_vmin,
+            vmax=cmap_vmax,
+        )
+        display_range_km = base_y_centers[:, None] - predicted_range_centers[None, :]
+        display_range_lo = np.nanmin(display_range_km, axis=1)
+        display_range_hi = np.nanmax(display_range_km, axis=1)
+        visible_y_min = float(np.nanmin(y_edges))
+        visible_y_max = float(np.nanmax(y_edges))
+    else:
+        cf = ax0.pcolormesh(
+            x_edges,
+            base_y_edges,
+            np.ma.masked_invalid(data),
+            cmap="viridis",
+            shading="auto",
+            vmin=cmap_vmin,
+            vmax=cmap_vmax,
+        )
+        display_range_km = base_y_centers
+        display_range_lo = display_range_km
+        display_range_hi = display_range_km
+        visible_y_min = float(base_y_edges[0]) if base_y_edges.size else 0.0
+        visible_y_max = float(base_y_edges[-1]) if base_y_edges.size else 0.0
     ax0.set_title(
         title or ("PRI-integrated matched-filter power SNR vs. residual delay" if ephem_detrended else "PRI-integrated matched-filter power SNR vs. delay"),
         fontsize=21,
@@ -833,15 +883,23 @@ def plot_range_time(
     ax0.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
     ax0.tick_params(axis="x", labelbottom=False)
 
-    display_range_km = 0.5 * (y_edges[:-1] + y_edges[1:]) if y_edges.size > 1 else np.zeros(0, dtype=np.float64)
-    range_min_km = max(0.0, float(range_min_km))
-    range_max_km = min(float(range_max_km), float(y_edges[-1]) if y_edges.size else float(range_max_km))
-    ax0.set_ylim(range_min_km, range_max_km)
+    if has_ephem_shift:
+        range_min_km = visible_y_min
+        range_max_km = visible_y_max
+        if math.isfinite(range_min_km) and math.isfinite(range_max_km) and range_min_km < range_max_km:
+            pad = max(0.05 * (range_max_km - range_min_km), 1.0)
+            ax0.set_ylim(range_min_km - pad, range_max_km + pad)
+        else:
+            ax0.set_ylim(range_min_km - 1.0, range_max_km + 1.0)
+    else:
+        range_min_km = max(0.0, float(range_min_km))
+        range_max_km = min(float(range_max_km), visible_y_max if math.isfinite(visible_y_max) else float(range_max_km))
+        ax0.set_ylim(range_min_km, range_max_km)
     _apply_grid(ax0)
 
     if show_hit_detections:
-        lo_idx = int(np.searchsorted(display_range_km, ax0.get_ylim()[0], side="left")) if display_range_km.size else 0
-        hi_idx = int(np.searchsorted(display_range_km, ax0.get_ylim()[1], side="right")) if display_range_km.size else 0
+        lo_idx = int(np.searchsorted(display_range_lo, ax0.get_ylim()[0], side="left")) if display_range_lo.size else 0
+        hi_idx = int(np.searchsorted(display_range_hi, ax0.get_ylim()[1], side="right")) if display_range_hi.size else 0
         if hi_idx > lo_idx:
             visible = data[lo_idx:hi_idx, :]
             hit_snr_db_threshold = 20.0 * math.log10(max(float(hit_sigma_threshold), 1e-12))
@@ -873,8 +931,11 @@ def plot_range_time(
                         continue
                     center_row = float(np.median(col_rows)) + lo_idx
                     hit_times.append(row_times[int(col)])
-                    center_idx = int(np.clip(int(round(center_row)), 0, display_range_km.size - 1))
-                    hit_ranges.append(float(display_range_km[center_idx]))
+                    center_idx = int(np.clip(int(round(center_row)), 0, display_range_lo.size - 1))
+                    if np.ndim(display_range_km) == 2:
+                        hit_ranges.append(float(display_range_km[center_idx, int(col)]))
+                    else:
+                        hit_ranges.append(float(display_range_km[center_idx]))
                 if hit_times:
                     ax0.plot(hit_times, hit_ranges, color="white", linewidth=5.0, alpha=0.95, zorder=3)
                     ax0.plot(hit_times, hit_ranges, color="black", linewidth=1.0, alpha=0.4, zorder=4)
@@ -890,7 +951,7 @@ def plot_range_time(
         if not best_component:
             hit_times: list[datetime] = []
             hit_ranges: list[float] = []
-            for row_time, row in zip(row_times, data.T):
+            for col, (row_time, row) in enumerate(zip(row_times, data.T)):
                 if hi_idx <= lo_idx:
                     break
                 visible = row[lo_idx:hi_idx]
@@ -901,8 +962,11 @@ def plot_range_time(
                 if peak_score < hit_snr_db_threshold:
                     continue
                 hit_times.append(row_time)
-                center_idx = int(np.clip(lo_idx + peak_idx, 0, display_range_km.size - 1))
-                hit_ranges.append(float(display_range_km[center_idx]))
+                center_idx = int(np.clip(lo_idx + peak_idx, 0, display_range_lo.size - 1))
+                if np.ndim(display_range_km) == 2:
+                    hit_ranges.append(float(display_range_km[center_idx, col]))
+                else:
+                    hit_ranges.append(float(display_range_km[center_idx]))
             if hit_times:
                 ax0.scatter(
                     hit_times,
@@ -1366,7 +1430,7 @@ def main() -> int:
                     snr_rows,
                     result.row_times,
                     result.residual_times,
-                    result.residual_range_km,
+                    result.predicted_delay_s,
                     result.residual_doppler_hz if ephem_detrended else result.residual_hz,
                     result.residual_hz_err,
                     result.cpa_time_utc if ephem_detrended else None,

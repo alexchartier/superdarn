@@ -126,6 +126,21 @@ def teme_to_ecef(r_km: np.ndarray, jd_ut1: float) -> np.ndarray:
     )
 
 
+def ecef_to_teme(r_m: np.ndarray, jd_ut1: float) -> np.ndarray:
+    theta = gmst_from_jd(jd_ut1)
+    c = math.cos(theta)
+    s = math.sin(theta)
+    r_m = np.asarray(r_m, dtype=np.float64)
+    return np.array(
+        [
+            c * r_m[0] - s * r_m[1],
+            s * r_m[0] + c * r_m[1],
+            r_m[2],
+        ],
+        dtype=np.float64,
+    )
+
+
 def sat_ecef_at_unix(sat: Satrec, unix_time_s: float) -> np.ndarray:
     jd = unix_time_s / 86400.0 + 2440587.5
     jd0 = math.floor(jd)
@@ -134,6 +149,37 @@ def sat_ecef_at_unix(sat: Satrec, unix_time_s: float) -> np.ndarray:
     if e != 0:
         raise RuntimeError(f"SGP4 propagation failed with code {e} at unix time {unix_time_s}.")
     return teme_to_ecef(np.asarray(r_km), jd)
+
+
+def sat_teme_at_unix(sat: Satrec, unix_time_s: float) -> np.ndarray:
+    jd = unix_time_s / 86400.0 + 2440587.5
+    jd0 = math.floor(jd)
+    fr = jd - jd0
+    e, r_km, _v_km_s = sat.sgp4(jd0, fr)
+    if e != 0:
+        raise RuntimeError(f"SGP4 propagation failed with code {e} at unix time {unix_time_s}.")
+    return np.asarray(r_km, dtype=np.float64)
+
+
+def one_way_light_time_s(
+    sat: Satrec,
+    receive_unix_time_s: float,
+    radar_ecef_m: np.ndarray,
+    max_iter: int = 4,
+) -> float:
+    jd_rx = receive_unix_time_s / 86400.0 + 2440587.5
+    radar_teme_m = ecef_to_teme(radar_ecef_m, jd_rx)
+    tau_s = 0.0
+    for _ in range(max(int(max_iter), 1)):
+        transmit_unix_time_s = receive_unix_time_s - tau_s
+        sat_teme_m = sat_teme_at_unix(sat, transmit_unix_time_s) * 1000.0
+        rho_m = float(np.linalg.norm(sat_teme_m - radar_teme_m))
+        new_tau_s = rho_m / C_MPS
+        if abs(new_tau_s - tau_s) < 1e-12:
+            tau_s = new_tau_s
+            break
+        tau_s = new_tau_s
+    return tau_s
 
 
 def predict_delay_doppler(
@@ -146,12 +192,9 @@ def predict_delay_doppler(
     dopplers_hz = np.zeros(frame_times_s.size, dtype=np.float64)
     dt = 0.5
     for i, ts in enumerate(frame_times_s):
-        p0 = sat_ecef_at_unix(sat, ts)
-        pm = sat_ecef_at_unix(sat, ts - dt)
-        pp = sat_ecef_at_unix(sat, ts + dt)
-        r0 = float(np.linalg.norm(p0 - radar_ecef_m))
-        rm = float(np.linalg.norm(pm - radar_ecef_m))
-        rp = float(np.linalg.norm(pp - radar_ecef_m))
+        r0 = one_way_light_time_s(sat, ts, radar_ecef_m) * C_MPS
+        rm = one_way_light_time_s(sat, ts - dt, radar_ecef_m) * C_MPS
+        rp = one_way_light_time_s(sat, ts + dt, radar_ecef_m) * C_MPS
         range_rate = (rp - rm) / (2.0 * dt)
         delays_s[i] = r0 / C_MPS
         dopplers_hz[i] = -freq_hz * range_rate / C_MPS

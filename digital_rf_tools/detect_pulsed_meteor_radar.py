@@ -29,6 +29,7 @@ import numpy as np
 from scipy import ndimage, signal
 
 from drf_compat import open_drf_like_reader
+from stack_superdarn_iss_ephem import geodetic_to_ecef, load_tle, predict_delay_doppler
 
 os.environ.setdefault("MPLBACKEND", "Agg")
 
@@ -101,10 +102,17 @@ class DetectionResult:
     transmitter: PulsedTransmitter
     hits: list[DetectionHit]
     corr_rows: list[np.ndarray]
+    power_rows: list[np.ndarray]
     row_times: list[datetime]
     track_ranges_km: list[float]
     residual_times: list[datetime]
     residual_hz: list[float]
+    residual_hz_err: list[float]
+    predicted_delay_s: list[float]
+    predicted_doppler_hz: list[float]
+    residual_range_km: list[float]
+    residual_doppler_hz: list[float]
+    cpa_time_utc: Optional[datetime]
     template_name: str
     template_samples: int
     pri_samples: int
@@ -182,6 +190,12 @@ def parse_args() -> argparse.Namespace:
         help=f"Peak threshold = sigma_threshold * robust_sigma. Default: {DEFAULT_SIGMA_THRESHOLD:g}.",
     )
     p.add_argument(
+        "--tle-file",
+        type=Path,
+        default=None,
+        help="ISS TLE file used to predict delay/Doppler for residual plots. If provided, ephemeris mode is enabled automatically.",
+    )
+    p.add_argument(
         "--start-seconds",
         type=float,
         default=DEFAULT_START_SECONDS,
@@ -248,13 +262,13 @@ def parse_args() -> argparse.Namespace:
         "--plot-vmin-sigma",
         type=float,
         default=None,
-        help="Lower color-axis limit in sigma units after normalization. Default: auto.",
+        help="Lower color-axis limit in dB after SNR conversion. Default: auto.",
     )
     p.add_argument(
         "--plot-vmax-sigma",
         type=float,
         default=None,
-        help="Upper color-axis limit in sigma units after normalization. Default: auto.",
+        help="Upper color-axis limit in dB after SNR conversion. Default: auto.",
     )
     p.add_argument(
         "--pri-fold",
@@ -399,6 +413,49 @@ def template_energy(template: np.ndarray) -> float:
     return float(np.sum(np.abs(template) ** 2))
 
 
+def estimate_noise_power(power_row: np.ndarray, peak_idx: Optional[int] = None, guard_bins: int = 3) -> float:
+    row = np.asarray(power_row, dtype=np.float64)
+    if row.size == 0:
+        return 1e-12
+    finite = np.isfinite(row)
+    if not np.any(finite):
+        return 1e-12
+
+    if peak_idx is not None and row.size > 2 * guard_bins + 1:
+        lo = max(0, int(peak_idx) - guard_bins)
+        hi = min(row.size, int(peak_idx) + guard_bins + 1)
+        finite = finite.copy()
+        finite[lo:hi] = False
+
+    noise_samples = row[finite]
+    if noise_samples.size == 0:
+        noise_samples = row[np.isfinite(row)]
+    if noise_samples.size == 0:
+        return 1e-12
+
+    noise_power = float(np.median(noise_samples))
+    return max(noise_power, 1e-12)
+
+
+def power_row_to_snr_db(power_row: np.ndarray, peak_idx: Optional[int] = None) -> tuple[np.ndarray, float]:
+    row = np.asarray(power_row, dtype=np.float64)
+    noise_power = estimate_noise_power(row, peak_idx=peak_idx)
+    snr_db = 10.0 * np.log10((np.maximum(row, 0.0) + 1e-12) / (noise_power + 1e-12))
+    return snr_db.astype(np.float32, copy=False), noise_power
+
+
+def predict_iss_track(
+    sat,
+    tx: PulsedTransmitter,
+    row_times: list[datetime],
+) -> tuple[np.ndarray, np.ndarray]:
+    if sat is None or not row_times:
+        return np.array([], dtype=np.float64), np.array([], dtype=np.float64)
+    tx_ecef = geodetic_to_ecef(tx.lat_deg, tx.lon_deg, tx.height_m)
+    row_unix = np.asarray([datetime_to_unix_seconds(t) for t in row_times], dtype=np.float64)
+    return predict_delay_doppler(sat, row_unix, tx_ecef, tx.freq_hz)
+
+
 def fold_score_row(row: np.ndarray, fold_samples: int) -> np.ndarray:
     if fold_samples <= 0:
         raise ValueError("fold_samples must be positive")
@@ -434,11 +491,11 @@ def estimate_doppler_relative_phase(
     lag_half_width: int = 1,
     candidate_half_width: int = 2,
     min_coherence: float = 0.12,
-) -> tuple[Optional[float], Optional[float]]:
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
     if pri_samples <= 0 or prf_hz <= 0:
-        return None, None
+        return None, None, None
     if score.size == 0:
-        return None, None
+        return None, None, None
 
     lag_idx = int(lag_idx) % int(pri_samples)
     lag_half_width = max(int(lag_half_width), 0)
@@ -446,6 +503,7 @@ def estimate_doppler_relative_phase(
     min_coherence = max(float(min_coherence), 0.0)
 
     best_doppler: Optional[float] = None
+    best_doppler_err: Optional[float] = None
     best_coherence = -np.inf
 
     for center_idx in range(
@@ -498,10 +556,13 @@ def estimate_doppler_relative_phase(
 
         best_coherence = coherence
         best_doppler = float(np.angle(total) * prf_hz / (2.0 * math.pi))
+        phase_std_rad = math.sqrt(max(-2.0 * math.log(max(coherence, 1e-12)), 0.0))
+        phase_sem_rad = phase_std_rad / math.sqrt(max(pair_products.size, 1))
+        best_doppler_err = float(phase_sem_rad * prf_hz / (2.0 * math.pi))
 
     if best_doppler is None or not math.isfinite(best_coherence):
-        return None, None
-    return best_doppler, float(best_coherence)
+        return None, None, None
+    return best_doppler, float(best_coherence), best_doppler_err
 
 
 def enhance_surface(
@@ -653,10 +714,13 @@ def load_decimated_channel(
 
 
 def plot_range_time(
-    range_rows: list[np.ndarray],
+    snr_rows_db: list[np.ndarray],
     row_times: list[datetime],
     residual_times: list[datetime],
+    residual_range_km: list[float],
     residual_hz: list[float],
+    residual_hz_err: list[float],
+    cpa_time_utc: Optional[datetime],
     fs: float,
     doppler_limit_hz: Optional[float],
     path: Path,
@@ -672,6 +736,7 @@ def plot_range_time(
     enhance_time_sigma: float = DEFAULT_ENHANCE_TIME_SIGMA,
     enhance_range_sigma: float = DEFAULT_ENHANCE_RANGE_SIGMA,
     enhance_background_factor: float = DEFAULT_ENHANCE_BACKGROUND_FACTOR,
+    ephem_detrended: bool = False,
     title: Optional[str] = None,
 ) -> Optional[Path]:
     try:
@@ -682,8 +747,8 @@ def plot_range_time(
         print(f"Range-time plot skipped (matplotlib not available: {exc})")
         return None
 
-    if not range_rows:
-        print("Range-time plot skipped (no correlation rows captured).")
+    if not snr_rows_db:
+        print("Range-time plot skipped (no SNR rows captured).")
         return None
 
     def _pad_rows(rows: list[np.ndarray]) -> np.ndarray:
@@ -697,11 +762,11 @@ def plot_range_time(
         return stacked.T
 
     if fold_samples is not None and fold_samples > 0:
-        folded_rows = [fold_score_row(row, fold_samples) for row in range_rows]
+        folded_rows = [fold_score_row(row, fold_samples) for row in snr_rows_db]
         data = _pad_rows(folded_rows)
     else:
-        data = _pad_rows(range_rows)
-    data = np.asarray(np.ma.masked_invalid(data).filled(0.0), dtype=np.float32)
+        data = _pad_rows(snr_rows_db)
+    data = np.asarray(np.ma.masked_invalid(data).filled(np.nan), dtype=np.float32)
     if enhance_surface_flag:
         data = enhance_surface(
             data,
@@ -710,10 +775,8 @@ def plot_range_time(
             enhance_background_factor,
             mode=enhance_mode,
         )
-    y_edges_seconds = np.arange(data.shape[0] + 1, dtype=np.float64) / fs
-    delay_equiv_range_km = C_KM_PER_S * y_edges_seconds
-    x_nums = mdates.date2num(row_times)
 
+    x_nums = mdates.date2num(row_times)
     fig = plt.figure(figsize=(13.5, 10.0))
     gs = GridSpec(
         2,
@@ -728,39 +791,61 @@ def plot_range_time(
     ax1 = fig.add_subplot(gs[1, 0], sharex=ax0)
     cax = fig.add_subplot(gs[:, 1])
 
+    def _apply_grid(ax) -> None:
+        ax.set_axisbelow(True)
+        ax.minorticks_on()
+        ax.grid(True, which="major", alpha=0.28, linewidth=0.7)
+        ax.grid(True, which="minor", alpha=0.12, linewidth=0.5, linestyle=":")
+
     if len(x_nums) > 1:
         step = float(np.median(np.diff(x_nums)))
     else:
         step = 1.0 / 86400.0
-    x0 = float(x_nums[0])
-    x1 = float(x_nums[-1] + step)
+    x_edges = np.empty(len(x_nums) + 1, dtype=np.float64)
+    if len(x_nums) == 1:
+        x_edges[0] = float(x_nums[0] - 0.5 * step)
+        x_edges[1] = float(x_nums[0] + 0.5 * step)
+    else:
+        x_edges[1:-1] = 0.5 * (x_nums[:-1] + x_nums[1:])
+        x_edges[0] = float(x_nums[0] - 0.5 * (x_nums[1] - x_nums[0]))
+        x_edges[-1] = float(x_nums[-1] + 0.5 * (x_nums[-1] - x_nums[-2]))
+    y_edges = np.linspace(0.0, C_KM_PER_S * (data.shape[0] / fs), data.shape[0] + 1, dtype=np.float64)
 
-    cf = ax0.imshow(
-        data,
-        aspect="auto",
-        origin="lower",
-        extent=[x0, x1, float(delay_equiv_range_km[0]), float(delay_equiv_range_km[-1])],
+    cf = ax0.pcolormesh(
+        x_edges,
+        y_edges,
+        np.ma.masked_invalid(data),
         cmap="viridis",
-        interpolation="nearest",
+        shading="auto",
         vmin=cmap_vmin,
         vmax=cmap_vmax,
     )
-    ax0.set_title(title or "PRI-integrated matched-filter output vs. delay", fontsize=21, fontweight="bold")
-    ax0.set_ylabel("One-way delay-equivalent range (km)", fontsize=15)
+    ax0.set_title(
+        title or ("PRI-integrated matched-filter power SNR vs. residual delay" if ephem_detrended else "PRI-integrated matched-filter power SNR vs. delay"),
+        fontsize=21,
+        fontweight="bold",
+    )
+    ax0.set_ylabel(
+        "Residual delay-equivalent range (km)" if ephem_detrended else "One-way delay-equivalent range (km)",
+        fontsize=15,
+    )
     ax0.xaxis_date()
     ax0.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
     ax0.tick_params(axis="x", labelbottom=False)
+
+    display_range_km = 0.5 * (y_edges[:-1] + y_edges[1:]) if y_edges.size > 1 else np.zeros(0, dtype=np.float64)
     range_min_km = max(0.0, float(range_min_km))
-    range_max_km = min(float(range_max_km), float(delay_equiv_range_km[-1]))
+    range_max_km = min(float(range_max_km), float(y_edges[-1]) if y_edges.size else float(range_max_km))
     ax0.set_ylim(range_min_km, range_max_km)
-    ax0.grid(False)
+    _apply_grid(ax0)
 
     if show_hit_detections:
-        lo_idx = max(0, int(math.floor(range_min_km / C_KM_PER_S * fs)))
-        hi_idx = min(data.shape[0], int(math.ceil(range_max_km / C_KM_PER_S * fs)))
+        lo_idx = int(np.searchsorted(display_range_km, ax0.get_ylim()[0], side="left")) if display_range_km.size else 0
+        hi_idx = int(np.searchsorted(display_range_km, ax0.get_ylim()[1], side="right")) if display_range_km.size else 0
         if hi_idx > lo_idx:
             visible = data[lo_idx:hi_idx, :]
-            binary = np.asarray(visible > hit_sigma_threshold, dtype=bool)
+            hit_snr_db_threshold = 20.0 * math.log10(max(float(hit_sigma_threshold), 1e-12))
+            binary = np.asarray(visible > hit_snr_db_threshold, dtype=bool)
             labels, num_labels = ndimage.label(binary, structure=np.ones((3, 3), dtype=int))
             best_label = 0
             best_score = -np.inf
@@ -788,7 +873,8 @@ def plot_range_time(
                         continue
                     center_row = float(np.median(col_rows)) + lo_idx
                     hit_times.append(row_times[int(col)])
-                    hit_ranges.append(C_KM_PER_S * (center_row / fs))
+                    center_idx = int(np.clip(int(round(center_row)), 0, display_range_km.size - 1))
+                    hit_ranges.append(float(display_range_km[center_idx]))
                 if hit_times:
                     ax0.plot(hit_times, hit_ranges, color="white", linewidth=5.0, alpha=0.95, zorder=3)
                     ax0.plot(hit_times, hit_ranges, color="black", linewidth=1.0, alpha=0.4, zorder=4)
@@ -812,10 +898,11 @@ def plot_range_time(
                     continue
                 peak_idx = int(np.argmax(visible))
                 peak_score = float(visible[peak_idx])
-                if peak_score < hit_sigma_threshold:
+                if peak_score < hit_snr_db_threshold:
                     continue
                 hit_times.append(row_time)
-                hit_ranges.append(C_KM_PER_S * ((lo_idx + peak_idx) / fs))
+                center_idx = int(np.clip(lo_idx + peak_idx, 0, display_range_km.size - 1))
+                hit_ranges.append(float(display_range_km[center_idx]))
             if hit_times:
                 ax0.scatter(
                     hit_times,
@@ -828,12 +915,19 @@ def plot_range_time(
                 )
                 ax0.scatter(hit_times, hit_ranges, s=20, c="red", linewidths=0.0, alpha=1.0, zorder=4)
 
-    cbar = fig.colorbar(cf, cax=cax, label="Matched-filter score (sigma units)")
+    cbar = fig.colorbar(cf, cax=cax, label="Matched-filter power SNR (dB)")
     cbar.ax.tick_params(labelsize=12)
 
-    if residual_times and residual_hz and len(residual_times) == len(residual_hz):
+    if cpa_time_utc is not None:
+        cpa_x = mdates.date2num(cpa_time_utc)
+        ax0.axvline(cpa_x, color="tab:red", linewidth=1.2, linestyle="--", alpha=0.9, zorder=6)
+        ax1.axvline(cpa_x, color="tab:red", linewidth=1.2, linestyle="--", alpha=0.9, zorder=6)
+
+    if residual_times and residual_hz and residual_hz_err and len(residual_times) == len(residual_hz) == len(residual_hz_err):
         residual_arr = np.asarray(residual_hz, dtype=np.float32)
+        residual_err = np.asarray(residual_hz_err, dtype=np.float32)
         finite = np.isfinite(residual_arr)
+        finite_err = finite & np.isfinite(residual_err) & (residual_err >= 0.0)
         if np.any(finite):
             ax1.plot(residual_times, residual_arr, color="tab:orange", linewidth=1.3, alpha=0.95)
             ax1.scatter(
@@ -844,6 +938,18 @@ def plot_range_time(
                 alpha=0.8,
                 linewidths=0.0,
             )
+        if np.any(finite_err):
+            ax1.errorbar(
+                np.asarray(residual_times, dtype=object)[finite_err],
+                residual_arr[finite_err],
+                yerr=residual_err[finite_err],
+                fmt="none",
+                ecolor="tab:orange",
+                elinewidth=0.8,
+                capsize=2.0,
+                alpha=0.7,
+            )
+        if np.any(finite):
             lo, hi = np.percentile(residual_arr[finite], [2.0, 98.0])
             if not math.isfinite(lo) or not math.isfinite(hi) or lo == hi:
                 lo = float(np.min(residual_arr[finite]))
@@ -858,15 +964,15 @@ def plot_range_time(
     else:
         ax1.text(0.5, 0.5, "No Doppler estimates", transform=ax1.transAxes, ha="center", va="center")
     ax1.axhline(0.0, color="white", linewidth=0.8, alpha=0.5)
-    ax1.set_ylabel("Doppler (Hz)", fontsize=13)
+    ax1.set_ylabel("Residual Doppler (Hz)" if ephem_detrended else "Doppler (Hz)", fontsize=13)
     ax1.set_xlabel("UTC time", fontsize=15)
-    ax1.grid(False)
     ax1.xaxis_date()
     ax1.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
     ax1.tick_params(axis="x", labelrotation=20)
 
-    if doppler_limit_hz is not None and math.isfinite(doppler_limit_hz) and doppler_limit_hz > 0.0:
+    if doppler_limit_hz is not None and math.isfinite(doppler_limit_hz) and doppler_limit_hz > 0.0 and not ephem_detrended:
         ax1.set_ylim(-float(doppler_limit_hz), float(doppler_limit_hz))
+    _apply_grid(ax1)
 
     fig.autofmt_xdate()
     fig.subplots_adjust(left=0.08, right=0.95, top=0.92, bottom=0.10)
@@ -894,6 +1000,7 @@ def detect_transmitter(
     block_seconds: float,
     pri_fold: bool,
     sigma_threshold: float,
+    sat=None,
 ) -> DetectionResult:
     raw_scan_start_sample = int(raw_scan_start_sample)
     raw_scan_total_samples = max(int(raw_scan_total_samples), 1)
@@ -922,9 +1029,11 @@ def detect_transmitter(
 
     prev_tail = np.zeros(overlap, dtype=np.complex64)
     corr_rows: list[np.ndarray] = []
+    power_rows: list[np.ndarray] = []
     row_times: list[datetime] = []
     hits: list[DetectionHit] = []
     doppler_hz: list[float] = []
+    doppler_hz_err: list[float] = []
     doppler_coherence: list[float] = []
 
     total_blocks = int(math.ceil(y.size / block_samples))
@@ -939,6 +1048,7 @@ def detect_transmitter(
 
         search = np.concatenate([prev_tail, block])
         best_score_centered: Optional[np.ndarray] = None
+        best_power_row: Optional[np.ndarray] = None
         best_peak = -np.inf
         best_score_complex: Optional[np.ndarray] = None
         for _tpl_name, template in templates:
@@ -948,14 +1058,17 @@ def detect_transmitter(
             power = signal.correlate(np.abs(search) ** 2, np.ones(tpl_len, dtype=np.float32), mode="valid", method="fft")
             denom = np.sqrt(np.maximum(power, 1e-12) * max(tpl_energy, 1e-12))
             score = corr / np.maximum(denom, 1e-12)
+            score_power = np.abs(score) ** 2
             # Fold power, not complex correlation, so pulse-to-pulse phase rotation
             # does not cancel a stable return.
             score_profile = fold_score_row(np.abs(score), pri_samples) if pri_fold else np.abs(score)
+            power_profile = fold_score_row(score_power, pri_samples) if pri_fold else score_power
             score_centered = score_profile - np.median(score_profile)
             peak = float(np.max(score_centered)) if score_centered.size else -np.inf
             if peak > best_peak:
                 best_peak = peak
                 best_score_centered = score_centered
+                best_power_row = power_profile
                 best_score_complex = score.astype(np.complex64, copy=False)
 
         if best_score_centered is None:
@@ -967,6 +1080,9 @@ def detect_transmitter(
             continue
 
         corr_rows.append(best_score_centered.astype(np.float32, copy=False))
+        if best_power_row is None:
+            best_power_row = np.square(np.maximum(best_score_centered + np.median(best_score_centered), 0.0)).astype(np.float32, copy=False)
+        power_rows.append(best_power_row.astype(np.float32, copy=False))
         row_times.append(row_time)
 
         peak_idx = int(np.argmax(best_score_centered))
@@ -974,14 +1090,16 @@ def detect_transmitter(
         sigma = robust_sigma(best_score_centered)
         doppler_est: Optional[float] = None
         coherence_est: Optional[float] = None
+        doppler_err_est: Optional[float] = None
         if best_score_complex is not None:
-            doppler_est, coherence_est = estimate_doppler_relative_phase(
+            doppler_est, coherence_est, doppler_err_est = estimate_doppler_relative_phase(
                 best_score_complex,
                 pri_samples,
                 peak_idx % pri_samples,
                 tx.prf_hz or 0.0,
             )
         doppler_hz.append(float("nan") if doppler_est is None else float(doppler_est))
+        doppler_hz_err.append(float("nan") if doppler_err_est is None else float(doppler_err_est))
         doppler_coherence.append(float("nan") if coherence_est is None else float(coherence_est))
         if peak_score >= sigma_threshold * sigma:
             hits.append(
@@ -1016,14 +1134,50 @@ def detect_transmitter(
             if not math.isfinite(float(coh)) or float(coh) < adaptive_cutoff:
                 doppler_hz[i] = float("nan")
 
+    predicted_delay_s, predicted_doppler_hz = predict_iss_track(sat, tx, row_times)
+    if predicted_delay_s.size and predicted_delay_s.size != len(row_times):
+        raise RuntimeError("Predicted ISS track length does not match the detected rows.")
+    residual_range_km: list[float] = []
+    residual_doppler_hz: list[float] = []
+    predicted_cpa_time_utc: Optional[datetime] = None
+    if predicted_delay_s.size == len(row_times) and predicted_doppler_hz.size == len(row_times):
+        prf_hz = float(tx.prf_hz or 0.0)
+        finite_pred = np.isfinite(predicted_delay_s)
+        if np.any(finite_pred):
+            cpa_idx = int(np.nanargmin(np.asarray(predicted_delay_s, dtype=np.float64)))
+            predicted_cpa_time_utc = row_times[cpa_idx]
+        for i, row in enumerate(corr_rows):
+            peak_idx = int(np.argmax(row)) if row.size else 0
+            observed_range_km = C_KM_PER_S * (peak_idx / channel_rate)
+            predicted_range_km = C_KM_PER_S * float(predicted_delay_s[i])
+            residual_range_km.append(observed_range_km - predicted_range_km)
+            if math.isfinite(doppler_hz[i]) and math.isfinite(predicted_doppler_hz[i]):
+                measured = float(doppler_hz[i])
+                predicted = float(predicted_doppler_hz[i])
+                if prf_hz > 0.0:
+                    measured = measured + round((predicted - measured) / prf_hz) * prf_hz
+                residual_doppler_hz.append(float(measured - predicted))
+            else:
+                residual_doppler_hz.append(float("nan"))
+    else:
+        residual_range_km = [float("nan")] * len(row_times)
+        residual_doppler_hz = list(doppler_hz)
+
     return DetectionResult(
         transmitter=tx,
         hits=hits,
         corr_rows=corr_rows,
+        power_rows=power_rows,
         row_times=row_times,
         track_ranges_km=[],
         residual_times=list(row_times),
         residual_hz=doppler_hz,
+        residual_hz_err=doppler_hz_err,
+        predicted_delay_s=list(predicted_delay_s) if predicted_delay_s.size else [float("nan")] * len(row_times),
+        predicted_doppler_hz=list(predicted_doppler_hz) if predicted_doppler_hz.size else [float("nan")] * len(row_times),
+        residual_range_km=residual_range_km,
+        residual_doppler_hz=residual_doppler_hz,
+        cpa_time_utc=predicted_cpa_time_utc,
         template_name=template_name,
         template_samples=template_samples,
         pri_samples=pri_samples,
@@ -1040,6 +1194,13 @@ def write_analysis_csv(path: Path, result: DetectionResult, fs: float) -> None:
                 "peak_lag_samples",
                 "peak_range_km",
                 "peak_score",
+                "peak_power",
+                "noise_power",
+                "peak_snr_db",
+                "predicted_range_km",
+                "predicted_doppler_hz",
+                "residual_range_km",
+                "residual_doppler_hz",
                 "template",
                 "network",
                 "site",
@@ -1051,16 +1212,39 @@ def write_analysis_csv(path: Path, result: DetectionResult, fs: float) -> None:
             ]
         )
         tx = result.transmitter
-        for row_time, row in zip(result.row_times, result.corr_rows):
+        for i, (row_time, row, power_row) in enumerate(zip(result.row_times, result.corr_rows, result.power_rows)):
             peak_lag_samples = int(np.argmax(row)) if row.size else 0
             peak_range_km = C_KM_PER_S * (peak_lag_samples / fs)
             peak_score = float(row[peak_lag_samples]) if row.size else float("nan")
+            peak_power = float(power_row[peak_lag_samples]) if power_row.size else float("nan")
+            noise_power = estimate_noise_power(power_row, peak_idx=peak_lag_samples)
+            peak_snr_db = 10.0 * math.log10((peak_power + 1e-12) / (noise_power + 1e-12))
+            predicted_range_km = float("nan")
+            predicted_doppler_hz = float("nan")
+            residual_range_km = float("nan")
+            residual_doppler_hz = float("nan")
+            if i < len(result.predicted_delay_s):
+                if math.isfinite(result.predicted_delay_s[i]):
+                    predicted_range_km = C_KM_PER_S * float(result.predicted_delay_s[i])
+                if i < len(result.predicted_doppler_hz) and math.isfinite(result.predicted_doppler_hz[i]):
+                    predicted_doppler_hz = float(result.predicted_doppler_hz[i])
+            if i < len(result.residual_range_km) and math.isfinite(result.residual_range_km[i]):
+                residual_range_km = float(result.residual_range_km[i])
+            if i < len(result.residual_doppler_hz) and math.isfinite(result.residual_doppler_hz[i]):
+                residual_doppler_hz = float(result.residual_doppler_hz[i])
             writer.writerow(
                 [
                     row_time.isoformat(),
                     peak_lag_samples,
                     f"{peak_range_km:.3f}",
                     f"{peak_score:.3f}",
+                    f"{peak_power:.6g}",
+                    f"{noise_power:.6g}",
+                    f"{peak_snr_db:.3f}",
+                    "" if not math.isfinite(predicted_range_km) else f"{predicted_range_km:.3f}",
+                    "" if not math.isfinite(predicted_doppler_hz) else f"{predicted_doppler_hz:.3f}",
+                    "" if not math.isfinite(residual_range_km) else f"{residual_range_km:.3f}",
+                    "" if not math.isfinite(residual_doppler_hz) else f"{residual_doppler_hz:.3f}",
                     result.template_name,
                     tx.network,
                     tx.site,
@@ -1079,6 +1263,9 @@ def main() -> int:
     input_root = args.dataset_root.expanduser()
     output_prefix = args.output_prefix.expanduser()
     range_plot_template = args.range_plot_file.expanduser()
+    tle_file = args.tle_file.expanduser() if args.tle_file is not None else None
+    sat = load_tle(tle_file) if tle_file is not None else None
+    ephem_detrended = sat is not None
 
     reader, channel, reader_mode = open_drf_like_reader(input_root, args.channel)
     if reader_mode != "digital_rf":
@@ -1163,6 +1350,7 @@ def main() -> int:
             block_seconds=float(args.block_seconds),
             pri_fold=bool(args.pri_fold),
             sigma_threshold=float(args.sigma_threshold),
+            sat=sat,
         )
 
         prefix_stem = output_prefix.stem if output_prefix.suffix else output_prefix.name
@@ -1172,14 +1360,16 @@ def main() -> int:
         write_analysis_csv(csv_path, result, channel_rate)
 
         if not args.no_range_plot:
-            if result.corr_rows:
-                global_sigma = robust_sigma(np.concatenate(result.corr_rows))
-                norm_rows = [row / (global_sigma + 1e-12) for row in result.corr_rows]
+            if result.power_rows:
+                snr_rows = [power_row_to_snr_db(row, peak_idx=int(np.argmax(row)) if row.size else None)[0] for row in result.power_rows]
                 plot_range_time(
-                    norm_rows,
+                    snr_rows,
                     result.row_times,
                     result.residual_times,
-                    result.residual_hz,
+                    result.residual_range_km,
+                    result.residual_doppler_hz if ephem_detrended else result.residual_hz,
+                    result.residual_hz_err,
+                    result.cpa_time_utc if ephem_detrended else None,
                     channel_rate,
                     tx.prf_hz / 2.0 if tx.prf_hz is not None else None,
                     plot_path,
@@ -1195,6 +1385,7 @@ def main() -> int:
                     enhance_time_sigma=float(args.enhance_time_sigma),
                     enhance_range_sigma=float(args.enhance_range_sigma),
                     enhance_background_factor=float(args.enhance_background_factor),
+                    ephem_detrended=ephem_detrended,
                     title=f"{tx.label}: {result.template_name}",
                 )
             else:

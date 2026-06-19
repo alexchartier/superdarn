@@ -82,8 +82,8 @@ for i = 1:length(flist)
     Tbl_full = [Tbl_full; Tbl];
 end
 
-Tbl_train_FWHM = removevars(Tbl_full, {'Peak', 'FWHM'});
-Tbl_train_peak = Tbl_train_FWHM;
+Tbl_train_peak = removevars(Tbl_full, {'Peak', 'FWHM'});
+Tbl_train_FWHM = removevars(Tbl_full, {'FWHM'});
 
 %% Peak model importance
 imp_peak = perm_importance(Mdl.Peak, Tbl_train_peak, Tbl_full.Peak);

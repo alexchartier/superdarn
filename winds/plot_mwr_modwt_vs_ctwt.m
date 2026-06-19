@@ -3,6 +3,7 @@ ml_model_fn = '~/data/meteor_winds/ml_model.mat';
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
 meteor_angle_fn = '~/data/meteor_winds/angles_2008.nc';
 mem_fn = '~/data/meteor_winds/mem_3_output_v1.nc';
+mwr_freq_fn = '~/data/meteor_winds/mwr_freqs.mat';
 mem_fields = {'lo_dens_flux', 'hi_dens_flux', 'lo_dens_speed', 'hi_dens_speed'};
 
 hr = 0:23;
@@ -22,19 +23,20 @@ koki_fn = [filename(koki_fn_fmt{1}, min(days), mw_radarcode ), ...
     filename(koki_fn_fmt{2}, max(days), mw_radarcode )];
 mwr = load_mwr_simple(koki_fn);
 Mdl = loadstruct(ml_model_fn);
+freqs = loadstruct(mwr_freq_fn);
 meteor_angles = load_nc(meteor_angle_fn);
 sw = readtable(sw_fn_csv);
 mem = load_mem(mem_fn);
 mem_int = interp_mem(mem, mem_fields, mwr.Time, mwr.lat, mwr.lon);
 
 [Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, mwr.Time, mwr.lat, mwr.lon, ...
-    mem_int, sw, meteor_angles);
+    mem_int, sw, meteor_angles, freqs.(mwr_freq_field(mw_radarcode)));
 
 %TODO: interpolate Mod_Peak, Mod_FWHM to the full year, or similar
 
 %% Calculate observed 
 maxct = squeeze(max(mwr.counts, [], 1));
-mwr.Vx = sind(boresight) .* mwr.u0 + cosd(boresight) .* mwr.v0;
+mwr.Vx = sind(boresight) .* mwr.u + cosd(boresight) .* mwr.v;
 mwr.Vx_ctwt = nan(size(mwr.Time));
 for hri = 1:size(mwr.Time, 1)
     for ti = 1:size(mwr.Time, 2)

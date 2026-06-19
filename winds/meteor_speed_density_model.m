@@ -47,11 +47,11 @@ LTs(LTs >= 24) = LTs(LTs >= 24) - 24;
 LTs(LTs < 0) = LTs(LTs < 0) + 24;
 
 %% Speeds
-angles_key = round(angles.times(:) * 86400);
-time_key = round(times(:) * 86400);
-[tf_idx, ti_idx] = ismember(time_key, angles_key);
-assert(all(tf_idx), 'Looking for exactly 1 time');
-ti_idx = reshape(ti_idx, size(times));
+ti_idx = interp1(angles.times(:), 1:numel(angles.times), times(:), 'nearest', 'extrap');
+if any(~isfinite(ti_idx))
+    error('meteor_speed_density_model:TimeIndex', 'Could not map one or more input times to the meteor-angle grid.');
+end
+ti_idx = reshape(round(ti_idx), size(times));
 for i = 1:length(Names)
     speeds.(Names{i}) = sind(angles.(Names{i})) .* Geocentric_Speeds(i);
 
@@ -80,15 +80,14 @@ for i = 1:length(Names)
     vals(i, :) = a1(:);
 end
 
-source_times = datenum(yr, 1, 1:366);
-ti = ismember(source_times, floor(times));
+doy = floor(times) - datenum(yr, 1, 0);
 
 weights_2d = zeros(size(vals));
 for i = 1:length(Names)
-    dailyavg_weights = sources.(Names2{i})(ti);
-    elv_weight = sind(angles_s.(Names{i})); 
+    dailyavg_weights = sources.(Names2{i})(doy);
+    elv_weight = sind(angles_s.(Names{i}));
 
-    weights_i = repmat(dailyavg_weights', [24, 1]) .* elv_weight;
+    weights_i = dailyavg_weights .* elv_weight;
     weights_2d(i, :) = weights_i(:);
     % weights_2d(i, :) = weights_2d(i, :) .* LT_weight(:)';% angle_weight(:)'; 
 end

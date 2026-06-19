@@ -95,8 +95,12 @@ for i = 1:length(flist)
 end 
 
 %% Training
-Tbl_train_FWHM = removevars(Tbl_full, {'Peak', 'FWHM'});
-Tbl_train_peak = Tbl_train_FWHM; %removevars(Tbl_train_FWHM, mem_fields);
+% Peak model uses only the environmental predictors.
+Tbl_train_peak = removevars(Tbl_full, {'Peak', 'FWHM'});
+
+% FWHM model now conditions on the reference-frequency peak height as well.
+Tbl_train_FWHM = removevars(Tbl_full, {'FWHM'});
+
 Mdl.Peak = fitrsvm(Tbl_train_peak, Tbl_full.Peak);
 Mdl.FWHM = fitrsvm(Tbl_train_FWHM, Tbl_full.FWHM);
 

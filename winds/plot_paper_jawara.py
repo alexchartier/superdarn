@@ -126,6 +126,7 @@ def bilinear_weights(
     target_lat: float,
     target_lon: float,
 ) -> np.ndarray:
+    target_lon = target_lon % 360.0
     lat0 = float(lat_grid[0])
     lat1 = float(lat_grid[1])
     lon0 = float(lon_grid[0])

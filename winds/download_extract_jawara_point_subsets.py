@@ -81,6 +81,8 @@ class CDFHeader:
 CASES = [
     CaseConfig(name="han_2008", year=2008, stream=1, target_lat=62.32, target_lon=26.61),
     CaseConfig(name="han_2008_mwr", year=2008, stream=1, target_lat=69.26908, target_lon=16.039558),
+    CaseConfig(name="fir_2019", year=2019, stream=3, target_lat=-51.8314, target_lon=-58.9793),
+    CaseConfig(name="fir_2020", year=2020, stream=3, target_lat=-51.8314, target_lon=-58.9793),
     CaseConfig(name="mcm_2019", year=2019, stream=3, target_lat=-77.88, target_lon=166.73),
 ]
 
@@ -102,6 +104,19 @@ def source_url(case: CaseConfig, month: int, var_name: str) -> str:
 
 def log(msg: str) -> None:
     print(msg, flush=True)
+
+
+def case_output_path(out_dir: Path, case: CaseConfig) -> Path:
+    return case_year_dir(out_dir, case) / f"{case.name}_jawara_hourly_uvz_2x2.nc"
+
+
+def case_year_dir(out_dir: Path, case: CaseConfig) -> Path:
+    site = case.name.split("_", 1)[0]
+    return out_dir / site / str(case.year)
+
+
+def case_month_output_path(out_dir: Path, case: CaseConfig, month: int) -> Path:
+    return case_year_dir(out_dir, case) / "monthly" / f"{case.name}_{case.year}{month:02d}_jawara_hourly_uvz_2x2.nc"
 
 
 def parse_months(spec: str) -> list[int]:
@@ -578,6 +593,55 @@ def append_month(
             out_ds.variables[var_name][start:end, :, :, :] = month_data[var_name]["data"]
 
 
+def load_subset_file(out_path: Path) -> dict[str, dict[str, np.ndarray]]:
+    with Dataset(out_path, "r") as ds:
+        time = np.asarray(ds.variables["time"][:], dtype=float)
+        time_units = str(ds.variables["time"].units)
+        level = np.asarray(ds.variables["level"][:], dtype=np.float32)
+        latitude = np.asarray(ds.variables["latitude"][:], dtype=np.float32)
+        longitude = np.asarray(ds.variables["longitude"][:], dtype=np.float32)
+        lat_indices = np.array([int(tok) for tok in str(ds.getncattr("source_lat_indices")).split(",")], dtype=np.int32)
+        lon_indices = np.array([int(tok) for tok in str(ds.getncattr("source_lon_indices")).split(",")], dtype=np.int32)
+
+        month_data: dict[str, dict[str, np.ndarray]] = {}
+        for var_name in ["u", "v", "z"]:
+            data = np.asarray(ds.variables[var_name][:], dtype=float)
+            fill_value = ds.variables[var_name].getncattr("_FillValue") if "_FillValue" in ds.variables[var_name].ncattrs() else None
+            if fill_value is None and "missing_value" in ds.variables[var_name].ncattrs():
+                fill_value = ds.variables[var_name].getncattr("missing_value")
+            if fill_value is not None:
+                data[np.isclose(data, fill_value)] = np.nan
+            month_data[var_name] = {
+                "time": time.copy(),
+                "time_units": time_units,
+                "level": level.copy(),
+                "latitude": latitude.copy(),
+                "longitude": longitude.copy(),
+                "data": data,
+                "lat_indices": lat_indices.copy(),
+                "lon_indices": lon_indices.copy(),
+            }
+    return month_data
+
+
+def write_subset_file(
+    out_path: Path,
+    case: CaseConfig,
+    month_data: dict[str, dict[str, np.ndarray]],
+    month: int,
+    overwrite: bool = False,
+) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if out_path.exists() and not overwrite:
+        return
+    tmp_out = out_path.with_suffix(out_path.suffix + ".tmp")
+    if tmp_out.exists():
+        tmp_out.unlink()
+    create_output(case, tmp_out, month_data)
+    append_month(tmp_out, month_data, month)
+    os.replace(tmp_out, out_path)
+
+
 def process_case(
     session: requests.Session,
     case: CaseConfig,
@@ -585,8 +649,13 @@ def process_case(
     out_dir: Path,
     max_ranges_per_request: int,
     workers: int,
+    overwrite: bool = False,
 ) -> Path:
-    out_path = out_dir / f"{case.name}_jawara_hourly_uvz_2x2.nc"
+    out_path = case_output_path(out_dir, case)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if out_path.exists() and not overwrite:
+        log(f"Skipping existing {out_path}")
+        return out_path
     tmp_out = out_path.with_suffix(out_path.suffix + ".tmp")
     if tmp_out.exists():
         tmp_out.unlink()
@@ -597,32 +666,38 @@ def process_case(
     try:
         for month in months:
             log(f"{case.name}: month {month:02d}")
+            month_path = case_month_output_path(out_dir, case, month)
             month_data: dict[str, dict[str, np.ndarray]] = {}
-            for var_name in ["u", "v", "z"]:
-                url = source_url(case, month, var_name)
-                log(f"  extracting {Path(url).name}")
-                subset = extract_subset_remote(
-                    session,
-                    url,
-                    target_lat=case.target_lat,
-                    target_lon=case.target_lon,
-                    var_name=var_name,
-                    expected_box=expected_box,
-                    max_ranges_per_request=max_ranges_per_request,
-                    progress_label=Path(url).name,
-                    workers=workers,
-                )
-                month_data[var_name] = subset
-                if expected_box is None:
-                    expected_box = {
-                        "latitude": subset["latitude"].copy(),
-                        "longitude": subset["longitude"].copy(),
-                    }
-                    log(
-                        "  source box "
-                        f"lat={subset['latitude'].tolist()} lon={subset['longitude'].tolist()} "
-                        f"indices=lat{subset['lat_indices'].tolist()} lon{subset['lon_indices'].tolist()}"
+            if month_path.exists() and not overwrite:
+                log(f"  using cached {month_path}")
+                month_data = load_subset_file(month_path)
+            else:
+                for var_name in ["u", "v", "z"]:
+                    url = source_url(case, month, var_name)
+                    log(f"  extracting {Path(url).name}")
+                    subset = extract_subset_remote(
+                        session,
+                        url,
+                        target_lat=case.target_lat,
+                        target_lon=case.target_lon,
+                        var_name=var_name,
+                        expected_box=expected_box,
+                        max_ranges_per_request=max_ranges_per_request,
+                        progress_label=Path(url).name,
+                        workers=workers,
                     )
+                    month_data[var_name] = subset
+                    if expected_box is None:
+                        expected_box = {
+                            "latitude": subset["latitude"].copy(),
+                            "longitude": subset["longitude"].copy(),
+                        }
+                        log(
+                            "  source box "
+                            f"lat={subset['latitude'].tolist()} lon={subset['longitude'].tolist()} "
+                            f"indices=lat{subset['lat_indices'].tolist()} lon{subset['lon_indices'].tolist()}"
+                        )
+                write_subset_file(month_path, case, month_data, month, overwrite=overwrite)
 
             if not created:
                 create_output(case, tmp_out, month_data)
@@ -679,6 +754,11 @@ def main() -> int:
         default=4,
         help="Number of concurrent HTTP workers to use while extracting each file.",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite any existing annual subset file instead of skipping it.",
+    )
     args = parser.parse_args()
 
     user = os.environ.get("JAWARA_USER")
@@ -711,6 +791,7 @@ def main() -> int:
                     out_dir,
                     args.max_ranges_per_request,
                     args.workers,
+                    overwrite=args.overwrite,
                 )
             )
     finally:

@@ -1,7 +1,7 @@
 function [Peak, FWHM] = run_ml_model(Mdl, Times, lat, lon, mem_int, ...
     sw, meteor_angles, freq, precomputed_speed, precomputed_pressure)
 %% run_ml_model(times, mwr, sw_fn_csv)
-% [Peak, FWHM] = run_ml_model(Mdl, Times, lat, lon, mem_int, sw, meteor_angles)
+% [Peak, FWHM] = run_ml_model(Mdl, Times, lat, lon, mem_int, sw, meteor_angles, freq)
 % Training or 'reference' frequency is 30 MHz
 
 %% Set inputs
@@ -30,8 +30,12 @@ if nargin >= 10 && ~isempty(precomputed_pressure)
 else
     pres = calc_msis_pressure(Times, ref_alt, lat, lon, sw);
 end
+if nargin < 8 || isempty(freq)
+    error('run_ml_model:MissingFrequency', ...
+        'A frequency vector or scalar is required as the 8th input argument.');
+end
 
-Tbl = table; 
+Tbl = table;
 
 Tbl.DOY = DOY(:);
 Tbl.LT = LT(:);
@@ -56,8 +60,13 @@ for fi = 1:length(fields)
     Tbl.(fields{fi}) = mem_int.(fields{fi})(:);
 end
 
-Peak_30 = Mdl.Peak.predict(Tbl);
-FWHM = Mdl.FWHM.predict(Tbl);
+Tbl_peak = Tbl;
+Peak_30 = Mdl.Peak.predict(Tbl_peak);
+
+% Feed the predicted reference-frequency peak back into the width model.
+Tbl_fwhm = Tbl_peak;
+Tbl_fwhm.Peak = Peak_30;
+FWHM = Mdl.FWHM.predict(Tbl_fwhm);
 freq_vec = freq(:);
 if isscalar(freq_vec)
     freq_vec = repmat(freq_vec, size(Peak_30));

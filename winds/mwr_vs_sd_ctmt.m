@@ -13,6 +13,7 @@ mwr_radar = 'AND';
 % ctmt_fn = '~/data/ctmt/ctmt.mat';
 ctmt_coeff_fn = '~/data/ctmt/coeffs.mat';
 ml_model_fn = '~/data/meteor_winds/ml_model.mat';
+mwr_freq_fn = '~/data/meteor_winds/mwr_freqs.mat';
 mem_fn = '~/data/meteor_winds/mem_3_output_v1.nc';
 mem_fields = {'lo_dens_flux', 'hi_dens_flux', 'lo_dens_speed', 'hi_dens_speed'};
 sw_fn_csv = '~/data/indices/SW-All.csv';  % from https://celestrak.org/spacedata/
@@ -44,6 +45,7 @@ mwr_fn = [filename(mwr_fn_fmt{1}, min(days), mwr_radar), ...
 mwr = load_mwr(mwr_fn, boresight);
 
 Mdl = loadstruct(ml_model_fn);
+freqs = loadstruct(mwr_freq_fn);
 mem = load_mem(mem_fn);
 mem_int = interp_mem(mem, mem_fields, Times, sd.pos(1), sd.pos(2));
 sw = readtable(sw_fn_csv);
@@ -51,7 +53,7 @@ meteor_angles = load_nc(meteor_angle_fn);
 
 %% Run the ML model to get model peak and FWHM at the site
 [Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, Times, sd.pos(1), sd.pos(2), ...
-    mem_int, sw, meteor_angles);
+    mem_int, sw, meteor_angles, freqs.(mwr_freq_field(mwr_radar)));
 
 %% Interpolate CTMT to the SuperDARN location and boresight
 % TODO: simplify and just get the LT
@@ -162,7 +164,6 @@ crr = xcorr2(LTwinds_sd, LTwinds_sd);
 [ssr,snd] = max(crr(:));
 [ij,ji] = ind2sub(size(crr),snd);
 fprintf('SD vs SD (autocorr): %i, %i\n', ij, ji)
-
 
 
 

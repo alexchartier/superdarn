@@ -9,12 +9,14 @@ hr = 0:23;
 yr = 2020;
 days = datenum(yr, 1, 1):datenum(yr, 12, 31);
 months = datenum(yr, 1:12, 15);
+ref_freq = 30;
 Times = months + hr'/24;
 lats = -90:10:90;
 lon = 0;
 
 %% load
 Mdl = loadstruct(ml_model_fn);
+sw = readtable(sw_fn_csv);
 meteor_angles = load_nc(meteor_angle_fn);
 mem = load_mem(mem_fn);
 
@@ -26,7 +28,7 @@ for li= 1:length(lats)
     mem_int = interp_mem(mem, mem_fields, Times, lats(li), lon);
 
     [Peak(:, :, li), FWHM(:, :, li)] = run_ml_model(...
-        Mdl, Times, lats(li), lon, mem_int, sw, meteor_angles);
+        Mdl, Times, lats(li), lon, mem_int, sw, meteor_angles, ref_freq);
 end
 
 %% Plotting
@@ -36,7 +38,7 @@ for mi = [1, 7]
 
 
     nexttile
-    [C, h] = contourf(hr, lat, squeeze(Peak(:, mi, :))');
+    [C, h] = contourf(hr, lats, squeeze(Peak(:, mi, :))');
     clabel(C, h)
     colormap(gca, 'default')
     set(gca, 'XTickLabels', '')
@@ -60,7 +62,7 @@ cb.Position(4) = cb.Position(4) * 0.9;
 
 for mi = [1, 7]
     nexttile
-    [C, h] = contourf(hr, lat, squeeze(FWHM(:, mi, :))');
+    [C, h] = contourf(hr, lats, squeeze(FWHM(:, mi, :))');
     clabel(C, h)
     colormap(gca, spring)
     clim([4, 12])

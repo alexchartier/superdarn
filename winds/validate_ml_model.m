@@ -30,16 +30,14 @@ sitename = split(fn, '_');
 
 meteor_angles = load_nc(meteor_angle_fn);
 mem_int = interp_mem(mem, mem_fields, mwr.Time, mwr.lat, mwr.lon);
-
 [Mod_Peak, Mod_FWHM] = run_ml_model(Mdl, mwr.Time, mwr.lat, mwr.lon, ...
-    mem_int, sw, meteor_angles);
+    mem_int, sw, meteor_angles, freqs.(mwr_freq_field(sitename{1})));
 
 times = days + hrs'/24;
 ti = ismember(round(mwr.Time * 1E5), round(times * 1E5));
 
 Mod_Peak = reshape(Mod_Peak(ti), size(Peak));
 Mod_FWHM = reshape(Mod_FWHM(ti), size(FWHM));
-Mod_Peak = freq_vs_ht_model(ref_freq, Mod_Peak(:), freqs.(sitename{1}));
 
 %% Plot
 rmse_peak = rmse(Mod_Peak, Peak, 'all');

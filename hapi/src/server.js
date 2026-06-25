@@ -1,8 +1,8 @@
 "use strict";
 
 const fs = require("node:fs/promises");
-const path = require("node:path");
 const Hapi = require("@hapi/hapi");
+const fetch = require("node-fetch");
 
 const VALID_VERSIONS = new Set(["2.5", "3.0", "V3_grid"]);
 const RADAR_IDS = new Set([

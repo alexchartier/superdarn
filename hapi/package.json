@@ -4,12 +4,13 @@
   "private": true,
   "description": "Hapi service for SuperDARN Zenodo inventory and redirect-based file access",
   "engines": {
-    "node": ">=20"
+    "node": ">=16"
   },
   "scripts": {
     "start": "node src/server.js"
   },
   "dependencies": {
-    "@hapi/hapi": "^21.4.3"
+    "@hapi/hapi": "^21.4.3",
+    "node-fetch": "^2.7.0"
   }
 }

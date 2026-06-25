@@ -1,0 +1,15 @@
+{
+  "name": "superdarn-zenodo-hapi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hapi service for SuperDARN Zenodo inventory and redirect-based file access",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@hapi/hapi": "^21.4.3"
+  }
+}

@@ -44,7 +44,7 @@ def main(date):
 
     if DOWNLOAD_SOURCE_FILES:
         #download_source_files(rawDir, netDir, startDate)
-        subprocess.call('scp -r \'radar@wallops.invalid:/borealis_nfs/borealis_data/rawacf_dmap/202212*\' /project/superdarn/data/rawacf/2022/12', shell=True)
+        subprocess.call("scp -r '{server}:/borealis_nfs/borealis_data/rawacf_dmap/202212*' /project/superdarn/data/rawacf/2022/12".format(server=helper.WAL_SERVER), shell=True)
 
     convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir)
 

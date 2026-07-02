@@ -10,6 +10,7 @@ import datetime
 import os
 import smtplib
 from email.mime.text import MIMEText
+import helper
 
 def send_email(subject, body):
     # Configure email settings
@@ -44,7 +45,7 @@ month = target_date.strftime('%m')
 day = target_date.strftime('%d')
 
 # Define the server and path components
-borealis_server = "radar@wallops.invalid"
+borealis_server = helper.WAL_SERVER
 path = f"/borealis_nfs/borealis_data/rawacf_dmap/{year}{month}{day}*"
 
 # Create the source and destination paths

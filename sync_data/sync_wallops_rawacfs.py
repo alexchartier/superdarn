@@ -8,6 +8,7 @@ import sys
 import subprocess
 import datetime
 import os
+import helper
 
 
 def parse_date(date_str):
@@ -31,7 +32,7 @@ month = target_date.strftime('%m')
 day = target_date.strftime('%d')
 
 # Define the server and path components
-borealis_server = "radar@wallops.invalid"
+borealis_server = helper.WAL_SERVER
 path = f"/borealis_nfs/borealis_data/rawacf_dmap/{year}{month}{day}*"
 
 # Create the source and destination paths

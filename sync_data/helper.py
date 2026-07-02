@@ -11,11 +11,15 @@ from glob import glob
 
 EMAIL_ADDRESSES = 'jordan.wiker@jhuapl.edu'
 
+WAL_SERVER_ENV_VAR = 'SUPERDARN_WAL_SERVER'
+ZENODO_TOKEN_ENV_VAR = 'SUPERDARN_ZENODO_TOKEN'
+ZENODO_SANDBOX_TOKEN_ENV_VAR = 'SUPERDARN_ZENODO_SANDBOX_TOKEN'
+
 LATEST_PUBLIC_DATA = 2022
 
 # Directories
 BAS_SERVER = 'bslsuperdarnb.nerc-bas.ac.uk'
-WAL_SERVER = 'radar@wallops.invalid'
+WAL_SERVER = os.environ.get(WAL_SERVER_ENV_VAR, 'radar@wallops.invalid')
 BAS_RAWACF_DIR_FMT = '/sddata/raw/%Y/%m'   
 BAS_DAT_DIR_FMT = '/sddata/dat/%Y/%m'
 GLOBUS_RAWACF_DIR_FMT = '/chroot/sddata/dat/%Y/%m'
@@ -46,8 +50,8 @@ MIN_FITACF_FILE_SIZE = 1E5 # bytes
 DEPOSIT_URL = 'https://zenodo.org/api/deposit/depositions'
 SANDBOX_DEPOSIT_URL = 'https://sandbox.zenodo.org/api/deposit/depositions'
 
-ZENODO_TOKEN = 'SUPERDARN_ZENODO_TOKEN_REMOVED'
-ZENODO_SANDBOX_TOKEN = 'SUPERDARN_ZENODO_SANDBOX_TOKEN_REMOVED'
+ZENODO_TOKEN = os.environ.get(ZENODO_TOKEN_ENV_VAR, '')
+ZENODO_SANDBOX_TOKEN = os.environ.get(ZENODO_SANDBOX_TOKEN_ENV_VAR, '')
 
 GLOBUS_SUPERDARN_ENDPOINT = '8e844226-2eea-479c-b5e4-bac908b725bc'
 

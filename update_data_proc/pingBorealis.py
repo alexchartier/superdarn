@@ -7,9 +7,10 @@ Description: Check Borealis reachability via SSH to confirm the machine is up.
 import subprocess
 import smtplib
 from email.mime.text import MIMEText
+import helper
 
 # Configuration
-host = "radar@wallops.invalid"
+host = helper.WAL_SERVER
 ssh_command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", host, "exit"]
 
 def check_host_reachability(command):

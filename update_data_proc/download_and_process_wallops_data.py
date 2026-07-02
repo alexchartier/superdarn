@@ -29,7 +29,7 @@ def main(date):
     os.makedirs(netDir, exist_ok=True)
 
     # Copy the files from Wallops
-    subprocess.call('scp -r \'radar@wallops.invalid:/borealis_nfs/borealis_data/rawacf_dmap/{year}{month}*\' /project/superdarn/data/rawacf/{year}/{month}'.format(year = startDate.strftime('%Y'), month = startDate.strftime('%m')), shell=True)
+    subprocess.call("scp -r '{server}:/borealis_nfs/borealis_data/rawacf_dmap/{year}{month}*' /project/superdarn/data/rawacf/{year}/{month}".format(server=helper.WAL_SERVER, year=startDate.strftime('%Y'), month=startDate.strftime('%m')), shell=True)
 
     convert_rawacf_to_fitacf_and_netcdf(startDate, endDate, rawDir, fitDir, netDir)
 #    upload_nc_to_zenodo.main()  

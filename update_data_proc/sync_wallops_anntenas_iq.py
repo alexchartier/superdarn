@@ -10,6 +10,7 @@ import datetime
 import os
 import smtplib
 from email.mime.text import MIMEText
+import helper
 
 def send_email(subject, body):
     # Configure email settings
@@ -30,7 +31,7 @@ def get_dates():
     return [(start_date + datetime.timedelta(days=i)).strftime("%Y%m%d") for i in range((end_date - start_date).days + 1)]
 
 # Define the server and source directories
-borealis_server = "radar@wallops.invalid"
+borealis_server = helper.WAL_SERVER
 sources = [
     "/borealis_nfs/borealis_data/antennas_iq_array",
     "/borealis_nfs/borealis_data/daily"
